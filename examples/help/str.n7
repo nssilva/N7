@@ -1,0 +1,18 @@
+' str
+' ---
+
+' 'str(x)' returns a string representation of a variable/expression.
+s = str(3.14)
+if typeof(s) = TYPE_STRING
+    pln s + " is a string"
+endif
+
+' 'str(x, int_digits)' returns a string with atleast int_digits digits for the integer part of x,
+' padding with zeros. The decimal part is ignored.
+pln str(235.17, 5) 
+
+' 'str(x, int_digits, dec_digits)' returns a string with atleast int_digits digits for the integer
+' part of x and alteast dec_digits digits for the decimal part.
+pln str(235.17, 4, 4)
+
+system "pause"

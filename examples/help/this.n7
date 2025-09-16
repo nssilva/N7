@@ -1,0 +1,19 @@
+' this
+' ----
+
+' Create a table containing two numbers and a function.
+pos = []
+pos.x = 31
+pos.y = 14
+pos.ToString = function()
+    ' If a function is called through a table field, you can access the table inside the function
+    ' using 'this'.
+    return "(" + this.x + ", " + this.y + ")"
+endfunc
+
+' Output the value returned by the function.
+pln pos.ToString()
+
+pln
+
+system "pause"

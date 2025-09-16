@@ -1,0 +1,1925 @@
+' pool.n7
+' -------
+' By Kevin, posted on the naalaa forum.
+
+'With grateful thanks to OneLoneCoder (javidx9) on Youtube for the very efficient
+'circle collision and reaction algorithm, featured in this video:
+'https://www.youtube.com/watch?v=LPzyNOHY3A4&t=1683s&ab_channel=javidx9 
+ 
+'set up screen
+visible screen_w = 1024,screen_h = 768
+#win32
+'Open a window
+set window "A game of Pool",screen_w,screen_h
+'enable double buffering
+set redraw off
+
+'=======================================================
+'=============  FONTS  =================================
+visible font1 ,font2,font3
+create_fonts()
+'=======================================================
+'-----------  SOUND EFFECTS ----------------------------
+visible sound_on = true
+visible hit_ball_sound = CreateNoiseSfx(0.1, 1.05, 0, 14200)'(duration, pitch, fadeOut, sampleRate)
+visible pot_ball_sound = CreateNoiseSfx(0.5, 1.2, 0, 14200)
+visible oh_no_sound = CreateSineSfx(1.7,600,310,0.215,11600)
+visible yay_sound = CreateSineSfx(1.45,40,940,0.535,13600)
+'=======================================================
+'=========  set up pool balls ==========================
+visible circle_number = 16
+
+visible balls = []
+balls = fill([x:0,y:0,r:13,vec:[0,0],mass:0,active_now:true,colour:0],circle_number)
+'=======================================================
+visible pocket_number = 6
+visible pockets = fill([x:0,y:0,r:0],pocket_number)
+
+visible colliding_pairs = [],potted_balls = [],total_collisions = 0,first_colour_struck = 99
+visible first_shot = true , started = false,switch_player = false
+
+visible yellow_balls = 7, red_balls = 7,active_player = "PLAYER 1"
+visible cue_ready = false,can_nominate = true,shot_made = false
+visible can_play = true,foul_hit = false,white_potted = false
+visible player1 = [active_now:true,colour:"unset",shots_remaining : 2]
+visible player2 = [active_now:false,colour:"unset",shots_remaining : 0]
+
+visible player_v_player = false,player_v_computer = false
+
+'for computer player
+visible nearest_ball = 10 ' black ball - used for the computer opponent
+'visible nearest_balls = [],nearest_balls_order = [] ' used for the computer opponent
+visible target_balls = [],target_balls_blocked = []' used for the computer opponent
+visible target_balls_unblocked = []' used for the computer opponent
+visible vector_x,vector_y,dist
+visible set_mousex = 0, set_mousey = 0
+visible hard_difficulty = true 'used for the hard computer opponent
+
+visible display_text = true
+
+visible screen_hint_timer = 0
+visible cheat_mode = false
+
+
+visible button_w = 300,button_h = 40
+visible menu = [[x:screen_w/2 ,y:50,w:button_w,h:button_h,txt:"How to play"],
+                [x:screen_w/2 - 200,y:600,w:button_w,h:button_h,txt:"Player vs Player"],
+                [x:screen_w/2 + 200 ,y:600,w:button_w,h:button_h,txt:"Player vs Computer"]]              
+                
+ 
+visible button = 999
+draw_intro(2,1500)
+
+############  to calculate FPS  ##########################
+visible framecount,lasttime = 999,fps,frametime = 0,starttime = 0,endtime = 0
+##########################################################
+##############################################################################################
+#######################################   GAME LOOP  #########################################
+##############################################################################################
+do
+
+set mouse off
+if player1.active_now
+    set mouse on
+elseif   player2.active_now and player_v_player = true 
+    set mouse on   
+endif
+
+###  for FPS calc #########
+framecount = framecount + 1 
+starttime = clock()
+###########################
+'clear the screen
+'set color 225,225,225
+set color 255,255,255
+cls
+set color 0,0,0
+###########################
+if balls[15].active_now = false then reset_white() ' cannot do this earlier
+###########################
+
+
+###########################
+screen_hint_timer = (screen_hint_timer + 1) % 80
+##########################################
+
+'======   call procedures  =========
+draw_all()
+
+update_screen_hints()
+if player1.active_now = true
+    hit_cue_ball()
+endif    
+if player2.active_now = true and player_v_player = true
+    hit_cue_ball()
+endif    
+
+collision_balls()
+move_balls()
+if player2.active_now = true and player_v_computer = true and balls[10].active_now = true  and can_play = true
+    wait 10
+    computer_opponent()
+endif
+
+set color 0,0,0
+set caret screen_w/2,20
+set justification center
+if player1.active_now
+    if can_play
+        write "READY TO PLAY";wln
+    else
+        write "CAN'T PLAY - BALLS IN MOTION";wln
+    endif
+endif
+
+
+set caret 10,140
+set justification left
+'write "player_v_player = " + player_v_player;wln
+'write "player_v_computer_easy = " + player_v_computer_easy;wln
+'write "hit_cue_ball_compplayer_v_computerplayer_v_computer = " + hit_cue_ball_compplayer_v_computerplayer_v_computer
+'copy back buffer to the screen
+redraw
+'cap FPS to 60
+fwait 60
+
+
+#######  FPS calc  ############################
+endtime = clock()
+frametime = frametime + endtime - starttime
+if frametime > 1000 # 1 second
+    fps = framecount
+    framecount = 0
+    frametime = 0
+endif
+################################################
+
+
+until keydown(KEY_ESCAPE)
+
+#########################################################################################
+#################################  FUNCTIONS  ###########################################
+#########################################################################################
+
+function hit_cue_ball()
+
+if player1.active_now = true
+    active_player = "PLAYER 1"'used for messages - the active player will change during a shot 
+                                ' if fouls are commited
+else
+    active_player = "PLAYER 2"    
+endif
+
+set color 255,255,255
+'    cls
+set color 0,0,0
+
+
+ 
+if can_play = true
+        if mousebutton(0)
+            set color 150,75,0'brown
+            draw poly [mousex() , mousey(), mousex() + 4 , mousey() + 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() - 4 , mousey() - 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() - 4  , mousey() + 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() + 4 , mousey() - 4, balls[15].x,balls[15].y], true
+            draw ellipse mousex() , mousey(),4,4,1
+            cue_ready = true
+            
+            set caret screen_w / 2,160
+            set justification center
+            if screen_hint_timer > 40
+                set color 0,0,0
+            else
+                set color 0,0,255
+            endif
+            if cheat_mode = false
+                write "CLICK THE <H> KEY FOR HELP WITH AIMING.";wln;wln
+            else
+                write "CLICK THE <H> KEY TO REMOVE THE HELP WITH AIMING."
+            endif
+            set color 0,0,0
+            if keydown(KEY_H,true)
+                if cheat_mode = true 
+                    cheat_mode = false
+                elseif cheat_mode = false 
+                    cheat_mode = true
+                endif
+            endif
+        
+            if cheat_mode  = true
+                dx = balls[15].x - mousex()
+                dy = balls[15].y - mousey()
+                
+                angle_r = atan2(-dx,dy)   
+                
+                vector_x = sin(angle_r - PI)
+                vector_y = -cos(angle_r - PI)
+                
+                c = abs(balls[15].x - mousex())
+                d = abs(balls[15].y - mousey())
+                dist = sqr((c^2 + d^2))
+                set color 255,0,0
+                draw line balls[15].x,balls[15].y,balls[15].x + vector_x * dist * 2,balls[15].y + vector_y * dist * 2
+                draw ellipse balls[15].x + vector_x * dist * 2,balls[15].y + vector_y * dist * 2,
+                balls[15].r,balls[15].r,0   
+                set color 0,0,0
+            endif    
+        endif    
+        if cue_ready = false
+            set caret screen_w / 2,screen_h - 160
+            set justification center
+            set font 2
+            write "CLICK AND HOLD THE LEFT MOUSE BUTTON TO PICK UP THE CUE.";wln;wln
+            set font 1
+            write "THEN MOVE THE MOUSE TO PICK DIRECTION AND STRENGTH OF SHOT - ";wln
+            write "THE FURTHER AWAY FROM THE WHITE BALL YOU ARE, THE STRONGER THE SHOT."
+        endif
+        
+        if cue_ready = true
+            set caret screen_w / 2,screen_h - 160
+            set justification center
+            write "RELEASE THE MOUSE BUTTON TO TAKE THE SHOT";wln;wln
+            write "REMEMBER - SHOT STRENGTH INCREASES WITH DISTANCE FROM THE WHITE BALL";wln;wln
+            write "IF YOU WANT TO PUT THE CUE DOWN WITHOUT HITTING THE BALL,";wln
+            write "HOLD THE <C> KEY DOWN AND RELEASE THE LEFT MOUSE BUTTON...";wln
+            
+            
+        endif
+        
+        if keydown(KEY_C)
+            cue_ready = false
+        endif
+        
+        
+    if cue_ready = true and not mousebutton(0)
+            shot_made = true
+            cue_ready = false
+            total_collisions = 0
+            foul_hit = false
+            switch_player = false
+            play sound hit_ball_sound 
+            balls[15].vec[0] = 0.075 * (balls[15].x - mousex()) 
+            balls[15].vec[1] = 0.075 * (balls[15].y - mousey())
+            started = true
+            cheat_mode = false
+
+        endif  
+
+endif
+    
+endfunc
+'==============================================================
+
+function hit_cue_ball_computer()
+
+
+set mouse off
+for t = 0 to 1
+show_text("The computer is thinking.    ");redraw;wait 400
+show_text("The computer is thinking..   ");redraw;wait 400
+show_text("The computer is thinking...  ");redraw;wait 400
+show_text("The computer is thinking.... ");redraw;wait 400
+show_text("The computer is thinking.....");redraw;wait 400
+next
+
+
+if can_play = true
+            if mousebutton(0)'this is to ensure that the user input does not change the new position of the mouse
+                set mouse balls[15].x - vector_x * dist * 0.8,balls[15].y - vector_y * dist * 0.8;set mouse off
+            endif
+        
+            set color 150,75,0'brown
+            draw poly [mousex() , mousey(), mousex() + 4 , mousey() + 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() - 4 , mousey() - 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() - 4  , mousey() + 4, balls[15].x,balls[15].y], true
+            draw poly [mousex() , mousey(), mousex() + 4 , mousey() - 4, balls[15].x,balls[15].y], true
+            draw ellipse mousex() , mousey(),4,4,1
+            redraw
+            cue_ready = true
+            wait 1000
+            set caret screen_w / 2,160
+            set justification center
+            if screen_hint_timer > 40
+                set color 0,0,0
+            else
+                set color 0,0,255
+            endif
+          
+        
+    if cue_ready = true and not mousebutton(0)
+            shot_made = true
+            cue_ready = false
+            total_collisions = 0
+            foul_hit = false
+            switch_player = false
+            play sound hit_ball_sound 
+            if mousebutton(0) or mousex() <> set_mousex or mousey() <> set_mousey'this is to ensure that the user input does not change the new position of the mouse
+                set mouse balls[15].x - vector_x * dist * 0.8,balls[15].y - vector_y * dist * 0.8;set mouse off
+            endif
+            balls[15].vec[0] = 0.075 * (balls[15].x - mousex()) 
+            balls[15].vec[1] = 0.075 * (balls[15].y - mousey())
+            started = true
+            cheat_mode = false
+
+        endif  
+
+endif
+set mouse on
+endfunc
+'==============================================================
+function move_balls()
+
+    ' move all balls
+    moving_now = [0,0]
+    
+    for i = 0 to circle_number - 1
+           
+                balls[i].x = balls[i].x + balls[i].vec[0]
+                balls[i].y = balls[i].y + balls[i].vec[1]
+                      
+                ' bounce off sides
+                if balls[i].x  >= 812 - balls[i].r or balls[i].x <= 212 +  balls[i].r
+                    balls[i].vec[0] = - balls[i].vec[0]
+                    balls[i].x = balls[i].x + balls[i].vec[0]
+                endif
+                if balls[i].y  >= 534 - balls[i].r or balls[i].y <=  234 + balls[i].r
+                    balls[i].vec[1] = - balls[i].vec[1]
+                    balls[i].y = balls[i].y + balls[i].vec[1]
+                endif
+                'FRICTION
+                balls[i].vec[0] = balls[i].vec[0] * 0.992
+                balls[i].vec[1] = balls[i].vec[1] * 0.992
+                
+                'STOP THE BALL WHEN IT IS HARDLY MOVING
+                if abs(balls[i].vec[0] + balls[i].vec[1]) < 0.03
+                    balls[i].vec[0] = 0
+                    balls[i].vec[1] = 0
+                'Stop the ball overlapping the edge of the table
+                    if balls[i].x  >= 812 - balls[i].r 
+                        balls[i].x  = 811 - balls[i].r 
+                    elseif balls[i].x <= 212 +  balls[i].r
+                        balls[i].x = 213 +  balls[i].r
+                    endif
+                    
+                    if balls[i].y  >= 534 - balls[i].r 
+                        balls[i].y  = 533 - balls[i].r 
+                    elseif balls[i].y <=  234 + balls[i].r
+                        balls[i].y =  235 + balls[i].r
+                    endif
+                    
+                    
+                    
+                endif
+                check_if_potted(i)
+                'check if any ball is still moving
+                moving_now[0] = moving_now[0] + balls[i].vec[0]
+                moving_now[1] = moving_now[1] + balls[i].vec[1]
+    next
+                 'check if any ball is still moving
+                if moving_now[0] = 0 and moving_now[1] = 0
+                    'first_colour_struck = 99
+                    can_play = true
+                    if shot_made = true 
+                        prepare_next_shot()
+                    endif
+                else
+                    can_play = false
+                endif
+            
+    
+endfunc
+##########################################################
+function prepare_next_shot()
+nearest_balls= []
+if player1.active_now = true and foul_hit = false 
+   player1.shots_remaining =  player1.shots_remaining - 1 
+endif
+
+if player2.active_now = true and foul_hit = false 
+   player2.shots_remaining =  player2.shots_remaining - 1 
+endif
+
+'---  count which colours havee been potted  -----
+'--- 1 = red, 2 = yellow, 3 = black, 4 = white ---
+'       NOTE THESE DO NOT START WITH ZERO 
+potted_colours = [0,0,0,0]
+if sizeof(potted_balls) > 0
+    for i = 0 to sizeof(potted_balls) - 1
+        
+        if potted_balls[i] = 1 
+            potted_colours[0] = potted_colours[0] + 1 ' RED
+            red_balls = red_balls - 1
+        elseif potted_balls[i] = 2 
+            potted_colours[1] = potted_colours[1] + 1 ' YELLOW
+            yellow_balls = yellow_balls - 1
+        elseif potted_balls[i] = 3 
+            potted_colours[2] = potted_colours[2] + 1 ' BLACK
+        elseif potted_balls[i] = 4 
+            potted_colours[3] = potted_colours[3] + 1 ' WHITE
+        endif    
+    next
+endif
+
+'add another shot if correct ball is potted
+if player1.active_now 
+    if player1.colour = "red"
+        if potted_colours[0] > 0 and potted_colours[1] = 0 and potted_colours[2] = 0 and potted_colours[3] = 0 
+            player1.shots_remaining = player1.shots_remaining + 1
+        endif    
+    elseif player1.colour = "yellow"
+        if potted_colours[0] = 0 and potted_colours[1] > 0 and potted_colours[2] = 0 and potted_colours[3] = 0 
+            player1.shots_remaining = player1.shots_remaining + 1
+        endif    
+    endif
+elseif player2.active_now 
+    if player2.colour = "red"
+        if potted_colours[0] > 0 and potted_colours[1] = 0 and potted_colours[2] = 0 and potted_colours[3] = 0 
+            player2.shots_remaining = player2.shots_remaining + 1
+        endif    
+    elseif player2.colour = "yellow"
+        if potted_colours[0] = 0 and potted_colours[1] > 0 and potted_colours[2] = 0 and potted_colours[3] = 0 
+            player2.shots_remaining = player2.shots_remaining + 1
+        endif    
+    endif 
+endif      
+'-------------------------------------------- 
+
+red_hit = false
+red_potted = false
+red_fouled = false
+foul_break = false
+yellow_hit = false
+yellow_potted = false
+yellow_fouled = false
+'check if the white has not hit any other ball
+'at the end of the shot - foul shot if so.
+if total_collisions = 0  and foul_hit = false''and shot_made = false
+    'can_nominate = false
+    show_text("Foul - you did not hit anything");draw_all();redraw;wait 3000 
+    foul_hit = true
+    foul_shot()
+endif
+
+'--- 1 = red, 2 = yellow, 3 = black, 4 = white ---
+    if potted_colours[2] = 1 ' black
+            draw_balls()
+            redraw
+            wait 2000
+        black_pot()
+        
+    elseif potted_colours[3] = 1  and foul_hit = false'white 
+        show_text("FOUL SHOT - the white ball has been potted")
+            draw_balls()
+            
+            redraw
+            wait 2000 
+            white_potted = true 
+            white_pot()
+            wait 10
+    elseif potted_colours[0] > 0 and potted_colours[1] > 0 and foul_hit = false and first_shot = false' both yellow and red balls potted
+        foul_hit = true
+        foul_shot()
+        show_text("FOUL SHOT - you potted both red and yellow balls")
+        redraw
+            wait 4000
+    'now call a foul shot if player pots the wrong colour ball    
+    elseif  player1.active_now = true and foul_hit = false
+        if  potted_colours[0] > 0 and player1.colour = "yellow"
+            foul_hit = true
+            foul_shot() 
+            show_text("FOUL SHOT - The wrong colour ball has been potted")
+            draw_balls()
+            redraw
+            wait 4000
+        elseif  potted_colours[1] > 0 and player1.colour = "red"
+            foul_hit = true
+            foul_shot()
+            show_text("FOUL SHOT - The wrong colour ball has been potted")
+            draw_balls()
+            redraw
+            wait 4000
+        endif 
+    elseif  player2.active_now = true and foul_hit = false
+        if  potted_colours[0] > 0 and player2.colour = "yellow"
+            foul_hit = true
+            foul_shot() 
+            show_text("FOUL SHOT - The wrong colour ball has been potted")
+            draw_balls()
+            redraw
+            wait 4000
+        elseif  potted_colours[1] > 0 and player2.colour = "red"
+            foul_hit = true
+            foul_shot()
+            show_text("FOUL SHOT - The wrong colour ball has been potted")
+            draw_balls()
+            redraw
+            wait 4000
+        endif  
+        
+    
+    endif    
+    
+
+'-----------------------------------------------
+'-- Nominate colour if this is the first shot --
+if can_play = true and started = true
+   if  can_nominate = true and white_potted = false and foul_hit = false 'and restart = false' and cue_ready = false
+       nominate_colour()
+       can_nominate = false
+       first_colour_struck = 99
+   endif
+endif
+'-------------------------------
+
+'check if player hit the wrong colour first
+if player1.active_now = true 'and can_nominate = false 'first_shot = false
+    if player1.colour = "red"
+        if first_colour_struck = 2   and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the wrong colour first");draw_all();redraw;wait 3000
+                foul_shot() 
+        elseif  first_colour_struck = 3  and red_balls > 0    and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the black ball first");draw_all();redraw;wait 3000
+                foul_shot()  
+                
+        endif
+    endif
+    
+    if player1.colour = "yellow"
+        if first_colour_struck = 1   and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the wrong colour first");draw_all();redraw;wait 3000
+                foul_shot() 
+         elseif  first_colour_struck = 3  and yellow_balls > 0    and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the black ball first");draw_all();redraw;wait 3000
+                foul_shot() 
+        endif
+    endif
+endif    
+if player2.active_now = true 
+    if player2.colour = "red"
+        if first_colour_struck = 2  and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the wrong colour first");draw_all();redraw;wait 3000
+                foul_shot() 
+        elseif  first_colour_struck = 3  and red_balls > 0    and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the black ball first");draw_all();redraw;wait 3000
+                foul_shot() 
+        endif
+    endif
+    
+    if player2.colour = "yellow"
+        if first_colour_struck = 1  and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the wrong colour first");draw_all();redraw;wait 3000
+                foul_shot()
+        elseif  first_colour_struck = 3  and yellow_balls > 0    and foul_hit = false
+                foul_hit = true
+                show_text("FOUL - you hit the black ball first");draw_all();redraw;wait 3000
+                foul_shot()  
+        endif
+    endif
+endif    
+################################################
+
+
+'----  end of player's turn? ---
+if player1.active_now = true and  player1.shots_remaining = 0 and foul_hit = false
+    player2.shots_remaining = 1
+    player1.active_now = false     
+    player2.active_now = true
+elseif player2.active_now = true and  player2.shots_remaining = 0 and   foul_hit = false
+    player1.shots_remaining = 1
+    player1.active_now = true     
+    player2.active_now = false
+endif
+'--------------------------------
+
+shot_made = false
+potted_balls = []
+'first_colour_struck = 99
+endfunc
+############################################################
+function draw_all()
+draw_info_boxes();draw_table();draw_balls()
+
+endfunc
+############################################################
+function show_text(txt)
+set color 255,255,255
+cls
+draw_all()
+set color 0,0,0
+set caret  screen_w / 2,105
+set justification center
+'write active_player ' - not reliable
+set caret  screen_w / 2,140   
+
+length = fwidth(txt) + 8
+
+set color 255,0,0
+draw rect screen_w / 2 - length/2 - 4 ,136,length + 8,24 + 8,1
+set color 255,255,255
+draw rect screen_w / 2 - length/2 ,140,length ,24 ,1
+
+set color 0,0,0
+set justification center
+write txt
+
+endfunc
+#############################################################
+function show_text_blinking(txt,delay)
+set color 255,255,255
+cls
+draw_all()
+set color 0,0,0
+set caret  screen_w / 2,105
+set justification center
+
+set caret  screen_w / 2,140   
+
+length = fwidth(txt) + 8
+timer = 0
+while timer < delay
+    set color 255,255,255
+    cls
+    draw_all()
+    timer = timer + 1
+    
+    timer_target = delay / 8
+    
+    delay_timer = 0
+    color_choice = [[255,0,0],[0,0,255],[0,255,0]]
+    timer = (timer + 1 ) % timer_target
+    if timer = timer_target - 1
+        color_choice_element = rnd(2)
+        set color color_choice[color_choice_element][0],
+                color_choice[color_choice_element][1],
+                color_choice[color_choice_element][2]
+    endif            
+    
+    
+    'set color 255,0,0
+    draw rect screen_w / 2 - length/2 - 4 ,136,length + 8,24 + 8,1
+    set color 255,255,255
+    draw rect screen_w / 2 - length/2 ,140,length ,24 ,1
+    redraw
+wend
+set color 0,0,0
+set justification center
+write txt
+
+endfunc
+#############################################################
+function white_pot()
+if foul_hit = false
+    foul_shot()
+    white_potted = true
+endif
+
+endfunc
+#############################################################
+function black_pot()
+
+if player1.active_now and player1.colour = "red"
+    if red_balls > 0
+        show_text("BLACK POTTED - PLAYER 1 LOSES")
+        play sound oh_no_sound
+     elseif  red_balls = 0 
+        show_text("BLACK POTTED - PLAYER 1 WINS") 
+        play sound yay_sound
+      endif
+     draw_balls();redraw
+     wait 4000
+     draw_intro(1,1)
+elseif player1.active_now and player1.colour = "yellow"
+    if yellow_balls > 0
+        show_text("BLACK POTTED - PLAYER 1 LOSES")
+        play sound oh_no_sound
+     elseif  yellow_balls = 0  
+        show_text("BLACK POTTED - PLAYER 1 WINS") 
+        play sound yay_sound
+     endif 
+     draw_balls();redraw
+     wait 4000
+     draw_intro(1,1)
+endif 
+
+ if player2.active_now and player2.colour = "red"
+    if red_balls > 0
+        if player_v_player = true
+            show_text("BLACK POTTED - PLAYER 2 LOSES")
+            play sound oh_no_sound
+        else
+            show_text("BLACK POTTED - THE COMPUTER LOSES")
+            play sound oh_no_sound
+        endif
+        play sound oh_no_sound
+     elseif  red_balls = 0  
+        if player_v_player = true
+            show_text("BLACK POTTED - PLAYER 2 WINS")
+            play sound yay_sound
+        else
+            show_text("BLACK POTTED - THE COMPUTER WINS")
+            play sound yay_sound
+        endif
+     endif
+     draw_balls();redraw
+     wait 4000
+     draw_intro(1,1)
+elseif player2.active_now and player2.colour = "yellow"
+    if yellow_balls > 0
+        if player_v_player = true
+            show_text("BLACK POTTED - PLAYER 2 LOSES")
+            play sound oh_no_sound
+        else
+            show_text("BLACK POTTED - THE COMPUTER LOSES")
+            play sound oh_no_sound
+        endif
+        play sound oh_no_sound
+     elseif  yellow_balls = 0  
+        if player_v_player = true
+            show_text("BLACK POTTED - PLAYER 2 WINS")
+            play sound yay_sound
+        else
+            show_text("BLACK POTTED - THE COMPUTER WINS")
+            play sound yay_sound
+        endif
+     endif 
+     draw_balls();redraw
+     wait 4000
+     draw_intro(1,1)
+endif   
+'restart = true
+
+
+if first_shot = true and started = true and balls[10].active_now = false
+    started = false
+    show_text("BLACK POTTED FIRST SHOT - RESTART - NO PENALTY");redraw;wait 4000
+endif
+
+start_new_game()
+
+    draw_balls();redraw            
+    reset_balls()
+    reset_white() 
+    can_play = true
+    shot_made = false
+    player1.active_now = true
+    player2.active_now = false
+    player1.shots_remaining = 2
+    player2.shots_remaining = 0
+                                                                 
+endfunc
+'============================================================
+function start_new_game()
+
+    button = 999
+    reset_balls()
+    reset_white() 
+    cue_ready = false
+    foul_hit = false
+    can_nominate = true  
+    first_shot = true
+    can_play = true
+    shot_made = false
+    started = false
+    player1.active_now = true
+    player2.active_now = false
+    player1.shots_remaining = 2
+    player2.shots_remaining = 0
+    set mouse on
+    if mousebutton(0,true) then wait 1
+    
+    
+    
+    
+endfunc
+'============================================================
+function foul_shot()
+if switch_player = false
+    if player1.active_now = true 
+        player1.shots_remaining = 0
+        player2.shots_remaining = 2
+        player1.active_now = false     
+        player2.active_now = true
+        switch_player = true
+    elseif player2.active_now = true 
+        player1.shots_remaining = 2
+        player2.shots_remaining = 0
+        player1.active_now = true     
+        player2.active_now = false
+        switch_player = true
+    endif
+endif   
+endfunc
+############################################################
+function collision_balls()
+
+'============   STATIC BALLS COLLISION  ===============
+
+colliding_pairs = []
+for i = 0 to circle_number - 1
+    if balls[i].active_now
+    for j = 0 to circle_number - 1
+    if balls[j].active_now
+        if i <> j ' prevent a collision check against itself
+            ' the following checks for a collision without using the square root 
+            ' function to check for distance and is therefore more efficient
+            if abs((balls[i].x-balls[j].x)*(balls[i].x-balls[j].x)) +
+             abs((balls[i].y-balls[j].y)*(balls[i].y-balls[j].y)) <= 
+             (balls[i].r+balls[j].r)*(balls[i].r+balls[j].r) ' COLLISION HAS OCCURED
+                
+              play sound hit_ball_sound  
+              
+              dist = distance( balls[i].x,balls[i].y,
+              balls[j].x,balls[j].y)
+                  
+              overlap = 0.5 * (dist - balls[i].r - balls[j].r)
+              
+              'move balls to stop overlap
+              balls[i].x = balls[i].x - overlap * (balls[i].x  - balls[j].x ) / dist
+              balls[i].y = balls[i].y - overlap * (balls[i].y  - balls[j].y ) / dist 
+              
+              balls[j].x = balls[j].x + overlap * (balls[i].x  - balls[j].x ) / dist
+              balls[j].y = balls[j].y + overlap * (balls[i].y  - balls[j].y ) / dist 
+              
+         
+              colliding_pairs[sizeof(colliding_pairs)] = [i,j] 
+              total_collisions = total_collisions + sizeof(colliding_pairs)
+              if total_collisions = 1
+                first_colour_struck = balls[colliding_pairs[0][0]].colour
+                
+              endif
+              
+            endif
+        endif
+        endif
+    next
+    endif
+next
+
+'=========== dynamic collision reaction ===============
+if sizeof(colliding_pairs) <> 0
+    for i = 0 to sizeof(colliding_pairs) - 1
+        b1 = colliding_pairs[i][0] 
+        b2 = colliding_pairs[i][1] 
+        'distance between balls
+        dist = sqr((balls[b1].x - balls[b2].x ) * (balls[b1].x - balls[b2].x ) +
+                (balls[b1].y - balls[b2].y ) * (balls[b1].y - balls[b2].y ))
+        'Normal
+        nx = (balls[b2].x - balls[b1].x) / dist
+        ny = (balls[b2].y - balls[b1].y) / dist
+        
+        'Tangent
+        tx = -ny
+        ty = nx
+        
+        'Dot product tangent
+        dpTan1 = balls[b1].vec[0]  * tx + balls[b1].vec[1] * ty
+        dpTan2 = balls[b2].vec[0]  * tx + balls[b2].vec[1] * ty 
+        
+        'Dot product normal
+        dpNorm1 = balls[b1].vec[0]  * nx + balls[b1].vec[1] * ny
+        dpNorm2 = balls[b2].vec[0]  * nx + balls[b2].vec[1] * ny
+        
+        'conservation of momentum in 1D
+        m1 = (dpNorm1 * (balls[b1].mass - balls[b2].mass) + 2 * 
+              balls[b2].mass *  dpNorm2 ) / ( balls[b1].mass + balls[b2].mass )
+        m2 = (dpNorm2 * (balls[b2].mass - balls[b1].mass) + 2 * 
+              balls[b1].mass *  dpNorm1 ) / ( balls[b1].mass + balls[b2].mass )
+        
+        'Update ball vecocities
+        balls[b1].vec[0] = tx * dpTan1 + nx * m1
+        balls[b1].vec[1] = ty * dpTan1 + ny * m1
+        balls[b2].vec[0] = tx * dpTan2 + nx * m2
+        balls[b2].vec[1] = ty * dpTan2 + ny * m2
+        
+        
+    next
+endif        
+
+
+endfunc
+##########################################
+function distance(x1,y1,x2,y2)
+
+result = sqr((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2)) 
+return result
+endfunc
+###########################################
+function reset_balls()
+yellow_balls = 7
+red_balls = 7
+for i = 0 to circle_number - 1
+    balls[i].active_now = true
+next
+player1.colour = "unset"
+player2.colour = "unset"
+
+can_nominate = true
+
+tempx = 300
+tempy = 330
+count1 = 0
+
+colours = [1,2,1,2,2,2,1,2,1,1,3,2,2,1,1,4]'1 = red, 2 = yellow, 3 = black, 4 = white
+for i = 0 to circle_number - 1
+    balls[i].x = tempx
+    balls[i].y = tempy
+    balls[i].mass = balls[i].r * 10
+    tempy = tempy + 27
+    count1 = count1 + 1
+    if count1 = 5
+        tempx = tempx + 26'was 24
+        tempy = 343
+    elseif count1 = 9
+        tempx = tempx + 26
+        tempy = 356
+    elseif count1 = 12
+        tempx = tempx + 26
+        tempy = 369
+    elseif count1 = 14
+        tempx = tempx + 26
+        tempy = 382
+    elseif count1 = 15
+        tempx = 700
+        tempy = 384
+        
+    endif
+    balls[i].colour = colours[i]
+   ' if balls[i].colour = 1  and i > 0 then balls[i].active_now = false'temp, for testing
+next
+
+'balls[10].x = 512
+
+
+
+endfunc
+#############################################
+function draw_info_boxes()
+'====  SET UP BOXES TOP LEFT AND TOP RIGHT WITH PLAYER DETAILS =====
+
+
+if player1.active_now and player1.colour = "red" 'or player2.active_now and player2.colour = "red"
+    set color 255,0,0
+    draw rect 40,10,220,120,1
+    set color 0,0,0
+    
+    set color 0,0,0
+    draw rect screen_w - 250,10,220,120,0
+    set color 0,0,0
+endif    
+    
+if player1.active_now and player1.colour = "yellow" 'or player2.active_now and player2.colour = "red"
+    set color 255,255,0
+    draw rect 40,10,220,120,1
+    set color 0,0,0
+    
+    set color 0,0,0
+    draw rect screen_w - 250,10,220,120,0
+    set color 0,0,0
+endif        
+    
+    
+if player2.active_now and player2.colour = "red" 'or player2.active_now and player2.colour = "red"
+    set color 0,0,0
+    draw rect 40,10,220,120
+    set color 0,0,0
+    
+    set color 255,0,0
+    draw rect screen_w - 250,10,220,120,1
+    set color 0,0,0
+endif    
+    
+if player2.active_now and player2.colour = "yellow" 'or player2.active_now and player2.colour = "red"
+    set color 0,0,0
+    draw rect 40,10,220,120,0
+    set color 0,0,0
+    
+    set color 255,255,0
+    draw rect screen_w - 250,10,220,120,1
+    set color 0,0,0
+endif            
+set color 0,0,0;draw rect 40,10,220,120;draw rect screen_w - 250,10,220,120    
+    
+
+     
+set color 0,0,0             
+'set color 255,0,0
+set caret 50,20
+set justification left
+write "PLAYER 1";wln
+write "========";wln
+if not player1.colour = "unset"
+    write "Potting " + player1.colour + " balls";wln
+endif
+
+write "player 1 shots = " + player1.shots_remaining;wln
+
+
+
+set caret screen_w - 240,20
+set justification left
+if player_v_player = true 
+    write "PLAYER 2";wln
+    write "========";wln
+else
+    write "COMPUTER";wln    
+    write "=========";wln
+endif
+if not player2.colour = "unset"
+    write "Potting " + player2.colour + " balls";wln
+endif
+if player_v_player = true 
+    write "player 2 shots = " + player2.shots_remaining;wln
+else
+    write "computer shots = " + player2.shots_remaining;wln
+endif        
+endfunc
+###########################################
+function draw_table()
+
+set color 0,255,0
+draw rect 212,234,600,300,1
+set color 255,255,255
+draw ellipse 700,384,3,3,1
+set color 0,0,0
+
+set color 0,225,0
+draw rect 212 - 8,234 - 16,600,16,1
+draw rect 212 - 16,234 - 8,16,300,1
+draw rect 212 + 600 ,234 - 8,16,300,1
+draw rect 212 - 8,234 + 300,600,16,1
+set color 0,0,0
+draw rect 212,234,600,300
+
+set color 0,128,0'dark green
+foreach p in pockets
+    draw ellipse p.x,p.y,p.r,p.r,1
+next    
+
+'draw the pockets
+pockets[0].x = 212
+pockets[0].y = 234
+pockets[0].r = 20
+
+pockets[1].x = 512
+pockets[1].y = 234
+pockets[1].r = 20
+
+pockets[2].x = 812
+pockets[2].y = 234
+pockets[2].r = 20
+
+pockets[3].x = 212
+pockets[3].y = 534
+pockets[3].r = 20
+
+pockets[4].x = 512
+pockets[4].y = 534
+pockets[4].r = 20
+
+pockets[5].x = 812
+pockets[5].y = 534
+pockets[5].r = 20
+
+
+
+endfunc
+#############################################
+function check_if_potted(i)
+
+ '1 = red, 2 = yellow, 3 = black, 4 = white
+'potted_balls = []
+if balls[i].active_now
+    foreach p in pockets
+        if i = 15'white ball
+            if abs((p.x-balls[i].x)*(p.x-balls[i].x)) + abs((p.y -balls[i].y)*(p.y -balls[i].y)) <= 
+                    (p.r + balls[i].r)*(p.r + balls[i].r) * 0.5 ' COLLISION HAS OCCURED - make collision less likely for white ball
+                play sound pot_ball_sound  
+                balls[i].active_now = false
+                balls[i].vec = [0,0]
+                potted_balls[sizeof(potted_balls)] = balls[i].colour 
+            endif
+        else
+            if abs((p.x-balls[i].x)*(p.x-balls[i].x)) + abs((p.y -balls[i].y)*(p.y -balls[i].y)) <= 
+                    (p.r + balls[i].r)*(p.r + balls[i].r)  ' COLLISION HAS OCCURED
+                play sound pot_ball_sound  
+                balls[i].active_now = false
+                balls[i].vec = [0,0]
+                potted_balls[sizeof(potted_balls)] = balls[i].colour 
+            endif
+        endif
+    next    
+endif
+
+endfunc
+#############################################
+function reset_white()
+
+if can_play = true
+    balls[15].x = 700
+    balls[15].y = 384
+    balls[15].active_now = true
+    white_potted = false
+    balls[15].vec[0] = 0 
+    balls[15].vec[1] = 0
+endif
+
+for b = 0 to sizeof(balls) - 2'not testing white against itself
+    c = abs(balls[b].x - balls[15].x)
+    d = abs(balls[b].y - balls[15].y)
+    dist = sqr((c^2 + d^2))
+    if dist < balls[b].r + balls[15].r
+        balls[15].y =  balls[b].y - balls[b].r * 2 - 2
+    endif
+next    
+'run again for rare instance where this will not fix the issue    
+for b = 0 to sizeof(balls) - 2'not testing white against itself
+    c = abs(balls[b].x - balls[15].x)
+    d = abs(balls[b].y - balls[15].y)
+    dist = sqr((c^2 + d^2))
+    if dist < balls[b].r + balls[15].r
+        balls[15].y =  balls[b].y  - balls[b].r * 2 - 2
+    endif
+next        
+
+
+endfunc
+#############################################
+
+#############################################
+function show_instructions()
+do
+
+set color 255,255,255
+cls
+set color 0,0,0
+
+set caret 30,20
+set justification left
+set font font2
+write "HOW TO PLAY POOL";wln
+'write "================";wln
+set font font1
+'write "";wln
+write "To hit the white ball, keep the left mouse key depressed. You can then set the angle and strength";wln
+write "of your shot while holding the button down. When you are happy with these, release the mouse button.";wln
+write "";wln
+set font font2
+write "Nomination after break";wln
+'write "======================";wln
+set font font1
+write "After the first shot is complete, the player must decide which colour he wishes to pot for the ";wln
+write "rest of the game, by clicking on one of the coloured balls. It does not matter whether he has ";wln
+write "potted any balls of either colour with his shot.If the player pots the white ball on the first shot,";wln
+write "his opponent receives 2 shots, and can nominate which colour to pot for the rest of the game ";wln
+write "AFTER HIS FIRST SHOT.";wln
+write "";wln
+set font font2
+write "Fouls";wln
+'write "=====";wln
+set font font1
+
+write "A foul shot is penalised by the opponent receiving 2 shots. If he pots one of his coloured balls";wln
+write "with the first of these, he retains 2 shots";wln 
+
+
+write "";wln
+write "Fouls occur when - ";wln
+write "1:The white ball is pocketed.";wln
+write "2:You hit the opponents ball, or the black ball, before your own";wln
+write "3:Hitting no balls with the white ball";wln
+write "4:Potting an opponents ball.";wln
+write "";wln
+set font font2
+write "Winning";wln
+'write "=======";wln
+set font font1
+
+write "You win when you have potted all of your coloured balls, followed by the black ball.";wln
+write "";wln
+set font font2
+write "Losing";wln
+'write "======";wln
+set font font1
+write "You will lose the game if you pot the black ball before your 8 coloured balls.";wln
+write "";wln
+set color 255,0,0
+write "PRESS SPACE BAR TO RETURN TO THE MAIN MENU"
+set color 0,0,0
+redraw
+fwait 60
+
+until keydown(KEY_SPACE)
+draw_table();draw_balls();redraw
+button = 999
+set color 255,255,255
+cls
+endfunc
+############################################
+function nominate_colour()
+
+do
+
+set color 255,255,255
+cls
+set color 0,0,0
+draw_all()
+
+if can_nominate = true and first_shot = true 'and started = true'and shot_made = false
+    set caret screen_w / 2,screen_h - 200
+    set justification center
+    set color 0,0,0
+    write "Now nominate which colour balls you wish to play by";wln
+    write "clicking on one of them using the LEFT mouse button"
+
+endif
+
+if mousebutton(0,true)and first_shot = true 'and started = true'and shot_made = false
+    for i = 0 to sizeof(balls) - 1
+        if abs((balls[i].x-mousex())*(balls[i].x-mousex()) + 
+            (balls[i].y-mousey())*(balls[i].y-mousey())) <=
+             ((balls[i].r)*(balls[i].r))
+                
+                first_shot = false'restart = true
+            if balls[i].colour = 3
+                show_text("You cannot nominate black - please try again")
+                redraw;wait 1500
+                can_nominate = true
+                first_shot = true 
+            elseif balls[i].colour = 4
+                show_text("You cannot nominate white - please try again")
+                redraw;wait 1500
+                can_nominate = true
+                first_shot = true 
+            endif               
+            if balls[i].colour = 1 and player1.active_now'red
+                player1.colour = "red"
+                player2.colour = "yellow"
+                can_nominate = false
+                show_text("Player 1 chooses red balls");redraw;wait 500
+                break
+            elseif balls[i].colour = 2 and player1.active_now'yellow
+                player1.colour = "yellow"
+                player2.colour = "red"  
+                can_nominate = false
+                show_text("Player 1 chooses yellow balls");redraw;wait 500
+               
+                break
+            elseif balls[i].colour = 1 and player2.active_now'red
+                player2.colour = "red"
+                player1.colour = "yellow" 
+                can_nominate = false
+                
+                break
+            elseif balls[i].colour = 2 and player2.active_now'yellow
+                player2.colour = "yellow"
+                player1.colour = "red" 
+                can_nominate = false
+                
+                break      
+            endif
+        endif
+    next
+wait 2000
+
+elseif player2.active_now = true  
+    if   player_v_computer = true 'and foul_hit = false
+    set caret screen_w / 2,screen_h - 200
+    set justification center
+    set color 255,255,255
+    cls
+    set color 0,0,0
+    write "COMPUTER - Now nominate which colour balls you wish to play";wln
+    
+    draw_all();redraw;wait 1000
+                choice = rnd(2)
+                if choice = 0
+                    player2.colour = "yellow"
+                    player1.colour = "red" 
+                    can_nominate = false
+                    player2.balls_remaining = 1
+                    show_text("The computer chose YELLOW balls")
+                    wait 3000
+                    break           
+                 else
+                    player2.colour = "red"
+                    player1.colour = "yellow" 
+                    can_nominate = false
+                    player2.balls_remaining = 1
+                    show_text("The computer chose RED balls")
+                    wait 3000
+                    break
+                endif  
+    endif 
+endif
+
+
+redraw
+fwait 60
+
+until not can_nominate 
+
+endfunc
+##############################################
+function draw_balls()
+for i = 0 to circle_number - 1
+    '1 = red, 2 = yellow, 3 = black, 4 = white
+    if balls[i].colour = 1
+        set color 255,0,0
+    elseif balls[i].colour = 2
+        set color 255,255,0
+    elseif balls[i].colour = 3
+        set color 0,0,0
+    elseif balls[i].colour = 4
+        set color 255,255,255
+    endif
+    if balls[i].active_now
+        draw ellipse balls[i].x,balls[i].y,balls[i].r,balls[i].r,1
+        set color 0,0,0
+        draw ellipse balls[i].x,balls[i].y,balls[i].r,balls[i].r,0
+    endif  
+    'temp
+  '  set caret balls[i].x - 8,balls[i].y - 8
+  '  write i   
+next
+
+
+
+endfunc
+##################################################
+function update_screen_hints()
+if screen_hint_timer > 40
+    set color 0,0,0
+else
+    set color 255,0,0
+endif
+set caret screen_w/2,60
+set justification center
+'if cue_ready = false 
+if can_play = true 
+    if player1.active_now = true
+        write "PLAYER 1 TO PLAY";wln
+        write "================";wln
+        if player1.colour <> "unset"
+            write "You need to pot the " + player1.colour + " balls"
+        endif
+    else
+        if player_v_player = true
+            write "PLAYER 2 TO PLAY";wln
+            write "================";wln
+        else
+            write "COMPUTER TO PLAY";wln
+            write "================";wln 
+        endif       
+        if player2.colour <> "unset"
+            write "You need to pot the " + player2.colour + " balls"
+        endif
+    endif
+endif
+set color 0,0,0
+endfunc
+###################################################
+function create_fonts()
+
+' Create a bold and smoothened Arial bitmap font of the heigh 24.
+font1 = createfont("Arial", 24, true, false, false, true)' font,size,bold,leaning,underline,smoothed
+
+' 'save font font_id, filename' saves the font font_id to file filename.txt and filename.png.
+save font font1, "arial24"
+
+' Create a bold and smoothened Arial bitmap font of the heigh 24.
+font2 = createfont("Arial", 24, true, false, true, true)' font,size,bold,leaning,underline,smoothed
+
+' 'save font font_id, filename' saves the font font_id to file filename.txt and filename.png.
+save font font2, "arial24_underlined"
+
+' Create a bold and smoothened Arial bitmap font of the heigh 24.
+font3 = createfont("Arial", 48, true, false, true, true)' font,size,bold,leaning,underline,smoothed
+
+' 'save font font_id, filename' saves the font font_id to file filename.txt and filename.png.
+save font font3, "arial48_underlined"
+
+
+' 'load font font_id, filename' loads the bitmap font font_id from filename.txt and filename.png.
+' 'loadfont(filename)' does the same thing as the command 'load font' but auto-generates and returns
+' an unused identifier. The 'load font' command is for backward compability with n6, the preferred
+' way of loading a font is through the 'loadfont' function.
+font1 = loadfont("arial24")
+font2 = loadfont("arial24_underlined")
+font3 = loadfont("arial48_underlined")
+set font font1
+
+endfunc
+'=====================================================================
+function CreateNoiseSfx(duration, pitch, fadeOut, sampleRate)
+    assert sampleRate >= 8000, "CreateBoomSfx: invalid sample rate"
+    assert pitch > 0, "CreateBoomSfx: invalid pitch"
+   
+    ' Mix four different noise frequencies weighted, in a weird way, by the pitch value.
+    freqs = [
+            [v: 0, p: sampleRate/500, d: 0, t: 0, w: pitch],
+            [v: 0, p: sampleRate/1000, d: 0, t: 0, w: pitch^2],
+            [v: 0, p: sampleRate/2000, d: 0, t: 0, w: pitch^3],
+            [v: 0, p: sampleRate/8000, d: 0, t: 0, w: pitch^4]]
+    
+    s = sizeof(freqs)
+    data = []
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        v = 0
+        w = 0
+        for j = 0 to s - 1; f = freqs[j]
+            f.t = f.t - 1
+            if f.t <= 0
+                f.t = f.p
+                f.d = ((rnd()*2 - 1) - f.v)/f.p
+            endif
+            f.v = f.v + f.d
+            v = v + f.v*f.w
+            w = w + f.w
+        next
+        data[i] = vol*v/w
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    
+    return createsound(data, data, sampleRate)
+endfunc
+'==================================================================
+function CreateSineSfx(duration, startFreq, endFreq, fadeOut, sampleRate)
+    data = []
+    a = 0
+    da = 2*PI*startFreq/sampleRate
+    dda = (2*PI*endFreq/sampleRate - 2*PI*startFreq/sampleRate)/(duration*sampleRate)
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        data[i] = sin(a)*vol
+        a = a + da
+        da = da + dda
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+   
+    return createsound(data, data, sampleRate)
+endfunc
+'=============================================================================
+function draw_intro(table_delay,delay)
+set mouse on
+button = 999
+pockets[0].x = 212
+pockets[0].y = 234
+pockets[0].r = 20
+
+pockets[1].x = 512
+pockets[1].y = 234
+pockets[1].r = 20
+
+pockets[2].x = 812
+pockets[2].y = 234
+pockets[2].r = 20
+
+pockets[3].x = 212
+pockets[3].y = 534
+pockets[3].r = 20
+
+pockets[4].x = 512
+pockets[4].y = 534
+pockets[4].r = 20
+
+pockets[5].x = 812
+pockets[5].y = 534
+pockets[5].r = 20
+'==================
+tempx = 300
+tempy = 330
+count1 = 0
+colours = [1,2,1,2,2,2,1,2,1,1,3,2,2,1,1,4]'1 = red, 2 = yellow, 3 = black, 4 = white
+for i = 0 to circle_number - 1
+    balls[i].x = tempx
+    balls[i].y = tempy
+    balls[i].mass = balls[i].r * 10
+    tempy = tempy + 27
+    count1 = count1 + 1
+    if count1 = 5
+        tempx = tempx + 26'was 24
+        tempy = 343
+    elseif count1 = 9
+        tempx = tempx + 26
+        tempy = 356
+    elseif count1 = 12
+        tempx = tempx + 26
+        tempy = 369
+    elseif count1 = 14
+        tempx = tempx + 26
+        tempy = 382
+    elseif count1 = 15
+        tempx = 700
+        tempy = 384
+        
+    endif
+    balls[i].colour = colours[i]
+    balls[i].active_now = true
+next
+'====================================================
+r = 255
+g = 0
+b = 255
+a = 255
+x = screen_w / 2
+y = screen_h / 2
+w = 2
+h = 1
+timer = 0
+while w < 600
+set color 255,255,255
+cls
+timer = (timer + 1)%table_delay
+if timer = 0
+    r = max(r - 0.5,0)
+    g = min(g + 0.5,255)
+    b = max(b - 0.5,0)
+    a = min(g + 0.5,255)
+    x = x - 0.5
+    y = y - 0.25
+    w = w + 1
+    h = h + 0.5
+endif
+set color r,g,b,a
+draw rect x,y,w,h,1
+set color 255,255,255
+wait 1'code locks up without this
+
+redraw
+
+wend
+first_run = false
+wait delay
+set color 0,225,0
+draw rect 212 - 8,234 - 16,616,16,1
+draw rect 212 - 16,234 - 8,16,316,1
+draw rect 212 + 600  ,234 - 8,16,316,1
+draw rect 212 - 8,234 + 300 ,616,16,1
+set color 0,0,0
+draw rect 212,234,600,300
+redraw 
+play sound pot_ball_sound
+wait delay
+set color 0,128,0'dark green
+foreach p in pockets
+    draw ellipse p.x,p.y,p.r,p.r,1
+next  
+play sound pot_ball_sound
+redraw ;wait delay
+draw_balls();play sound pot_ball_sound
+redraw ;wait delay
+
+set color 0,0,0
+set font font3
+set caret screen_w/2,120
+set justification center
+write "TWO PLAYER POOL";wln
+
+set color 0,0,0
+
+redraw;play sound pot_ball_sound
+set font font1
+wait delay
+draw_menu_buttons();play sound pot_ball_sound
+do
+
+    set color 255,255,255;draw_all();draw_menu_buttons()
+    set color 0,0,0
+    set caret screen_w/2,120
+    set justification center
+    set font font3
+    write "TWO PLAYER POOL";wln
+    set font font1
+    redraw
+    wait 1
+
+until button = 1 or button = 2 or button = 3  and  mousebutton(0) = false
+if mousebutton(0,true) then wait 1 ' an untidy solution to prevent a mouse click from carrying over into the main 
+'program loop - hopefully I can find a more elegant way.....
+
+endfunc
+
+'=============================================================
+function draw_menu_buttons() 
+
+
+set color 255,255,255
+
+set color 0,0,0
+for i = 0 to sizeof(menu) - 1
+    
+    set color 212,224,250
+    draw rect menu[i].x - menu[i].w / 2,menu[i].y,menu[i].w,menu[i].h,1
+    set color 0,0,0
+    draw rect menu[i].x - menu[i].w / 2,menu[i].y,menu[i].w,menu[i].h,0
+    set caret menu[i].x, menu[i].y + 6
+    set justification center
+    write menu[i].txt
+    if mousebutton(0)
+    
+    
+        if mousex() > menu[i].x  - menu[i].w / 2 and mousex() < menu[i].x + menu[i].w / 2
+            if mousey() > menu[i].y and mousey() < menu[i].y + menu[i].h
+                set color 250,212,238
+                draw rect menu[i].x - menu[i].w / 2,menu[i].y,menu[i].w,menu[i].h,1
+                set color 0,0,0
+                draw rect menu[i].x - menu[i].w / 2,menu[i].y,menu[i].w,menu[i].h,0
+                set caret menu[i].x, menu[i].y
+                set justification center
+                write menu[i].txt
+                button = i
+            endif
+        endif
+    endif
+           
+next
+
+if button = 0 and not mousebutton(0)' we do not want to start the game
+                                  ' while the mouse is pressed.
+    show_instructions()
+    wait 10
+   ' break
+endif
+
+
+if button = 1 'and not mousebutton(0)' we do not want to start the game
+                                   ' while the mouse is pressed.
+    set color 255,255,255
+    cls
+    
+    player_v_player = true
+    player_v_computer = false
+    
+    reset_white() 
+    reset_balls()
+    
+    draw_table()
+    draw_balls()
+    
+    redraw
+    wait 10
+endif
+
+if button = 2 'and not mousebutton(0)' we do not want to start the game
+                                 ' while the mouse is pressed.
+    set color 255,255,255
+    cls
+    
+    player_v_player = false
+    
+    player_v_computer = true
+    
+    
+    reset_white() 
+    reset_balls()
+    
+    draw_table()
+    draw_balls()
+    redraw
+   wait 10
+endif
+
+
+
+
+
+
+redraw
+fwait 60
+
+
+endfunc
+'===================================================
+
+'===================================================
+function computer_opponent()
+
+set mouse off
+
+if balls[15].active_now = false then reset_white()
+
+
+target_balls_blocked = []
+target_balls_unblocked = []
+'colours = [1,2,1,2,2,2,1,2,1,1,3,2,2,1,1,4]'1 = red, 2 = yellow, 3 = black, 4 = white
+'find the nearest ball of correct colour
+target_balls = []
+for b = 0 to sizeof(balls) - 2 ' we will not test white against white
+    if balls[b].active_now
+        if player2.colour = "red" and can_play = true
+            if b = 0 or b = 2 or b = 6 or b = 8 or b = 9 or b = 13 or b = 14
+                 target_balls[sizeof(target_balls)] = b
+            endif
+        elseif player2.colour = "yellow"
+            if b = 1 or b = 3 or b = 4 or b = 5 or b = 7 or b = 11 or b = 12
+                target_balls[sizeof(target_balls)] = b
+            endif
+        endif
+    endif
+next        
+set color 255,255,255
+set color 0,0,0
+draw_all();redraw
+
+'let's try to see if there is another ball in the way........
+' here, we check that there are no balls in the way between the white ball and the 
+'target ball, so less fouls will be given away
+
+if sizeof(target_balls) > 0
+for a = 0 to sizeof(target_balls) - 1
+    dx = balls[target_balls[a]].x - balls[15].x 
+    dy = balls[target_balls[a]].y - balls[15].y 
+                    
+    angle_r = atan2(-dx,dy)   
+                    
+    vector_x = sin(angle_r - PI) 
+    vector_y = -cos(angle_r - PI)
+    c = abs(dx)
+    d = abs(dy)
+    dist = sqr((c^2 + d^2))
+    checks = 40
+
+    if dist > 32
+        for i = 0 to checks - 1
+               for j = 0 to sizeof(balls) - 2 ' we do not check ball 15 - white
+                if balls[j].active_now = true
+                    c = abs(balls[j].x - (balls[15].x +  vector_x * dist / checks * (i + 1)))
+                    d = abs(balls[j].y - (balls[15].y +  vector_y * dist / checks * (i + 1)))
+                    dist2 = sqr((c^2 + d^2))
+                    if dist2 < balls[j].r * 2 and j <> target_balls[a]
+                        
+                        target_balls_blocked[sizeof(target_balls_blocked)] = target_balls[a]
+                        i = checks - 1 
+                         
+                    endif
+               endif
+               next
+            redraw
+           
+        next
+    endif    
+
+    
+next
+endif
+' now we make an array containing only unblocked targets
+target_balls_unblocked = copy(target_balls) ' make a deep copy - changes new array only.
+if sizeof(target_balls) > 0
+    if sizeof(target_balls_blocked) > 0
+        for m = 0 to sizeof(target_balls_blocked) - 1
+            for n = 0 to sizeof(target_balls) - 1
+                if  target_balls_blocked[m] = target_balls[n] 
+                    free val target_balls_unblocked,target_balls_blocked[m]'remove any blocked balls from the unblocked array
+                endif
+            next
+        next      
+    endif
+endif
+        
+                
+                                
+'select a target ball, with nothing blocking it, and aim for it
+if hard_difficulty = false
+    if sizeof(target_balls_unblocked) > 0
+            ball_choice = rnd(sizeof(target_balls_unblocked))
+        
+            dx = balls[target_balls_unblocked[ball_choice]].x - balls[15].x 
+            dy = balls[target_balls_unblocked[ball_choice]].y - balls[15].y 
+                            
+            angle_r = atan2(-dx,dy)   
+                            
+            vector_x = sin(angle_r - PI) 
+            vector_y = -cos(angle_r - PI) + 0 ' rnd(7)/100
+            
+            c = abs(dx)
+            d = abs(dy)
+            dist = sqr((c^2 + d^2))
+      
+    endif  
+elseif hard_difficulty = true'calculate the unblocked ball that is closest to a pocket
+    nearest_ball = 999
+    nearest_distance = 99999
+    if sizeof(target_balls_unblocked) > 0
+        for a = 0 to sizeof(target_balls_unblocked) - 1
+            for b = 0 to sizeof(pockets) - 1
+                dist =  distance(balls[target_balls_unblocked[a]].x,
+                balls[target_balls_unblocked[a]].y,
+                pockets[b].x,
+                pockets[b].y) 
+                if dist < nearest_distance
+                    nearest_ball = balls[target_balls_unblocked[a]]
+                    nearest_distance = dist
+                    wait 10
+                endif
+            next
+        next
+    endif
+    if nearest_ball <> 999       
+                dx = balls[nearest_ball].x - balls[15].x 
+                dy = balls[nearest_ball].y - balls[15].y 
+                                
+                angle_r = atan2(-dx,dy)   
+                                
+                vector_x = sin(angle_r - PI) 
+                vector_y = -cos(angle_r - PI) 
+                
+                c = abs(dx)
+                d = abs(dy)
+                dist = sqr((c^2 + d^2))
+           endif
+ 
+endif       
+       
+
+
+'====================================================
+if sizeof(target_balls_blocked) > 0 and sizeof(target_balls_unblocked) = 0
+    
+        ball_choice = rnd(sizeof(target_balls_blocked))
+        
+        if hard_difficulty = false
+            dx = balls[target_balls_blocked[ball_choice]].x - balls[15].x 
+            dy = balls[target_balls_blocked[ball_choice]].y - balls[15].y 
+                            
+            angle_r = atan2(-dx,dy)   
+                            
+            vector_x = sin(angle_r - PI) + rnd(10)/100 - 0.05
+            vector_y = -cos(angle_r - PI) + rnd(10)/100 - 0.05
+            
+            c = abs(dx)
+            d = abs(dy)
+            dist = sqr((c^2 + d^2))
+        elseif hard_difficulty = true
+            ' here, I am trying to hit the blocked target ball by aiming
+            'the white ball against the top cushion - this will work some, but not all, of 
+            'the time (there may be other balls in the way).......I don't want to make the 
+            'computer too hard to beat.
+            x_diff = balls[target_balls_blocked[ball_choice]].x - balls[15].x 
+            sum_y = balls[target_balls_blocked[ball_choice]].y - 234 + balls[15].y - 234
+            factor = x_diff / sum_y
+            new_x = balls[target_balls_blocked[ball_choice]].x - 212 - ((balls[target_balls_blocked[ball_choice]].y - 234+13) * factor)
+
+            dx = new_x + 212 - balls[15].x 
+            dy = 234 + 13 - balls[15].y 
+                            
+            angle_r = atan2(-dx,dy)   
+                            
+            vector_x = sin(angle_r - PI) + rnd(10)/100 - 0.05
+            vector_y = -cos(angle_r - PI) + rnd(10)/100 - 0.05
+            
+            c = abs(dx)
+            d = abs(dy)
+            dist = sqr((c^2 + d^2))
+        endif
+        
+        
+    
+endif
+
+
+wait 10
+if  sizeof(target_balls_blocked) = 0 and sizeof(target_balls_unblocked) = 0' no coloured balls left, so we aim for the black
+    dx = balls[10].x - balls[15].x 'no coloured balls left, sotarget ball is the black
+    dy = balls[10].y - balls[15].y 
+                    
+    angle_r = atan2(-dx,dy)   
+                    
+    vector_x = sin(angle_r - PI)' +  rnd(7)/100 ' introduce some variation so shot is not 100% straight
+    vector_y = -cos(angle_r - PI)' +  rnd(7)/100
+    
+    c = abs(dx)
+    d = abs(dy)
+    dist = sqr((c^2 + d^2))
+endif
+
+set mouse balls[15].x - vector_x * dist * 0.8,balls[15].y - vector_y * dist * 0.8
+
+set_mousex = balls[15].x - vector_x * dist * 0.8'used later to check that player has not moved mouse
+set_mousey = balls[15].y - vector_y * dist * 0.8
+
+
+hit_cue_ball_computer()
+
+endfunc
+
+'=====================================================
+function set_mouse()
+set mouse on
+if player2.active_now and player_v_player = false 
+    set mouse off
+endif
+
+endfunc

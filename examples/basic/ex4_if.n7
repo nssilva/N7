@@ -1,0 +1,17 @@
+' Here's a normal if statement using 'if', 'elseif', 'else' and 'endif'
+if 10 < 5
+    pln "10 is smaller than 5!"
+elseif 10 > 50
+    pln "10 is greater than 5!"
+else
+    pln "10 is equal to 5!"
+endif
+
+' If an 'if', 'elseif' or 'else' is followed by only a single statement, you can
+' put it on the same line ('then' is optional). If the last one uses a single
+' statement like that, 'endif' is not expected. 
+if 10 < 5 then pln "10 is smaller than 5!"
+elseif 10 > 50  pln "10 is greater than 5!"
+else  pln "10 is equal to 5!"
+
+wait 5000

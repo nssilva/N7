@@ -1,0 +1,54 @@
+' draw poly
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw poly", 640, 480
+
+' 'draw poly points' draws a closed unfilled polygon based on the coordinates stored in the array
+' points, with the format [x_1, y_1, x_2, y_2 .. x_n, y_n]
+draw poly [160, 140, 260, 290, 60, 290]
+
+' 'draw poly points, fill' draws a filled polygon if fill is true.
+draw poly [480 - 100, 140, 480 + 100, 140, 480, 290], true
+
+' Write some text.
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Loop until spacebar is pressed.
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' Clear screen and display a new message.
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' An array for random points.
+points = dim(16)
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Draw a couple of random polygons with random colors.
+    for i = 1 to 50
+        set color rnd(256), rnd(256), rnd(256), rnd(256)
+        for j = 0 to 7
+            points[j*2] = rnd(640)
+            points[j*2 + 1] = rnd(440)
+        next
+        ' 'draw poly points, fill, point_count' draws a polygon based on the first point_count
+        ' points of the array.
+        draw poly points, rnd(2), 3 + rnd(5)
+    next
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

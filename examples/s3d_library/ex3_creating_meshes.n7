@@ -1,0 +1,163 @@
+' ex1_creating_meshes.n7
+' ----------------------
+' Create a cube and pyramid mesh.
+
+include "s3d.n7"
+
+#win32
+
+' Display settings.
+constant RES = 480          ' Vertical resolution.
+constant SCALE = 1          ' Window scale.
+constant FULLSCREEN = 0     ' Fullscreen if 1
+constant DISPLAY_FPS = 1    ' Display fps if 1.
+constant FOV = 45           ' Vertical field of view in degrees.
+
+' For delta time.
+visible vLastTick = 0
+
+' Create window.
+set window "Creating meshes", RES*screenw()/screenh(), RES, FULLSCREEN, SCALE
+set redraw off
+
+' Load images to use as textures for a cube and a pyramid.
+cubeTexture = loadimage("assets/n7.png")
+pyramidTexture = loadimage("assets/ground.png")
+
+' Init s3d with the window as render target, a field of view of FOV degrees, near clip plane at
+' distance 0.1 and far clip plane at 10.
+S3D_SetView(primary, rad(FOV), 0.1, 10)
+
+' Create a cube mesh.
+cubeMesh = S3D_BeginMesh()
+    S3D_Begin(S3D_QUADS)
+        ' Bottom face.
+        S3D_Vertex5(1, 1, -1, 1, 0)
+        S3D_Vertex5(1, 1, 1, 1, 1)
+        S3D_Vertex5(-1, 1, 1, 0, 1)
+        S3D_Vertex5(-1, 1, -1, 0, 0)
+        ' Top face.
+        S3D_Vertex5(1, -1, 1, 1, 1)
+        S3D_Vertex5(1, -1, -1, 1, 0)    
+        S3D_Vertex5(-1, -1, -1, 0, 0)
+        S3D_Vertex5(-1, -1, 1, 0, 1)
+        ' Back face.
+        S3D_Vertex5(1, 1, 1, 1, 1)
+        S3D_Vertex5(1, -1, 1, 1, 0)
+        S3D_Vertex5(-1, -1, 1, 0, 0)
+        S3D_Vertex5(-1, 1, 1, 0, 1)
+        ' Front face.
+        S3D_Vertex5(1, -1, -1, 1, 0)
+        S3D_Vertex5(1, 1, -1, 1, 1)
+        S3D_Vertex5(-1, 1, -1, 0, 1)
+        S3D_Vertex5(-1, -1, -1, 0, 0)
+        ' Left face.
+        S3D_Vertex5(-1, 1, 1, 1, 1)
+        S3D_Vertex5(-1, -1, 1, 0, 1)
+        S3D_Vertex5(-1, -1, -1, 0, 0)
+        S3D_Vertex5(-1, 1, -1, 1, 0)
+        ' Right face.
+        S3D_Vertex5(1, 1, -1, 1, 0)
+        S3D_Vertex5(1, -1, -1, 0, 0)
+        S3D_Vertex5(1, -1, 1, 0, 1)
+        S3D_Vertex5(1, 1, 1, 1, 1)        
+    S3D_End()
+S3D_EndMesh()
+
+' Create a pyramid mesh.
+pyramidMesh = S3D_BeginMesh()
+    ' Use triangles for the sides of the pyramid. 
+    S3D_Begin(S3D_TRIANGLES)
+        ' Instead of typing in the coordinates for each side of the pyramid, use a loop and rotate
+        ' 90 degrees around the y axis after each face definition.
+        S3D_Push()
+        for i = 0 to 3
+            S3D_Vertex5(0, -1, 0, 0.5, 0)
+            S3D_Vertex5(1, 1, -1, 1, 1)
+            S3D_Vertex5(-1, 1, -1, 0, 1)
+            S3D_RotateY(rad(90))
+        next
+        S3D_Pop()
+    S3D_End()
+    ' Use a quad for the bottom.
+    S3D_Begin(S3D_QUADS)
+        S3D_Vertex5(1, 1, -1, 1, 0)
+        S3D_Vertex5(1, 1, 1, 1, 1)
+        S3D_Vertex5(-1, 1, 1, 0, 1)
+        S3D_Vertex5(-1, 1, -1, 0, 0)
+    S3D_End()
+S3D_EndMesh()
+
+' Rotation angles for the meshes.
+rotY = 0
+rotX = 0
+
+' Loop until user presses esc.
+while not keydown(KEY_ESCAPE, true)
+    ' Get time passed since last frame.
+    dt = DeltaTime()
+
+    ' Update cube angles.    
+    rotY = (rotY + 45*dt)%360
+    rotX = (rotY + 63*dt)%360
+
+    ' Dark blueish background.
+    set color 32, 32, 64
+    cls
+    
+    ' Clear transformation and depth buffer.
+    S3D_Clear()
+    
+    ' Move to the cube's position, rotate and draw the mesh.
+    S3D_Push()
+        S3D_Translate(-1.5, 0, 6)
+        S3D_RotateY(rad(rotY))
+        S3D_RotateX(rad(rotX))
+        S3D_Texture(cubeTexture)
+        S3D_Mesh(cubeMesh, 0)
+    S3D_Pop()
+    
+    ' Same thing with the pyramid.
+    S3D_Push()
+        S3D_Translate(1.5, 0, 6)
+        S3D_RotateY(rad(rotY))
+        S3D_RotateX(rad(rotX))
+        S3D_Texture(pyramidTexture)
+        S3D_Mesh(pyramidMesh, 0)
+    S3D_Pop()
+
+    ' Write information and instructions.
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "Press Esc to quit"
+
+    ' Display.
+    DisplayFps(dt)
+    
+    ' Update window.
+    redraw
+    wait 1
+wend
+
+' DeltaTime
+' ---------
+' Return delta time in seconds since last call.
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' DisplayFps
+' ----------
+' Display number of frames per second in bottom right corner based on delta time in seconds.
+function DisplayFps(dt)
+    if DISPLAY_FPS
+        set caret width(primary) - fwidth(" "), height(primary) - fheight()
+        set justification right
+        set color 0, 255, 0
+        write "FPS: " + str(round(1/dt))
+        set justification left
+    endif
+endfunc

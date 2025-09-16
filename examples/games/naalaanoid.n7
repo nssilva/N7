@@ -1,0 +1,852 @@
+' naalaanoid.n7
+' -------------
+' By Marcus.
+
+#win32
+
+include "tilemap.n7"
+include "sfx.n7"
+include "file.n7"
+
+' Level generation thing.
+visible SEED = 241' 239
+' Bonuses.
+constant BIG_PADDLE = 1, SMALL_PADDLE = 2, SPEED_UP = 3, SPEED_DOWN = 4, MULTIBALL = 5, CANNONS = 6
+
+' Images.
+visible vTilemapImage
+visible vBgImage
+visible vRedBrickImage, vGreenBrickImage, vBlueBrickImage, vYellowBrickImage, vMagentaBrickImage
+visible vCyanBrickImage, vBrickHitImage
+visible vPaddleImage, vCannonImage
+visible vBallImage, vBulletImage
+visible vBigPaddleBonusImage, vSmallPaddleBonusImage, vSpeedUpBonusImage, vSpeedDownBonusImage
+visible vMultiballBonusImage, vCannonsBonusImage
+visible vNaalaanoidTextImage, vGetReadyTextImage, vGameOverTextImage
+
+' Colors.
+visible vRedColor = [157, 40, 92], vGreenColor = [0, 118, 69], vBlueColor = [0, 110, 138]
+visible vYellowColor = [179, 175, 12], vMagentaColor = [149, 31, 169], vCyanColor = [71, 193, 197]
+visible vWhiteColor = [252, 252, 252], vBlackColor = [0, 0, 0], vGrayColor = [185, 185, 185]
+visible vDarkRedColor = [90, 0, 24], vDarkGreenColor = [0, 57, 36], vDarkBlueColor = [9, 19, 128]
+visible vDarkMagentaColor = [85, 0, 86]
+
+' Sound effects.
+visible vPaddleSound, vBrickHitSound, vBrickDestroyedSound, vWallSound, vLifeLostSound, vBonusSound
+visible vShootSound
+
+' Sprite lists.
+visible vBalls = []
+visible vBullets = []
+visible vAnims = []
+visible vBonuses = []
+
+' Flying texts.
+visible vFlyingTexts = FlyingTexts(64)
+
+' Stats.
+visible vScore, vTopScore
+visible vBrickCount, vBricksLeft
+
+' Create window.
+set window "Naalaanoid", 256, 240, false, int((screenh() - 160)/240)
+set redraw off
+
+' Create and set save folder.
+folder = GetPathCombined(GetAppDataDirectory(), "naalaa7")
+CreateDirectory(folder)
+saveFilename = GetPathCombined(folder, "naalaanoid.bin")
+f = openfile(saveFilename, true)
+if typeof(f)
+    vTopScore = fread(f, 32)
+    free file f
+else
+    vTopScore = 0
+endif
+
+' Generate assets.
+CreateAssets()
+vBgImage = createimage(256, 240)
+create font 1, "courier new", 13
+set font 1
+
+TM_SetImage(vTilemapImage)
+TM_SetBorder(true, true, true, false)
+for i = 0 to 17  TM_SetObstacle(i, true)
+
+do
+    ' Show title screen, returns false if user wants to quit.
+    if not TextScreen(vNaalaanoidTextImage, ["TOP SCORE: " + str(vTopScore, 5), "",
+            "PRESS ESC TO QUIT"])  break
+    level = 1
+    lives = 3
+    vScore = 0
+
+    do
+        ' Init level.
+        BuildLevel(level)
+        TextScreen(vGetReadyTextImage, ["STAGE " + str(level, 2)])
+        clear vAnims
+        clear vBonuses
+        clear vBalls
+        clear vBullets
+        vFlyingTexts.Clear()
+        paddleX = mousex()
+        paddleY = 248
+        paddleW = 40
+        paddleWantedW = 40
+        paddleBullets = 0
+        vBalls[0] = Ball(paddleX, paddleY - 3, 0, -1)
+        vBalls[0].SetCaptured(true)
+        helpTimer = -1    
+        do
+            ' Fetch ball.
+            if sizeof(vBalls)
+                paddleY = max(paddleY - 1, 208)
+            elseif vBricksLeft > 0
+                paddleY = min(paddleY + 2, 248)
+                if paddleY = 248
+                    lives = lives - 1
+                    if lives >= 0
+                        vBalls[0] = Ball(paddleX, paddleY - 3, 0, -1)
+                        vBalls[0].SetCaptured(true)
+                    else
+                        break
+                    endif
+                endif
+            endif
+            ' Change paddle size.
+            if paddleW < paddleWantedW  paddleW = min(paddleW + 1, paddleWantedW)
+            elseif paddleW > paddleWantedW  paddleW = max(paddleW - 1, paddleWantedW)
+            ' Move.
+            paddleX = TM_ToWorldX(min(max(mousex(), 8), 216))
+            ' Launch ball or fire bullets.
+            if mousebutton(0, true)
+                if sizeof(vBalls) = 1 and vBalls[0].captured and paddleY < 216
+                    vBalls[0].SetCaptured(false)
+                    vBalls[0].SetDir((vBalls[0].X() - paddleX)/paddleW, -0.5)
+                elseif paddleBullets > 0
+                    paddleBullets = paddleBullets - 1
+                    vBullets[sizeof(vBullets)] = Bullet(paddleX - paddleW/2 + 5, paddleY - 4)
+                    vBullets[sizeof(vBullets)] = Bullet(paddleX + paddleW/2 - 5, paddleY - 4)
+                    play sound vShootSound
+                endif
+            endif
+            ' Add helping powerups every now and then if there are few bricks left.
+            if vBricksLeft/vBrickCount < 0.25
+                helpTimer = helpTimer - 1
+                if helpTimer <= 0
+                    if sizeof(vBalls) <= 2 and paddleBullets <= 0
+                        helpTimer = 10*60
+                        if rnd(2) = 0  AddBonus(MULTIBALL, rnd(13)*16 + 8, -8)
+                        else  AddBonus(CANNONS, rnd(13)*16 + 8, -8)
+                    else
+                        helpTimer = 3*60
+                    endif
+                endif
+            endif
+            ' Update sprites.
+            before = sizeof(vBalls)
+            UpdateSprites(vBalls)
+            if sizeof(vBalls) = 0 and before > 0  play sound vLifeLostSound
+            UpdateSprites(vBullets)
+            UpdateSprites(vBonuses)
+            UpdateSprites(vAnims)
+            vFlyingTexts.Update()
+            ' Update captured balls and collisions with paddle.
+            foreach b in vBalls
+                if b.captured
+                    b.SetPos(min(max(b.X(), paddleX - paddleW/2), paddleX + paddleW/2), paddleY - 3)
+                elseif b.dy > 0 and b.y + 6 >= paddleY and b.y < paddleY + 8
+                    x = b.x + 3;  dx = x - paddleX
+                    if |dx| < paddleW/2 + 3
+                        b.SetDir(dx/paddleW, -0.5)
+                        play sound vPaddleSound
+                    endif
+                endif
+            next
+            ' Pick up bonuses.
+            i = 0
+            px = paddleX - paddleW/2
+            while i < sizeof(vBonuses)
+                p = vBonuses[i]
+                if p.x + 16 >= px and p.x < px + paddleW and p.y + 8 >= paddleY and p.y < paddleY + 8
+                    vScore = vScore + 10
+                    select p.type
+                    case BIG_PADDLE
+                        if paddleWantedW < 80  paddleWantedW = paddleWantedW + 8
+                        txt = "BIG PADDLE"
+                    case SMALL_PADDLE
+                        if paddleWantedW > 24 paddleWantedW = paddleWantedW - 8
+                        txt = "SMALL PADDLE"
+                    case SPEED_UP
+                        foreach b in vBalls  b.IncSpeed()
+                        txt = "SPEED UP"
+                    case SPEED_DOWN
+                        foreach b in vBalls  b.DecSpeed()
+                        txt = "SPEED DOWN"
+                    case MULTIBALL
+                        foreach b in vBalls  if not b.captured
+                            a = atan2(b.dy, b.dx)
+                            vBalls[sizeof(vBalls)] = Ball(b.X(), b.Y(), cos(a + PI/4), sin(a + PI/4))
+                            vBalls[sizeof(vBalls)] = Ball(b.X(), b.Y(), cos(a - PI/4), sin(a - PI/4))
+                        endif
+                        txt = "MULTIBALL"                     
+                    case CANNONS
+                        paddleBullets = paddleBullets + 10
+                        txt = "CANNONS"
+                    endsel
+                    free key vBonuses, i
+                    vFlyingTexts.Add(txt, 1, p.X(), p.Y(), 0.5, 2)
+                    play sound vBonusSound
+                else
+                    i = i + 1
+                endif
+            wend
+            
+            ' Draw.
+            set color 255, 255, 255
+            draw image vBgImage, 0, 0
+            TM_Render()
+            DrawPaddle(TM_ToScreenX(paddleX), TM_ToScreenY(paddleY), paddleW, paddleBullets > 0)
+            draw image vBgImage, 0, paddleY, 0, paddleY, 8, 240 - paddleY
+            draw image vBgImage, 216, paddleY, 216, paddleY, 256 - 216, 240 - paddleY
+            DrawSprites(vAnims)
+            DrawSprites(vBalls)
+            DrawSprites(vBullets)
+            DrawSprites(vBonuses)
+            vFlyingTexts.Draw()
+            clear clip rect
+            set caret 256 - 16, 0
+            set color vWhiteColor;  center "STAGE"
+            set color vBlueColor;  center str(level, 2)
+            center
+            set color vWhiteColor;  center "LIVES"
+            set color vRedColor;  center max(lives, 0)
+            center
+            set color vWhiteColor;  center "SCORE"
+            set color vYellowColor;  center str(vScore, 5)
+            
+            redraw
+            fwait 60
+        until vBricksLeft = 0 and vFlyingTexts.IsEmpty() or keydown(KEY_ESCAPE, true)
+        if vBricksLeft = 0  level = level + 1
+        else  break
+    loop
+    if lives < 0
+        if vScore > vTopScore
+            vTopScore = vScore
+            f = createfile(saveFilename, true)
+            if typeof(f)
+                write file f, vScore, 32
+                free file f
+            endif
+            TextScreen(vGameOverTextImage, ["NEW HIGH SCORE: " + str(vScore, 5)])
+        else
+            TextScreen(vGameOverTextImage, ["SCORE: " + str(vScore, 5)])
+        endif
+    endif
+loop
+
+' TextScreen
+' ----------
+function TextScreen(img, texts)
+    set color 0, 0, 0;  cls;  redraw;  wait 500
+    blinkTimer = 40
+    abort = false
+    do
+        if keydown(KEY_ESCAPE, true)
+            abort = true
+            break
+        endif
+        if mousebutton(0, true)  break
+        blinkTimer = (blinkTimer - 1)%80
+        set color 0, 0, 0;  cls
+        set color 255, 255, 255
+        draw image img, (width(primary) - width(img))/2, height(primary)/3 - height(img)/2
+        set caret width(primary)/2, height(primary)/2 - sizeof(texts)*fheight()/2
+        set color vWhiteColor;  for i = 0 to sizeof(texts) - 1  center texts[i]
+        center
+        if blinkTimer < 40
+            set caret width(primary)/2, 2*height(primary)/3 - fheight()/2
+            center "CLICK TO CONTINUE ..."
+        endif
+        redraw
+        fwait 60
+    loop
+    set color 0, 0, 0;  cls;  redraw;  wait 500
+    return not abort
+endfunc
+
+' UpdateSprites
+' -------------
+function UpdateSprites(list)
+    i = 0
+    while i < sizeof(list)  if list[i].Update()  i = i + 1
+    else  free key list, i
+endfunc
+
+' DrawSprites
+' -----------
+function DrawSprites(list)
+    if sizeof(list)  for i = 0 to sizeof(list) - 1  list[i].Draw()
+endfunc
+
+' BuildLevel
+' ----------
+function BuildLevel(level)
+    ' Build level from random rectangles.
+    if level = 1  blobCount = 2
+    else  blobCount = 3 + min(int((level - 1)*0.6), 24);  levelHeight = 16 + min(int(level/2), 6)
+    randomize SEED + level
+    TM_InitMap(13, levelHeight)
+    TM_SetView(8, 8, 13*16, levelHeight*8)
+    for i = 1 to blobCount
+        bw = 1 + rnd(5);  bh = 1 + rnd(5);  bx = rnd(7);  by = 1 + rnd(levelHeight - bh - 1)
+        innerCel = rnd(min(6 + 6*int((level - 1)*0.5), 18))
+        outerCel = rnd(min(6 + 6*int((level)*0.5), 18))
+        for y = by to by + bh - 1  for x = bx to bx + bw - 1  if x <= 6
+            if x = bx or x = bx + bw - 1 or y = by or y = by + bh - 1  cel = outerCel
+            else  cel = innerCel
+            TM_SetCel(x, y, cel)
+            if x < 6  TM_SetCel(6 + (6 - x), y, cel)
+        endif
+    next
+    ' Count bricks and add powerups.
+    vBrickCount = 0
+    for y = 0 to levelHeight - 1  for x = 0 to 12  if TM_GetCel(x, y) >= 0
+        vBrickCount = vBrickCount + 1
+        if rnd(5) = 0  TM_SetFlag(x, y, 1 + rnd(6))
+    endif
+    vBricksLeft = vBrickCount
+    
+    ' Create background image.
+    patternImage = createimage(16, 16)
+    set image patternImage
+    select rnd(4)
+    case 0  set color vDarkRedColor
+    case 1  set color vDarkGreenColor
+    case 2  set color vDarkBlueColor
+    case 3  set color vDarkMagentaColor
+    endsel
+    cls
+    set color 0, 0, 0
+    for i = 1 to 4
+        select rnd(3)
+            case 0  draw ellipse rnd(16), rnd(16), rnd(12), rnd(12), false
+            case 1  draw rect rnd(16), rnd(16), rnd(12), rnd(12), false
+            case 2  draw line rnd(16), rnd(16), rnd(16), rnd(16)
+        endsel
+    next
+    set image primary
+    set image vBgImage
+    set color 0, 0, 0;  cls
+    set color 255, 255, 255
+    for y = 0 to 14  for x = 0 to 12  draw image patternImage, 8 + x*16, 8 + y*16
+    free image patternImage
+    set color vGrayColor
+    draw rect 0, 8, 8, 232, true;  draw rect 216, 8, 8, 232, true;  draw rect 8, 0, 208, 8, true
+    set clip rect 0, 0, 8, 8;  draw ellipse 8, 8, 8, 8, true
+    set clip rect 216, 0, 8, 8;  draw ellipse 215, 8, 8, 8, true
+    clear clip rect
+    set color 0, 0, 0
+    draw line 8, 7, 215, 7;  draw line 7, 8, 7, 240;  draw line 216, 8, 216, 240
+    set image primary
+endfunc
+
+' Ball
+' ----
+function Ball(x, y, dx, dy)
+    b = []
+    b.SetCaptured = function(value)
+        this.captured = value
+    endfunc
+    b.SetPos = function(x, y)
+        this.x = min(max(x - 3, 0), 202)
+        this.y = y - 3
+    endfunc
+    b.X = function();  return this.x + 3;  endfunc
+    b.Y = function();  return this.y + 3;  endfunc
+    b.SetDir = function(dx, dy)
+        k = 1/sqr(dx*dx + dy*dy)
+        this.dx = k*dx
+        this.dy = k*dy
+    endfunc
+    b.IncSpeed = function()
+        this.spd = this.spd + 0.5
+        this.spdt = 0
+    endfunc
+    b.DecSpeed = function()
+        this.spd = max(this.spd - 0.5, 1)
+        if this.spd < 2  this.spdt = 60*10
+    endfunc
+    b.Update = function()
+        if this.captured  return true
+        if this.spdt > 0
+            this.spdt = this.spdt - 1
+            if this.spdt = 0  this.IncSpeed()
+        endif
+        ' Move one unit at a time for the brick hits to work better.
+        move = this.spd
+        res = -1
+        while move > 0
+            spd = min(move, 1)
+            move = move - 1
+            TM_MoveSprite(this, this.dx*spd, this.dy*spd)
+            if TM_CollisionUp()
+                ixl = floor((this.x)/16);  ixr = floor((this.x + 5)/16);  y = floor((this.y - 4)/8)
+                res = max(res, HitBrick(ixl, y))
+                if ixr <> ixl  res = max(res, HitBrick(ixr, y))
+                this.dy = |this.dy|
+            elseif TM_CollisionDown()
+                ixl = floor((this.x)/16);  ixr = floor((this.x + 5)/16);  y = floor((this.y + 10)/8)
+                res = max(res, HitBrick(ixl, y))
+                if ixr <> ixl  res = max(res, HitBrick(ixr, y))
+                this.dy = - |this.dy|
+            endif
+            if TM_CollisionLeft()
+                iyt = floor((this.y)/8);  iyb = floor((this.y + 5)/8);  x = floor((this.x - 8)/16)
+                res = max(res, HitBrick(x, iyt))
+                if iyb <> iyt  res = max(res, HitBrick(x, iyb))
+                this.dx = |this.dx|
+            elseif TM_CollisionRight()
+                iyt = floor((this.y)/8);  iyb = floor((this.y + 5)/8);  x = floor((this.x + 14)/16)
+                res = max(res, HitBrick(x, iyt))
+                if iyb <> iyt  res = max(res, HitBrick(x, iyb))
+                this.dx = -|this.dx|
+            endif
+        wend
+        ' Prevent ball from going too much horizontally.
+        if |this.dy| < 0.1
+            if this.dy < 0  this.SetDir(this.dx, -0.15)
+            else  this.SetDir(this.dx, 0.15)
+        endif
+        'endif 
+        if res = 0  play sound vWallSound
+        elseif res = 1  play sound vBrickHitSound
+        elseif res = 2  play sound vBrickDestroyedSound
+        a = atan2(this.dy, this.dx)
+        return this.y < 240
+    endfunc
+    b.Draw = function()
+        draw image vBallImage, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+    endfunc
+    b.captured = false
+    b.r = 3
+    b.w = 6
+    b.h = 6
+    b.spd = 2
+    b.spdt = 0
+    b.SetPos(x, y)
+    b.SetDir(dx, dy)
+    
+    return b
+endfunc
+
+' Bullet
+' ------
+function Bullet(x, y)
+    return [x: x - width(vBulletImage)/2, y: y - height(vBulletImage)/2,
+            w: width(vBulletImage), h: height(vBulletImage),
+            Update: function()
+                TM_MoveSprite(this, 0, -4)
+                if TM_CollisionUp()
+                    ixl = floor(this.x/16);  ixr = floor((this.x + 4)/16)
+                    iy = floor((this.y - 4)/8)
+                    res = HitBrick(ixl, iy)
+                    if ixr <> ixl  res = max(res, HitBrick(ixr, iy))
+                    if res = 0  play sound vWallSound
+                    elseif res = 1  play sound vBrickHitSound
+                    elseif res = 2  play sound vBrickDestroyedSound
+                    return false
+                endif
+                return true
+            endfunc,
+            Draw: function()
+                draw image vBulletImage, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+            endfunc]
+endfunc
+
+' AddAnim
+' -------
+function AddAnim(img, x, y, spd, startCel)
+    vAnims[sizeof(vAnims)] = [
+            img: img, cel: startCel, x: x, y: y, spd: spd,
+            Update: function()
+                this.cel = this.cel + this.spd
+                return this.cel < cels(this.img)
+            endfunc,
+            Draw: function()
+                draw image this.img, this.x, this.y, int(this.cel)
+            endfunc]
+endfunc
+
+' HitBrick
+' --------
+function HitBrick(x, y)
+    cel = TM_GetCel(x, y)
+    if cel >= 0
+        cel = cel - 6
+        if cel >= 0
+            TM_SetCel(x, y, cel)
+            AddAnim(vBrickHitImage, 8 + x*16, 8 + y*8, 0.25, 1 - int(cel/6))
+            return 1
+        else
+            vBricksLeft = vBricksLeft - 1
+            vScore = vScore + 5
+            TM_SetCel(x, y, -1)
+            pu = TM_GetFlag(x, y)
+            if pu > 0  AddBonus(pu, x*16 + 8, y*8 + 4)
+            vFlyingTexts.Add(5, 1, x*16 + 8, y*8 + 4, 0.5, 1)
+            return 2
+        endif
+    else
+        return 0
+    endif
+endfunc
+
+' AddBonus
+' --------
+function AddBonus(type, x, y)
+    select type
+        case BIG_PADDLE  img = vBigPaddleBonusImage
+        case SMALL_PADDLE  img = vSmallPaddleBonusImage
+        case SPEED_UP  img = vSpeedUpBonusImage
+        case SPEED_DOWN  img = vSpeedDownBonusImage
+        case MULTIBALL  img = vMultiballBonusImage
+        case CANNONS  img = vCannonsBonusImage
+        default  img = unset
+    endsel
+    assert img, "AddBonus: Invalid type"
+    vBonuses[sizeof(vBonuses)] = [
+            type: type, img: img, x: x - 8, y: y - 4, spd: 1,
+            X: function();  return this.x + 8;  endfunc,
+            Y: function();  return this.y + 4;  endfunc,
+            Update: function()
+                this.y = this.y + this.spd
+                return this.y < 240
+            endfunc,
+            Draw: function()
+                draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+            endfunc]
+endfunc
+
+' DrawPaddle
+' ----------
+function DrawPaddle(x, y, w, cannons)
+    x = x - int(w/2)
+    draw image vPaddleImage, x, y, 0
+    draw image vPaddleImage, x + w - 8, y, 2
+    set clip rect x + 8, 0, w - 16, height(primary)
+    for i = 1 to int(w/8) - 1  draw image vPaddleImage, x + i*8, y, 1
+    clear clip rect
+    if cannons
+        h = height(vCannonImage)
+        draw image vCannonImage, x + 2, y - h
+        draw image vCannonImage, x + w - 2 - width(vCannonImage), y - h
+    endif
+endfunc
+
+' CreateAssets
+' ------------
+function CreateAssets()
+    ' Brick images.
+    brickBitmap = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3],
+            [1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            [1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3],
+            [1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            [1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3],
+            [1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1]]
+    vRedBrickImage = Create3ColorImage(brickBitmap, [vRedColor, vWhiteColor, vBlackColor])
+    vGreenBrickImage = Create3ColorImage(brickBitmap, [vGreenColor, vWhiteColor, vBlackColor])
+    vBlueBrickImage = Create3ColorImage(brickBitmap, [vBlueColor, vWhiteColor, vBlackColor])
+    vYellowBrickImage = Create3ColorImage(brickBitmap, [vYellowColor, vWhiteColor, vBlackColor])
+    vMagentaBrickImage = Create3ColorImage(brickBitmap, [vMagentaColor, vWhiteColor, vBlackColor])
+    vCyanBrickImage = Create3ColorImage(brickBitmap, [vCyanColor, vWhiteColor, vBlackColor])
+    set image grid vRedBrickImage, 1, 3
+    set image grid vGreenBrickImage, 1, 3
+    set image grid vBlueBrickImage, 1, 3
+    set image grid vYellowBrickImage, 1, 3
+    set image grid vMagentaBrickImage, 1, 3
+    set image grid vCyanBrickImage, 1, 3
+    vTilemapImage = createimage(16*6, 24)
+    set image vTilemapImage
+    set color 255, 255, 255
+    draw image vRedBrickImage, 0, 0
+    draw image vGreenBrickImage, 16, 0
+    draw image vBlueBrickImage, 32, 0
+    draw image vYellowBrickImage, 48, 0
+    draw image vMagentaBrickImage, 64, 0
+    draw image vCyanBrickImage, 80, 0
+    set image primary
+    set image grid vTilemapImage, 6, 3
+    ' Brick hit anim.
+    vBrickHitImage = Create3ColorImage([
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+            [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+            [vWhiteColor, unset, unset])
+    set image grid vBrickHitImage, 1, 3
+    ' Paddle.
+    vPaddleImage = Create3ColorImage([
+            [0, 0, 2, 2, 2, 2, 2, 3,  1, 1, 1, 1, 1, 1, 1, 1,  3, 2, 2, 2, 2, 2, 0, 0],
+            [0, 2, 2, 2, 2, 2, 2, 1,  1, 1, 1, 1, 1, 1, 1, 1,  1, 2, 2, 2, 2, 2, 2, 0],
+            [2, 2, 2, 2, 2, 2, 2, 1,  1, 1, 1, 1, 1, 1, 1, 1,  1, 2, 2, 2, 2, 2, 2, 2],
+            [2, 2, 2, 2, 2, 2, 2, 1,  1, 1, 1, 1, 1, 1, 1, 1,  1, 2, 2, 2, 2, 2, 2, 2],
+            [2, 2, 2, 2, 2, 2, 2, 1,  1, 1, 1, 1, 1, 1, 1, 1,  1, 2, 2, 2, 2, 2, 2, 2],
+            [3, 2, 2, 2, 2, 2, 2, 3,  1, 1, 1, 1, 1, 1, 1, 1,  3, 2, 2, 2, 2, 2, 2, 3],
+            [0, 3, 2, 2, 2, 2, 2, 3,  1, 1, 1, 1, 1, 1, 1, 1,  3, 2, 2, 2, 2, 2, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3,  3, 3, 3, 3, 3, 3, 3, 3,  3, 3, 3, 3, 3, 3, 0, 0]],
+            [vGrayColor, vRedColor, vBlackColor])
+    set image grid vPaddleImage, 3, 1
+    ' Cannon.
+    vCannonImage = Create3ColorImage([
+            [0, 0, 1, 1, 0, 0],
+            [0, 0, 3, 3, 0, 0],
+            [0, 0, 1, 1, 0, 0],
+            [0, 0, 1, 1, 0, 0],
+            [0, 0, 1, 1, 0, 0],
+            [1, 1, 1, 1, 1, 1]],
+            [vGrayColor, vWhiteColor, vBlackColor])
+    ' Ball.
+    vBallImage = Create3ColorImage([
+            [0, 1, 1, 1, 1, 0],
+            [1, 1, 2, 1, 1, 1],
+            [1, 2, 2, 2, 1, 1],
+            [1, 1, 2, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1],
+            [0, 1, 1, 1, 1, 0]],
+            [vGrayColor, vWhiteColor, vBlackColor])
+    'Bullet.
+    vBulletImage = Create3ColorImage([
+            [0, 3, 3, 0],
+            [3, 2, 2, 3],
+            [3, 1, 1, 3],
+            [3, 1, 1, 3],
+            [0, 2, 2, 0],
+            [0, 2, 2, 0],
+            [0, 3, 3, 0]],
+            [vWhiteColor, vYellowColor, vRedColor])
+    ' Powerups.
+    vBigPaddleBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 0],
+            [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1],
+            [1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1],
+            [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1],
+            [3, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vGreenColor, vWhiteColor, vBlackColor])
+    vSmallPaddleBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 0],
+            [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1],
+            [1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1],
+            [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1],
+            [3, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vRedColor, vWhiteColor, vBlackColor])
+    vSpeedUpBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [3, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vMagentaColor, vWhiteColor, vBlackColor])
+    vSpeedDownBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1],
+            [3, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vYellowColor, vWhiteColor, vBlackColor])
+    vMultiballBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 0],
+            [1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 1, 1, 2, 2, 1, 1],
+            [1, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1],
+            [1, 2, 2, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 1],
+            [3, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vCyanColor, vWhiteColor, vBlackColor])
+    vCannonsBonusImage = Create3ColorImage([
+            [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+            [0, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 0],
+            [1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1],
+            [1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [3, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3],
+            [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0],
+            [0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0]],
+            [vBlueColor, vWhiteColor, vBlackColor])
+    ' Cool texts.
+    vNaalaanoidTextImage = CreateCoolText("NAALAANOID", 3, vWhiteColor, vBlueColor)
+    vGetReadyTextImage = CreateCoolText("GET READY!", 2, vWhiteColor, vDarkGreenColor)
+    vGameOverTextImage = CreateCoolText("GAME OVER!", 2, vWhiteColor, vRedColor)
+    ' Sound effects (stealing from the example breakout3d.n7).
+    sfx = SFX()
+    vPaddleSound = sfx.SineWave(0.15, [350], [0.5, 0])
+    vBrickHitSound = sfx.SquareWave(0.1, [800], [0.15, 0, 0])
+    vBrickDestroyedSound = sfx.SquareWave(0.15, [500], [0.5, 0, 0])
+    vWallSound = sfx.Noise(0.15, [100, 1000], [0.25, 0])
+    vLifeLostSound = sfx.Noise(0.54, [1000, 5000], [0.75, 0])
+    vBonusSound = sfx.SineWave(0.25, [500, 1500], [0.5, 0])
+    vShootSound = sfx.SineWave(0.15, [1000, 2000, 1000], [0.4, 0])
+endfunc
+
+' Create3ColorImage
+' -----------------
+function Create3ColorImage(data, colors)
+    img = createimage(sizeof(data[0]), sizeof(data))
+    set image img
+    for y = 0 to sizeof(data) - 1  for x = 0 to sizeof(data[0]) - 1
+        if data[y][x] > 0  set color colors[data[y][x] - 1]
+        else  set color 0, 0, 0, 0
+        set pixel x, y
+    next
+    set image primary
+    return img
+endfunc
+
+' CreateCoolText
+' --------------
+function CreateCoolText(txt, size, borderColor, fillColor)
+    w = fwidth(txt);  h = fheight()
+    tmp = createimage(w, h)
+    set image tmp
+    set caret 0, 0;  set color 255, 255, 255;  write txt
+    set image primary
+    res = createimage(w*size + 2, h*size + 2)
+    set image res
+    set color 0, 0, 0, 0;  for y = 0 to height(res) - 1  for x = 0 to width(res) - 1  set pixel x, y
+    for y = 0 to h - 1  for x = 0 to w - 1  if pixeli(tmp, x, y)%256
+        t = pixeli(tmp, x, y - 1)%256;  b = pixeli(tmp, x, y + 1)%256
+        l = pixeli(tmp, x - 1, y)%256;  r = pixeli(tmp, x + 1, y)%256
+        set color fillColor;  draw rect x*size, y*size, size, size, true
+        set color borderColor
+        if not t  draw line x*size, y*size - 1, x*size + size - 1, y*size - 1
+        if not b  draw line x*size, y*size + size, x*size + size - 1, y*size + size
+        if not l  draw line x*size - 1, y*size, x*size - 1, y*size + size - 1
+        if not r  draw line x*size + size, y*size, x*size + size, y*size + size - 1
+    endif
+    set image primary
+    free image tmp
+    return res
+endfunc
+
+' FlyingTexts
+' -----------
+' Encapsulate flying texts.
+function FlyingTexts(maxTexts)
+    ft = []
+    ft.texts = fill(
+        [txt: unset,
+        fnt: unset,
+        x: 0,
+        y: 0,
+        spd: 0],
+        maxTexts)
+    
+    ft.empty = true
+    ' Clear
+    ' -----
+    ft.Clear = function()
+        foreach t in this.texts  t.txt = unset
+    endfunc
+    
+    ' IsEmpty
+    ' -------
+    ft.IsEmpty = function()
+        return .empty
+    endfunc
+    
+    ' Add
+    ' ---
+    ft.Add = function(txt, fnt, x, y, spd, duration)
+        foreach t in this.texts  if not t.txt
+            t.txt = txt
+            t.fnt = fnt
+            t.x = x
+            t.y = y - fheight(fnt)/2
+            t.spd = spd
+            t.t = 60*duration
+            break
+        endif
+    endfunc
+    
+    ' Update
+    ' ------
+    ft.Update = function()
+        .empty = true
+        foreach t in this.texts  if t.txt
+            .empty = false
+            t.t = t.t - 1
+            if t.t > 0
+                t.y = t.y - t.spd
+            else
+                t.txt = unset
+            endif
+        endif
+    endfunc
+    
+    ' Draw
+    ' ----
+    ft.Draw = function()
+        foreach t in this.texts  if t.txt
+            set font t.fnt
+            set caret TM_ToScreenX(t.x), TM_ToScreenY(t.y)
+            center t.txt
+        endif
+    endfunc
+    
+    return ft
+endfunc

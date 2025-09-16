@@ -1,0 +1,35 @@
+' set clip rect, clear clip rect
+' ------------------------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set clip rect and clear clip rect", 640, 480
+
+' 'set clip rect x, y, w, h' sets the top left corner of the clipping rectangle to x, y and its
+' width and height to w, h. This affects all future draw commands, nothing will be drawn outside the
+' rectangle.
+set clip rect 160, 200, 320, 80
+
+' Draw some primitives.
+set color 64, 64, 64
+cls
+set color 255, 200, 0
+draw rect 110, 190, 100, 100, true
+set color 255, 80, 255
+draw ellipse 320, 240, 50, 50, true
+set color 64, 255, 64
+draw poly [480, 190, 530, 290, 430, 290], true
+set color 255, 255, 255, 128
+draw rect 160, 240, 320, 100, true
+
+' 'clear clip rect' restores the clipping rectangle to the entire area of the destination image,
+' which is usually the window.
+clear clip rect
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

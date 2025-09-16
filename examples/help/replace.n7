@@ -1,0 +1,11 @@
+' replace.n7
+' ----------
+
+' 'replace(s, sub, rep)' returns a string where all occurrences of sub in s are replaced with rep.
+pln replace("the theater theory is weird", "the", "po")
+
+' 'replace(s, sub, rep, n)' works like 'replace(s, sub, rep)' but starts searching at character
+' index n and only replaces the first occurence of sub in s with rep.
+pln replace("the theater theory is weird", "the", "po", 5)
+
+system "pause"

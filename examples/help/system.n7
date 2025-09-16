@@ -1,0 +1,21 @@
+' system
+' ------
+
+' 'system cmd' executes a system command.
+system "dir"
+
+' This executes the system command 'pause', which waits for the user to press any key.
+system "pause"
+
+' Clear the console window
+system "cls"
+
+' If called in an expression, 'system' returns the output of the command instead of printing it
+' to the console window.
+result = system("dir")
+
+' Print the first line.
+pln "First line: " + split(result, chr(10))[0]
+pln
+
+system "pause"

@@ -1,0 +1,56 @@
+' Cool scrolling
+' --------------
+' By Marcus.
+
+set window "Cool scrolling", 640, 480
+set redraw off
+
+' Load a tilable image width clouds.
+img = loadimage("clouds.png")
+
+' Scroll value.
+offset = 0
+do
+    ' Scroll.
+    offset = (offset - 8)%width(primary)
+
+    ' Clear screen and render sky.
+    set color 53, 96, 159
+    cls
+    RenderSky(img, height(primary)/2, 5, offset)
+
+    set color 255, 255, 255    
+    set caret width(primary)/2, height(primary) - 16
+    center "Press Esc to quit ..."
+    
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE)
+
+' RenderSky
+' ---------
+function RenderSky(img, h, depth, offset)
+    ' Window width and half width.
+    ww = width(primary)
+    hww = ww/2
+
+    ' Interpolate 1/z from 1 to 1 + depth over the height.
+    dz = (1/(1 + depth) - 1)/h
+    zi = 1
+    set color 255, 255, 255, 0
+    for y = 0 to h - 1
+        ' Increase 1/z.
+        zi = zi + dz
+        ' Calculate perspective correct z, width and offset.
+        z = 1/zi
+        v = (z - 1)/depth
+        w = ww/z
+        x = hww - (hww - offset%ww)/z
+        ' Fill horizontal line using hraster.
+        x = x - ceil(x/w)*w
+        while x < ww
+            draw hraster img, y, x, x + w - 1, 0, v, 1, v
+            x = x + w
+        wend
+    next
+endfunc

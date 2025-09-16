@@ -1,0 +1,55 @@
+' Inside a function, you can access the table through which the function was
+' called using 'this'.
+
+' Create a template table (a class definition, one might say) to fill an array
+' with.
+template =
+    [
+        ' Position and direction.
+        pos: [x: 0, y: 0],
+        dir: [x: 0, y: 0],
+
+        ' Set position.
+        SetPos:
+            function(x, y)
+                this.pos.x = x
+                this.pos.y = y
+            endfunc,
+
+        ' Set direction.
+        SetDir:
+            function(x, y)
+                this.dir.x = x
+                this.dir.y = y
+            endfunc,
+
+        ' Move with speed.
+        Move:
+            function(speed)
+                this.pos.x = this.pos.x + this.dir.x*speed
+                this.pos.y = this.pos.y + this.dir.y*speed
+            endfunc,
+
+        ' To string.
+        ToString:
+            function()
+                return "(" + this.pos.x + ", " + this.pos.y + ")"
+            endfunc
+    ]
+
+' Create 100 instances of the template.
+objects = fill(template, 100)
+
+' Set position and direction of an object and print.
+objects[39].SetPos(10, 10)
+objects[39].SetDir(1.5, 0.5)
+pln objects[39].ToString()
+
+' Move and print.
+objects[39].Move(3)
+pln objects[39].ToString()
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+

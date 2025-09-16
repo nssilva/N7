@@ -1,0 +1,19 @@
+' 'pln' prints a string to the console and adds a line break.
+pln "Hello world!"
+' 'wait' makes the program sleep for the specified number of milliseconds.
+wait 1000
+
+' As long as you haven't created a window 'wln' does exactly the same thing as
+' 'pln'. When you've created a window 'pln' continues writing to the console,
+' while 'wln' writes to the window.
+wln "Hello again!"
+wait 1000
+
+' 'write' functions like 'wln' but doesn't add a new line.
+write "Hello "
+wln "for the third time!"
+wait 5000
+
+
+
+

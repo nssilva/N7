@@ -1,0 +1,37 @@
+' I needed window resizing for a gui library I'm working on, so in a haste I
+' added support for it.
+'    For now, when the user resizes the window by dragging its bottom right
+' corner or edges, the backbuffer (primary image) isn't actually resized until
+' the mouse button is released. If the user presses the maximize or restore
+' button, the resize is instant.
+
+set redraw off
+
+' Set the scale factor (fifth parameter) of the window to 0 to enable window
+' resizing. Its minimum size will be the same as its original size.
+set window "Resize me!", 640, 480, false, 0
+do
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret width(primary)/2, (height(primary) - fheight(0)*3)/2
+    center "The minimum size of this window is 640x480"
+    center "Current size " + width(primary) + "x" + height(primary)
+    center "Press space to continue ..."
+    wait 16
+    redraw
+until keydown(KEY_SPACE)
+
+' Add two optional parameters to set the minimum width and height of the window.
+set window "Resize me again", 640, 480, false, 0, 320, 240
+do
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret width(primary)/2, (height(primary) - fheight(0)*3)/2
+    center "The minimum size of this window is 320x240"
+    center "Current size " + width(primary) + "x" + height(primary)
+    center "Press escape to exit ..."
+    wait 16
+    redraw
+until keydown(KEY_ESCAPE)

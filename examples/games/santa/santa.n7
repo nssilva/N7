@@ -1,0 +1,244 @@
+' ==============================================================================
+' Santa, by Marcus 2017, ported to n7 by johnno1956.
+' 
+' Santa sprite by gamesbyangelina, mike@gamesbyangelina.org, found at
+' opengameart.org
+' ==============================================================================
+
+'   Constants
+
+' We declare out image identifiers as constants for clarity.
+IMG_SANTA = 0
+IMG_SNOWFLAKE = 1
+IMG_PRESENT = 2
+IMG_GROUND = 3
+
+' Max live fallers (snowflakes and presents).
+MAX_FALLERS = 64
+
+' Max live snow particles.
+MAX_SNOW = 128
+
+' Set up window and turn off automatic redraw.
+set window "Catch, Santa! Catch!", 160, 120, false, 4
+set redraw off
+
+' Load images.
+load image IMG_SANTA, "assets/santa.png"
+set image grid IMG_SANTA, 8, 2
+load image IMG_SNOWFLAKE, "assets/snowflake.png"
+load image IMG_PRESENT, "assets/present.png"
+load image IMG_GROUND, "assets/ground.png"
+
+' Santa's variables.
+santaX = (width(primary) - width(IMG_SANTA))/2
+santaY = height(primary) - height(IMG_GROUND) - height(IMG_SANTA)
+santaBaseFrame = 0
+santaFrame = 0
+santaFrameTimer = 0
+
+' Falling things.
+fallersImg = []
+fallersSpd = []
+fallersX = []
+fallersY = []
+for i = 0 to MAX_FALLERS - 1
+    ' Set the img field to 0, indicating that it's not a live faller.
+    fallersImg[i] = 0
+next
+fallTimer = 60*2
+fallDelay = 60*2
+fallDelayTimer = 0
+
+' Falling snow, just a visual effect.
+snowX = []
+snowY = []
+snowSpd = []
+for i = 0 to MAX_SNOW - 1
+    snowX[i] = rnd(width(primary))
+    snowY[i] = rnd(height(primary))
+    snowSpd[i] = 1 + rnd(2)
+    'snow[i].a# = float(rnd(360))
+next
+
+' Game.
+score = 0
+gameOver = false
+
+'   GAME  LOOP
+
+do
+    '   UPDATE LOGIC
+
+    '   Santa
+
+    '       Walk left?
+    if keydown(KEY_LEFT)
+        '   Move left. Stop at screen edge.
+        santaX = max(santaX - 1, 0)
+        '   Set base frame to 8. That's the first cell in the sprite sheet
+        '       where Santa's turned right.
+        santaBaseFrame = 8
+        '   Let santaFrame cycle in the range [0..4] if santaFrameTimer = 0.
+        if santaFrameTimer = 0
+            santaFrame = (santaFrame + 1)%5
+        endif
+
+    elseif keydown(KEY_RIGHT)
+        '   Move right. Stop at screen edge.
+        santaX = min(santaX + 1, width(primary) - width(IMG_SANTA))
+        '   Set base frame to 0. That's the first cell in the sprite sheet
+        '       where Santa's turned left.
+        santaBaseFrame = 0
+        '   Let santaFrame cycle in the range [0..4] if santaFrameTimer = 0.
+        if santaFrameTimer = 0
+            santaFrame = (santaFrame + 1)%5
+        endif
+    else
+        '   Not moving
+        '   Set santaFrame to 0.
+        santaFrame = 0
+    endif
+
+    '   Let santaFrameTimer cycle in the range [0..3].
+    santaFrameTimer = (santaFrameTimer + 1)%4
+
+    ' Fallers.
+
+    ' Time for a new faller?
+    fallTimer = fallTimer - 1
+    if fallTimer <= 0
+        ' Set time until next faller.
+        fallTimer = fallDelay + rnd(30)
+        
+        ' Find an unused object in the faller array.
+        for i = 0 to MAX_FALLERS - 1
+            if fallersImg[i] = 0 then break
+        next
+        ' Did we find one?
+        if i < MAX_FALLERS
+            ' One out of 3 fallers should be a present.
+            if rnd(3) = 0
+                fallersImg[i] = IMG_PRESENT
+            else
+                fallersImg[i] = IMG_SNOWFLAKE
+            endif
+            ' Position.
+            fallersX[i] = rnd(width(primary) - width(fallersImg[i]))
+            fallersY[i] = -height(fallersImg[i])
+            ' Speed.
+            if fallDelay < 10
+                fallersSpd[i] = 1 + rnd(2)
+            else
+                fallersSpd[i] = 1
+            endif
+        endif
+    endif
+
+    ' Decrease the delay between fallers once every second second, making the
+    ' game go harder and harder.
+    fallDelayTimer = (fallDelayTimer + 1)%120
+    if fallDelayTimer = 0
+        fallDelay = max(fallDelay - 3, 0)
+    endif
+
+    ' Update active fallers.
+    for i = 0 to MAX_FALLERS - 1
+        if fallersImg[i] > 0
+            ' Move down.
+            fallersY[i] = fallersY[i] + fallersSpd[i]
+
+            ' Out of screen?
+            if fallersY[i] > height(primary)
+                ' Remove by setting the img field to 0.
+                fallersImg[i] = 0
+            ' Collision with player?
+            else
+                if ImageCol(IMG_SANTA, santaX, santaY, fallersImg[i], fallersX[i], fallersY[i])
+                    ' Present?
+                    if fallersImg[i] = IMG_PRESENT
+                        fallersImg[i] = 0
+                        score = score + 10
+                    ' Snowflake.
+                    else
+                        gameOver = true
+                    endif
+                endif
+            endif
+        endif
+    next
+
+    '   Update falling snow.
+    for i = 0 to MAX_SNOW - 1
+        snowY[i] = snowY[i] + snowSpd[i]
+        'snow[i].a# = snow[i].a# + 2.0
+        'if snow[i].a# > 360.0 then snow[i].a# = snow[i].a# - 360.0
+        if snowY[i] > height(primary)
+            snowY[i] = 0
+            snowX[i] = rnd(width(primary))
+        endif
+    next
+
+    '   DRAW ------------------------------------------------
+
+    '   Make the background blue'ish
+    set color 64, 64, 128
+    cls
+
+    ' Draw fallers.
+    set color 255, 255, 255
+    for i = 0 to MAX_FALLERS - 1
+        if fallersImg[i] > 0
+            draw image fallersImg[i], fallersX[i], fallersY[i]
+        endif
+    next
+
+    ' Draw falling snow.
+    set color 255, 255, 255
+    for i = 0 to MAX_SNOW - 1
+        draw pixel snowX[i], snowY[i]
+    next
+
+    ' Write score.
+    set caret width(primary)/2, 2
+    center "SCORE"
+    set color 255, 255, 0
+    center score
+
+    '       Draw the ground
+    set color 255, 255, 255
+    draw image IMG_GROUND, 0, height(primary) - height(IMG_GROUND)
+
+    '       Draw Santa
+    set color 255, 255, 255
+    draw image IMG_SANTA, santaX, santaY, santaBaseFrame + santaFrame
+
+
+    '   Copy backbuffer to the window
+    redraw
+
+    '   Lock FPS at 60.
+    fwait(60)
+
+    if gameOver or keydown(KEY_ESCAPE) break
+loop
+
+' Game over?
+if gameOver
+    set color 0, 0, 0, 128
+    cls
+    set caret width(primary)/2, (height(primary) - fheight(0))/2
+    set color 255, 0, 0
+    center "GAME OVER!"
+    redraw
+    wait 2000
+endif
+
+' ==============================================================================
+' Return true if the images intersect.
+' ==============================================================================
+function ImageCol(img1, x1, y1, img2, x2, y2)
+    if x1 > x2 + width(img2) or x1 + width(img1) < x2 then return false
+    if y1 > y2 + height(img2) or y1 + height(img1) < y2 then return false
+    return true
+endfunc

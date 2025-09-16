@@ -1,0 +1,45 @@
+' draw rect
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw rect", 640, 480
+
+' 'draw rect x, y, w, h' draws an unfilled rectangle with its top left corner at x, y and the width
+' and height w, h.
+draw rect 110, 190, 100, 100
+
+' 'draw rect x, y, w, h, fill' draws a filled ractangle if fill is true.
+draw rect 430, 190, 100, 100, true
+
+' Write some text.
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Loop until spacebar is pressed.
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' Clear screen and display a new message.
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Draw a couple of random rectangles with random colors.
+    for i = 1 to 100
+        set color rnd(256), rnd(256), rnd(256), rnd(256)
+        draw rect rnd(640), rnd(280), rnd(160), rnd(160), rnd(2) ' false = 0, true = 1
+    next
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

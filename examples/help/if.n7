@@ -1,0 +1,33 @@
+' if, else, elseif, endif
+' -----------------------
+
+' If the expression following 'if' is true, the statements between 'if' and 'endif' are executed.
+if 5 > 2
+    pln "5 is greater than 2"
+endif
+
+' This time nothing will be printed.
+if 5 < 2
+    pln "5 is less than 2"
+endif
+
+' If you want to execute some code if the expression is false, you can put that code between 'else'
+' and 'endif'.
+if 5 < 2
+    pln "5 is less than 2"
+else
+    pln "t is not less than 2"
+endif
+
+' If the first expression is false, you can test another expression using 'elseif'. You can have
+' multiple 'elseif' if you want to test more expressions and then an optional 'else' before 'endif'. 
+if 5 < 2
+    pln "5 is less than 2"
+elseif 5 = 5
+    pln "5 is equal to 5"
+else
+    pln "5 is not less than 2, nor is 5 equal to 5"
+endif
+
+
+system "pause"

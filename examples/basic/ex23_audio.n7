@@ -1,0 +1,57 @@
+' Currently only PCM wav audio files are supported.
+
+' There's some debug output going on while loading audio files, so let's hide
+' the console. I'll remove that ... later.
+#win32
+
+' Use the 'load music" command or the 'loadmusic' function to load a piece of
+' music. The function auto-generates an unused identifier for the music.
+'    load music <id>, <filename>
+'    loadmusic(<filename>)
+' I made this tune for a game that I released on Google Play some years ago :)
+myMusic = loadmusic("assets/music.mp3")
+
+' Use the 'load sound" command or the 'loadsound' function to load a sound
+' effect. The function auto-generates an unused identifier for the sound effect.
+'   load sound <id>, <filename>
+'   loadsound(<filename>)
+sounds = []
+sounds[0] = loadsound("assets/bullet.wav")
+sounds[1] = loadsound("assets/enemy.wav")
+sounds[2] = loadsound("assets/explosion.wav")
+
+set window "Audio", 640, 480
+wln "Press spacebar to play a random sound effect"
+wln "Press S and P to stop and play the music"
+wln "Use the up and down arrow keys to change the music volume"
+wln "You may need to lower the music volume to hear the sound effects"
+wln
+wln "Press escape to exit"
+
+' play music <id>[, looped]
+play music myMusic, true
+vol = 1
+
+do
+    ' play sound <id>[, volume[, panning]]
+    ' The valid range for 'volume' is [0..1], and the range for panning is
+    ' [-1..1], where -1 is left and 1 is right.
+    if keydown(KEY_SPACE, true)  play sound sounds[rnd(sizeof(sounds))], rnd(), rnd()*2 - 1
+
+    ' stop music <id>
+    if keydown(KEY_S, true)  stop music myMusic
+    if keydown(KEY_P, true)  play music myMusic, true
+ 
+    if keydown(KEY_UP, true)
+        vol = min(vol + 0.2, 1)
+        ' set music volume <id>, <volume>
+        ' The valid range for 'volume' is [0..1].
+        set music volume myMusic, vol
+    endif
+    if keydown(KEY_DOWN, true)
+        vol = max(vol - 0.2, 0)
+        set music volume myMusic, vol
+    endif
+
+    fwait 60
+until keydown(KEY_ESCAPE)

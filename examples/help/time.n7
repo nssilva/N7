@@ -1,0 +1,17 @@
+' time
+' ----
+
+' 'time()' returns time in seconds since epoch (00:00:00 UTC, January 1, 1970).
+t = time()
+pln t + " seconds have passed since epoch"
+
+' Wait for one second and print the difference.
+wait 1000
+pln time() - t + " second(s) have passed since last output"
+
+' 'time(year[, month[, day[, hour[, minute[, second]]]]])' returns time in seconds since epoch for
+' specified date and time. 
+'   Print number of seconds since epoch for 23:17:57, April 21, 2021.
+pln "Number of seconds since epoch for a specific date and time = " + time(2021, 4, 21, 23, 17, 57)
+
+system "pause"

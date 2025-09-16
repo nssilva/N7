@@ -1,0 +1,39 @@
+' 'foreach' comes in two versions, one where you only get the values of a table,
+' and one where you get both the keys/indexes and their values. The order of
+' the values or key/value pairs is "random", but I'm thinking about adding a
+' version that gives a sorted iteration.
+
+' Create an array.
+foo = [1, 2, 3, 4, 5]
+' Print every value in the array using the first version of 'foreach'.
+foreach v in foo
+    pln v
+next
+pln
+
+' Use the second version of 'foreach', where we also get the table key for each
+' value. In the case of an array, which is what we're dealing with now, the key 
+' is the array index of the value. Here we put our one statement on the same
+' line as 'foreach' and can (must) skip 'next'.
+foreach k, v in foo  pln "foo[" + k + "] = " + v
+pln
+
+' Print the keys and values of a table.
+foreach k, v in [shit: "hello", poop: 42, doodoo: "hehe", numberTwo: -2.35]
+    pln k + ": " + v
+next
+pln
+
+' 'foreach' won't complain if you try to iterate something that isn't a table,
+' but the key will be unset (sort of like null, you can check for it with
+' typeof(<expr>) == TYPE_UNSET). The lines below wil output "Unset: hello
+' world", but that does not mean that v contains the string "Unset". v has no
+' value at all. "Unset" is produced when 'str(v)' is implicitly called :) 
+foreach k, v in "hello world"
+    pln k + ": " + v
+next
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+

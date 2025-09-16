@@ -1,0 +1,247 @@
+' Created by johnno56 with help from AI: https://naalaa.com/forum/thread-295.html
+
+set window "Space Invaders", 320, 240, false, 3
+set redraw off
+
+randomize clock()
+
+visible MAX_INV, INV_W, INV_H, INV_IMG
+MAX_INV = 40
+INV_W = 11
+INV_H = 8
+
+visible invX = []
+visible invY = []
+visible invAlive = []
+
+visible bg
+visible playerX
+visible bulletX
+visible bulletY
+visible bulletAlive
+visible score
+visible hiscore
+visible level
+visible invSpeed
+visible frameCount
+visible shotCount
+visible average
+visible cellCount
+visible cellTimer
+shotCount = 0
+average = 0
+frameCount = 0
+hiscore = 0
+cellCount = 0
+cellTimer = 0
+
+visible black = [0, 0, 16]
+visible white = [255, 255, 255]
+visible red = [255, 0, 0]
+visible green = [0, 255, 0]
+visible cyan = [0, 255, 255]
+visible yellow = [255, 255, 0]
+visible orange = [255, 128, 0]
+
+fnt = createfont("arial", 12)
+set font fnt
+
+bg = loadimage("assets/background.png")
+player = loadimage("assets/player.png")
+invader1 = loadimage("assets/alien1.png", 2, 1)
+invader2 = loadimage("assets/alien2.png", 2, 1)
+invader3 = loadimage("assets/alien3.png", 2, 1)
+explode = loadimage("explode.png")
+bullet = loadimage("assets/bullet.png")
+
+dead = loadsound("assets/dead.wav")
+laser = loadsound("assets/laser.wav")
+
+InitGame()
+
+do
+    set color black
+    cls
+    set color white
+    draw image bg, 0, 0
+    
+    '   ====================
+    '       UPDATE STUFF
+    '   --------------------
+    
+    '   Move Player
+    if keydown(KEY_LEFT) and playerX > 1    playerX = playerX - 3
+    if keydown(KEY_RIGHT) and playerX < width(primary) - 17 playerX = playerX + 3
+    
+    '   Fire Bullet
+    if keydown(KEY_SPACE) and bulletAlive = false
+        play sound laser
+        shotCount = shotCount + 1
+        bulletX = playerX + 6
+        bulletY = 230
+        bulletAlive = true
+    endif
+    
+    '   Update Bullet
+    if bulletAlive
+        bulletY = bulletY - 6
+        if bulletY < -7    bulletAlive = false
+    endif
+    
+    '   Move Invaders
+    frameCount = frameCount + 1
+    if frameCount % (15 - level) = 0
+        for i = 0 to MAX_INV - 1
+            if invAlive[i]  invX[i] = invX[i] + invSpeed
+        next
+        '   Bounce invaders off screen edge
+        for i = 0 to MAX_INV - 1
+            if invAlive[i] and (invX[i] > 300 or invX[i] < 10)
+                invSpeed = invSpeed * -1
+                for j = 0 to MAX_INV - 1
+                    if invAlive[j]  invY[j] = invY[j] + 5
+                    if invY[j] > 230
+                        invaded()
+                        end
+                    endif
+                next
+                break
+            endif
+        next
+    endif
+    
+    '   Collision Detection
+    for i = 0 to MAX_INV - 1
+        if invAlive[i] and bulletAlive
+            if bulletX > invX[i] and bulletX < invX[i] + INV_W and bulletY > invY[i] and bulletY < invY[i] + INV_H
+                play sound dead
+                invAlive[i] = false
+                bulletAlive = false
+                score = score + 10
+                if score > hiscore  hiscore = score
+            endif
+        endif
+    next
+    
+    '   Level Up
+    allDead = true
+    for i = 0 to MAX_INV - 1
+        if invAlive[i]
+            allDead = false
+            break
+        endif
+    next
+    if allDead = true
+        average = int(100 * (40 / shotCount))
+        results()
+        shotCount = 0
+        average = 0
+        level = level + 1
+        if invSpeed < 0 invSpeed = invSpeed - 1
+        if invSpeed = 0 invSpeed = 0
+        if invSpeed > 0 invSpeed = invSpeed + 1
+        InitInvaders()
+    endif
+
+    '   =====================
+    '       DISPLAY STUFF
+    '   ---------------------
+    
+    set color white
+    
+    '   Draw Player
+    draw image player, playerX, 230
+    
+    '   Draw Bullet
+    if bulletAlive  draw image bullet, bulletX, bulletY
+    
+    '   Draw Invaders
+    cellTimer = cellTimer + 1
+    if cellTimer > 30
+        cellCount = cellCount + 1
+        if cellCount > 1    cellCount = 0
+        cellTimer = 0
+    endif
+    for i = 0 to MAX_INV - 1
+        if invAlive[i]
+            if i >= 0 and i < 20    INV_IMG = invader1
+            if i >= 20 and i < 30   INV_IMG = invader2
+            if i >= 30              INV_IMG = invader3
+            draw image INV_IMG, invX[i], invY[i], cellCount
+        endif
+    next
+    
+    '   Heads Up Display (HUD)
+    set color white
+    set caret 5, 5; wln "Score:"
+    set caret 135, 5; wln "Level:"
+    set caret 235, 5; wln "HiScore:"
+    set color cyan
+    set caret  45, 5; wln str(score)
+    set caret 172, 5; wln str(level)
+    set color yellow
+    set caret 282, 5; wln str(hiscore)
+    
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE, true)
+
+'   -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+function InitInvaders()
+    for i = 0 to MAX_INV - 1
+        invX[i] = 20 + (i % 10) * 30
+        invY[i] = 25 + int(i / 10) * 20
+        invAlive[i] = true
+    next
+endfunc
+
+function InitGame()
+    playerX = 166
+    bulletAlive = false
+    score = 0
+    level = 1
+    invSpeed = 1
+    InitInvaders()
+endfunc
+
+function results()
+    wait 500
+    set color black
+    cls
+    set color white
+    draw image bg, 0, 0
+    set color cyan
+    set caret 160, 50
+    center "SHOTS FIRED"
+    set color green
+    set caret 160, 70
+    center str(shotCount)
+    set color cyan
+    set caret 160, 90
+    center "ACCURACY"
+    set color yellow
+    set caret 160, 110
+    center str(average)
+    
+    redraw
+    
+    wait 4000
+endfunc
+
+function invaded()
+    wait 500
+    set color black
+    cls
+    set color white
+    draw image bg, 0, 0
+    set color cyan
+    set caret 160, 50
+    center "YOU HAVE BEEN INVADED!!"
+    set color green
+    set caret 160, 70
+    center "BETTER LUCK NEXT TIME!"
+    
+    redraw
+    
+    wait 4000
+endfunc

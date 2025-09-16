@@ -1,0 +1,8 @@
+' asc
+' ---
+
+' 'asc(s)' returns the ASCII code of the first character in the string s.
+pln "asc(" + chr(34) + "A" + chr(34) + ") = " + asc("A")
+pln "asc(" + chr(34) + "?" + chr(34) + ") = " + asc("?")
+
+system "pause"

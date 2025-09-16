@@ -1,0 +1,56 @@
+' exists, open file, openfile, file, frln, fread, freadc, free file
+' -----------------------------------------------------------------
+' The content of the file used in this example is:
+'   a line of text
+'   some words that we can read
+'   some characters
+
+
+' 'exists(filename)' returns true if a file with the name filename exists.
+if not exists("assets/a_file.txt")
+    pln "Could not find the example file!"
+    system "pause"
+    end
+endif
+
+' 'open file file_id, filename[, binary = false]' opens file filename for reading through identifier
+' id. 'openfile(filename[, binary = false])' does the same thing as the command 'open file' but
+' auto-generates and returns an identifier. The 'open file' command is for backward compability with
+' n6, the preferred way of opening a file for reading is through the 'openfile' function. If binary
+' is set to true, the file is opened in binary mode, in which case reading is handled a bit
+' differently.
+f = openfile("assets/a_file.txt")
+
+' 'file(file_id)' returns true if file file_id has been opened.
+if not file(f)
+    pln "Could not open the example file!"
+    system "pause"
+    end
+endif
+
+' 'frln(file_id)' reads characters from file file_id until a new line or end of file is reached and
+' returns the characters as a string. If no characters could be read an unset variable is returned.
+pln "First line in file = " + chr(34) + frln(f) + chr(34)
+
+' 'fread(file_id)' reads characters from file file_id until any form of whitespace or end of file is
+' reached and returns the characters as a string. If no characters could be read an unset variable
+' is returned.
+for i = 1 to 6  pln "Read word " + chr(34) + fread(f) + chr(34)
+
+' 'fread(file_id[, size[, signed = true]])' reads a number from file file_id. size (in bytes) can be
+' 8, 16 or 32 for reading an integer value, and in that case signed decides whether the value in the
+' file is signed or unsigned. If size is 64 and signed is true, a double (floating point) value is
+' read, and if size is 64 and signed is false a 32 bit floating point value is read.
+
+' 'freadc(file_id)' reads a character from file file_id and returns is as a number (use 'chr' to
+' convert it to a string). If no character could be read an unset variable is returned.
+c = freadc(f)
+while not c = unset
+    pln "Read character " + c + " (" + chr(34) + chr(c) + chr(34) + ")"
+    c = freadc(f)
+wend
+
+' 'free file file_id' closes file file_id.
+free file f
+
+system "pause"

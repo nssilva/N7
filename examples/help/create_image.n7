@@ -1,0 +1,63 @@
+' create image
+' ------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "create image", 640, 480
+set redraw off
+
+' 'create image image_id, w, h" creates an image with the integer id image_id and sets its width and
+' height to w and h. 'createimage(w, h)' does the same thing as the command 'create image' but auto-
+' generates and returns an unused identifier. The 'create image' command is for backward compability
+' with n6, the preferred way of creating an image is through the 'createimage' function.
+img = createimage(128, 128)
+
+' Set destination image for all drawing to the image we created.
+set image img
+
+' Draw some stuff.
+set color 255, 0, 255
+cls
+set color 0, 0, 0
+draw ellipse 64, 64, 63, 63, true
+set color 255, 0, 0
+draw ellipse 64, 64, 60, 60, true
+set color 255, 255, 255
+draw poly [64, 8, 111, 95, 17, 95], true
+
+' Make the background color transparent.
+set image colorkey img, 255, 0, 255
+
+' Set destination image back to primary, which is the window.
+set image primary
+
+' Let the image bounce around on the screen, starting at the center.
+x = 256
+y = 176
+speedX = 4
+speedY = 1.5
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Move the image.
+    x = x + speedX
+    y = y + speedY
+    ' Bounce on edges.
+    if speedX > 0 and x + width(img) > 640 or speedX < 0 and x < 0  speedX = -speedX
+    if speedY > 0 and y + height(img) > 480 or speedY < 0 and y < 0  speedY = -speedY
+
+    ' Clear screen and draw the image.
+    set color 64, 64, 96
+    cls
+    set color 255, 255, 255
+    draw image img, x, y
+
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

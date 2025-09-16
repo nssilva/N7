@@ -1,0 +1,16 @@
+' Use 'include' to load a library. Note that a library is never included more
+' than once, no matter how many times you include it (or if it's included by an
+' included file). So you can't use 'include' to "paste code".
+'   The compiler first looks for the library in the same folder as the program
+' you're compiling. If it can't find it there, it'll look in the n7 'lib'
+' folder.
+include "ex18_library.n7"
+
+' Print a constant defined in the included file.
+pln "The imported constant is: " + A_CONSTANT
+' Try the functions.
+pln "Foobar is: " + GetFoobar()
+SetFoobar(A_CONSTANT)
+pln "Foobar is now: " + GetFoobar()
+
+wait 5000

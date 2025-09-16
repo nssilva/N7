@@ -1,0 +1,581 @@
+' Farmer Man - The second game written in n7
+' ------------------------------------------
+' Pick up the crops and avoid the bad guys.
+
+#win32
+
+' Directions.
+constant NONE = 0, LEFT = 1, RIGHT = 2, UP = 3, DOWN = 4
+' Items.
+constant CORN = 4
+
+visible vTilesImage, vIconsImage
+visible vPlayerImage
+visible vBlueImage, vRedImage
+visible vFont
+visible vCornSound, vPlantSound, vHitSound, vDetectedSound
+
+' NES resolution.
+set window "Farmer Man", 256, 240, false, 3
+set redraw off
+
+LoadAssets()
+
+' Load map.
+map = LoadMap("assets/1.txt")
+
+map.img = vTilesImage
+map.offsetY = 12
+player = unset
+enemies = []
+
+' Add player and enemies.
+foreach flag in map.flags
+    select flag.value
+        case 1  player = Player(map, flag.x, flag.y)
+        case 2  enemies[sizeof(enemies)] = StupidEnemy(map, flag.x, flag.y)
+        case 3  enemies[sizeof(enemies)] = LessStupidEnemy(map, flag.x, flag.y)
+    endsel
+next
+foreach e in enemies  e.SetPlayer(player)
+player.pacManMode = true
+
+' Level loop.
+do
+    ' Update.
+    map.Update()
+    player.Update()
+    foreach enemy in enemies  enemy.Update()
+
+    ' Draw
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    map.Draw()
+
+    ' Sprites.
+    player.Draw()
+    for i = 0 to sizeof(enemies) - 1  enemies[i].Draw()
+
+    ' Interface.
+    set font 1
+    if player.stamina > 0
+        for i = 1 to player.stamina
+            draw image vIconsImage, 256 - i*16, 222, 1
+        next
+    endif
+    draw image vIconsImage, 0, 222, 2
+    set caret 16, 226
+    wln player.corn + "/" + map.totalCorn
+     
+    set caret 128, 2
+    center "Farmer Man"
+
+    redraw
+    fwait 60
+until map.cornCount = 0 or player.stamina <= 0
+
+' LoadAssets
+' ----------
+function LoadAssets()
+    vTilesImage = loadimage("assets/tiles.png", 4, 3)
+    vIconsImage = loadimage("assets/icons.png", 3, 1)
+    vPlayerImage = loadimage("assets/player.png", 4, 1)
+    set image colorkey vPlayerImage, 0, 0, 0
+    vBlueImage = loadimage("assets/blue.png", 4, 2)
+    set image colorkey vBlueImage, 0, 0, 0
+    vRedImage = loadimage("assets/red.png", 4, 2)
+    set image colorkey vRedImage, 0, 0, 0
+
+    vFont = loadfont("assets/font8b")
+
+    vCornSound = loadsound("assets/corn.wav")
+    vPlantSound = loadsound("assets/plant.wav")
+    vHitSound = loadsound("assets/hit.wav")
+    vDetectedSound = loadsound("assets/detected.wav")
+endfunc
+
+' Map
+' ---
+' Return a new map.
+function Map()
+    map = []
+
+    ' Obstacle
+    ' --------
+    map.Obstacle = function(x, y)
+        c = this.map[x%this.w][y%this.h]
+        return c > 0 and c < 4
+    endfunc
+
+    ' CanMove
+    ' -------
+    map.CanMove = function(x, y, dir)
+        select dir
+            case LEFT  return not this.Obstacle(x - 1, y)
+            case RIGHT  return not this.Obstacle(x + 1, y)
+            case UP  return not this.Obstacle(x, y - 1)
+            case DOWN  return not this.Obstacle(x, y + 1)
+            default  return true
+        endsel
+    endfunc
+
+    ' PickUp
+    ' ------
+    map.PickUp = function(x, y)
+        x = x%this.w
+        y = y%this.h
+        c = this.map[x][y]
+        if c >= 4 and c < 8
+            this.map[x][y] = 0
+            if c = CORN
+                ' Spawn plant?
+                if this.extraCorn > 0
+                    this.extraCorn = this.extraCorn - 1                
+                    spots = []
+                    for y = 0 to this.h - 1  for x = 0 to this.w - 1
+                        if this.map[x][y] = 0  spots[sizeof(spots)] = y*this.w + x
+                    next
+                    spot = spots[rnd(sizeof(spots))]
+                    y = int(spot/this.w)
+                    x = spot%this.w
+                    this.plants[sizeof(this.plants)] = [
+                        x: x, y: y,
+                        delay: (10 + rnd(5))*60
+                    ]
+                    ' First frame of growing corn.
+                    this.map[x][y] = 8
+                else
+                    this.cornCount = this.cornCount - 1
+                endif
+            endif
+        endif
+        return c
+    endfunc
+
+    ' DrawSprite
+    ' ----------
+    ' Draw sprite with possible wrapping over edges.
+    map.DrawSprite = function(s)
+        x = s.x + this.offsetX
+        y = s.y + this.offsetY
+        f = s.baseFrame + s.frame
+        draw image s.img, x, y, f
+        if s.x < 0  draw image s.img, x + this.pw, y, f
+        if s.x > this.pw - 16  draw image s.img, x - this.pw, y, f
+        if s.y < 0  draw image s.img, x, y + this.ph, f
+        if s.y > this.ph - 16  draw image s.img, x, y - this.ph, f
+    endfunc
+
+    ' Update
+    ' ------
+    map.Update = function()
+        ' Any plants?
+        if sizeof(this.plants) > 0
+            remove = []
+            foreach plant in this.plants
+                if plant.delay > 0
+                    plant.delay = plant.delay - 1
+                else
+                    this.map[plant.x][plant.y] = this.map[plant.x][plant.y] + 1
+                    if this.map[plant.x][plant.y] > 11
+                        play sound vPlantSound, 0.1
+                        remove[sizeof(remove)] = plant
+                        this.map[plant.x][plant.y] = 4
+                    else
+                        plant.delay = plant.delay + 120
+                    endif
+                endif             
+            next
+            foreach plant in remove  free val this.plants, plant
+        endif
+    endfunc    
+
+    ' Draw
+    ' ----
+    map.Draw = function()
+        for y = 0 to this.h - 1  for x = 0 to this.w - 1
+            if this.map[x][y]
+                draw image this.img, 
+                        this.offsetX + x*16,
+                        this.offsetY + y*16,
+                        this.map[x][y]
+            endif
+        next
+    endfunc
+
+    map.w = 0
+    map.h = 0
+    map.map = unset
+    map.img = unset
+    map.offsetX = 0
+    map.offsetY = 0
+
+    return map
+endfunc
+
+' LoadMap
+' -------
+' Load and return a new map.
+function LoadMap(filename)
+    f = openfile(filename)
+    if typeof(f)
+        map = Map()
+        map.w = fread(f)
+        map.h = fread(f)
+        map.pw = map.w*16
+        map.ph = map.h*16
+        map.map = fill(0, map.w, map.h)
+        map.flags = []
+        map.cornCount = 0
+        for y = 0 to map.h - 1  for x = 0 to map.w - 1
+            c = fread(f)
+            if c < 0
+                map.flags[sizeof(map.flags)] = [x: x, y: y, value: -c]
+            else
+                if c = CORN  map.cornCount = map.cornCount + 1
+                map.map[x][y] = c
+            endif
+        next
+        map.extraCorn = map.cornCount
+        map.totalCorn = map.cornCount + map.extraCorn
+        map.plants = []
+        free file f
+        return map
+    else
+        return unset
+    endif
+endfunc
+
+' Sprite
+' ------
+' Return a sprite.
+function Sprite(map, x, y, img)
+    s = []
+
+    ' StartMove
+    ' ---------
+    s.StartMove = function(dir)
+        if this.moving or dir = NONE  return false
+        ix = int(this.x/16)
+        iy = int(this.y/16)
+        if this.map.CanMove(ix, iy, dir)
+            this.dir = dir
+            select dir
+                case LEFT
+                    this.dx = -1
+                    this.dy = 0
+                    this.dstX = int(this.x) - 16
+                    this.dstY = int(this.y)
+                case RIGHT
+                    this.dx = 1
+                    this.dy = 0
+                    this.dstX = int(this.x + 16)
+                    this.dstY = int(this.y)
+                case UP
+                    this.dx = 0
+                    this.dy = -1
+                    this.dstX = int(this.x)
+                    this.dstY = int(this.y - 16)
+                case DOWN
+                    this.dx = 0
+                    this.dy = 1
+                    this.dstX = int(this.x)
+                    this.dstY = int(this.y + 16)
+            endsel
+            this.moving = true
+        endif
+        return this.moving
+    endfunc
+
+    ' Move
+    ' ----
+    s.Move = function()
+        if this.moving
+            this.x = this.x + this.dx*this.spd
+            this.y = this.y + this.dy*this.spd
+            if int(this.x) = this.dstX and int(this.y) = this.dstY
+                this.moving = false
+                this.x = (int(this.x/16)%this.map.w)*16
+                this.y = (int(this.y/16)%this.map.h)*16
+            endif
+        endif
+        return this.moving
+    endfunc
+
+    ' Collides
+    ' --------
+    s.Collides = function(s)
+        return this.x + 16 >= s.x and this.x < s.x + 16 and this.y + 16 >= s.y and this.y < s.y + 16
+    endfunc
+
+    ' Update
+    ' ------
+    s.Update = function()
+    endfunc
+
+    ' Draw
+    ' ----
+    s.Draw = function()
+        set color 255, 255, 255
+        this.map.DrawSprite(this)
+    endfunc    
+
+    s.map = map
+    s.dir = NONE
+    s.moving = false
+    s.spd = 1
+    s.x = x*16
+    s.y = y*16
+    s.dx = 0
+    s.dy = 0
+    s.img = img
+    s.baseFrame = 0
+    s.frame = 0
+
+    return s
+endfunc
+
+' Player
+' ------
+' Return a new player.
+function Player(map, x, y)
+    p = Sprite(map, x, y, vPlayerImage)
+
+    ' Hit
+    ' ---
+    p.Hit = function()
+        if this.stamina > 0 and not this.hitTimer
+            play sound vHitSound
+            this.hitTimer = 3*60
+            this.stamina = this.stamina - 1
+        endif
+    endfunc
+
+    ' Update
+    ' ------
+    p.Update = function()
+        if this.stamina <= 0  return
+
+        this.hitTimer = max(this.hitTimer - 1, 0)
+
+        item = this.map.PickUp(int((this.x + 8)/16), int((this.y + 8)/16))
+        if item = CORN
+            play sound vCornSound, 0.25
+            this.corn = this.corn + 1
+        endif
+
+        this.Move()
+        if not this.moving
+            if keydown(KEY_LEFT)  this.StartMove(LEFT)
+            if keydown(KEY_RIGHT)  this.StartMove(RIGHT)
+            if keydown(KEY_UP)  this.StartMove(UP)
+            if keydown(KEY_DOWN)  this.StartMove(DOWN)
+            if this.pacManMode and not this.moving  this.StartMove(this.dir)
+        endif
+        if this.moving  this.frame = (this.frame + 0.15)%4
+        else  this.frame = 0
+    endfunc    
+
+    ' Draw
+    ' ----
+    p.Draw = function()
+        if this.stamina <= 0  return
+        if this.hitTimer%4 < 2  this.map.DrawSprite(this)
+    endfunc
+
+    p.pacManMode = false
+    p.stamina = 3
+    p.hitTimer = 0
+    p.corn = 0
+
+    return p
+endfunc
+
+' Enemy
+' -----
+' Return a new enemy.
+function Enemy(map, x, y, img)
+    e = Sprite(map, x, y, img)
+
+    ' SetPlayer
+    ' ---------
+    e.SetPlayer = function(player)
+        this.player = player
+    endfunc
+
+    ' PossibleDirections
+    ' ------------------
+    e.PossibleDirections = function()
+        dirs = []
+        x = int(this.x/16)
+        y = int(this.y/16)
+        if not this.map.Obstacle(x - 1, y)  dirs[sizeof(dirs)] = LEFT
+        if not this.map.Obstacle(x + 1, y)  dirs[sizeof(dirs)] = RIGHT
+        if not this.map.Obstacle(x, y - 1)  dirs[sizeof(dirs)] = UP
+        if not this.map.Obstacle(x, y + 1)  dirs[sizeof(dirs)] = DOWN
+        return dirs
+    endfunc
+
+    ' CanSeePlayer
+    ' ------------
+    e.CanSeePlayer = function(dirs)
+        if this.player
+            dx = this.player.x - this.x
+            dy = this.player.y - this.y
+            ix = int(this.x/16)
+            iy = int(this.y/16)
+            px = int(this.player.x/16)
+            py = int(this.player.y/16)
+            foreach dir in dirs
+                select dir
+                    case LEFT
+                        if dx < 0 and |dy| < 16
+                            for x = ix to px  if this.map.Obstacle(x, iy)  break
+                            if x < px  return LEFT
+                        endif
+                    case RIGHT
+                        if dx > 0 and |dy| < 16
+                            for x = ix to px  if this.map.Obstacle(x, iy)  break
+                            if x > px  return RIGHT
+                        endif
+                    case UP
+                        if dy < 0 and |dx| < 16
+                            for y = iy to py  if this.map.Obstacle(ix, y)  break
+                            if y < py  return UP
+                        endif
+                    case DOWN
+                        if dy > 0 and |dx| < 16
+                            for y = iy to py  if this.map.Obstacle(ix, y)  break
+                            if y > py  return DOWN
+                        endif
+                endsel
+            next
+        endif
+        return NONE
+    endfunc
+
+    ' AtWall
+    ' ------
+    e.AtWall = function(dirs)
+        for i = 0 to sizeof(dirs) - 1
+            if dirs[i] = this.dir  return false
+        next
+        return true
+    endfunc
+
+    ' AtCrossing
+    ' ----------
+    e.AtCrossing = function(dirs)
+        if this.dir = LEFT or this.dir = RIGHT
+            for i = 0 to sizeof(dirs) - 1
+                if dirs[i] = UP or dirs[i] = DOWN  return true
+            next
+        else
+            for i = 0 to sizeof(dirs) - 1
+                if dirs[i] = LEFT or dirs[i] = RIGHT  return true
+            next
+        endif
+        return false
+    endfunc
+
+    ' Update
+    ' ------
+    e.Update = function()
+        if this.Collides(this.player)  this.player.Hit()
+        if this.pause > 0
+            this.pause = this.pause - 1
+            this.frame = 0
+        else
+            if not this.Move() this.AtNewPosition(this.PossibleDirections())
+            if this.sawPlayer  this.baseFrame = 4
+            else  this.baseFrame = 0
+            this.frame = (this.frame + 0.2*this.spd)%4
+        endif
+    endfunc
+
+    e.player = unset
+    e.sawPlayer = false 
+    e.pause = 60 + rnd(3)*60
+    dirs = e.PossibleDirections()
+    e.StartMove(dirs[rnd(sizeof(dirs))])
+    
+    return e
+endfunc
+
+' StupidEnemy
+' -----------
+' Return a stupid enemy.
+function StupidEnemy(map, x, y)
+    e = Enemy(map, x, y, vRedImage)
+
+    e.AtNewPosition = function(dirs)
+        if this.AtWall(dirs)
+            dir = this.CanSeePlayer(dirs)
+            if dir
+                if not this.sawPlayer  play sound vDetectedSound, 0.5
+                this.spd = 1.0
+                this.sawPlayer = true
+            else
+                this.spd = 0.4
+                if this.sawPlayer  this.pause = 60
+                dir = dirs[rnd(sizeof(dirs))]
+                this.sawPlayer = false
+            endif
+            this.StartMove(dir)
+        else
+            if not this.sawPlayer and this.CanSeePlayer(this.dir)
+                play sound vDetectedSound, 0.5
+                this.spd = 1.0
+                this.sawPlayer = true
+            endif
+            this.StartMove(this.dir)
+        endif
+    endfunc
+
+    e.spd = 0.4
+
+    return e
+endfunc
+
+' LessStupidEnemy
+' ---------------
+' Return a less stupid enemy.
+function LessStupidEnemy(map, x, y)
+    e = Enemy(map, x, y, vBlueImage)
+
+    e.AtNewPosition = function(dirs)
+        wall = this.AtWall(dirs)
+        crossing = this.AtCrossing(dirs)
+        if wall or crossing
+            dir = this.CanSeePlayer(dirs)
+            if dir
+                if not this.sawPlayer play sound vDetectedSound, 0.5
+                this.spd = 0.8
+                this.sawPlayer = true
+            else
+                if this.sawPlayer and not wall
+                    dir = this.dir    
+                else
+                    this.spd = 0.5
+                    this.pause = 30
+                    dir = dirs[rnd(sizeof(dirs))]
+                    this.sawPlayer = false
+                endif
+            endif
+            this.StartMove(dir)
+        else
+            if not this.sawPlayer and this.CanSeePlayer(this.dir)
+                play sound vDetectedSound, 0.5
+                this.spd = 0.8
+                this.sawPlayer = true
+            endif
+            this.StartMove(this.dir)
+        endif
+    endfunc    
+
+    e.sawPlayer = false
+    e.spd = 0.5
+    
+    return e
+endfunc

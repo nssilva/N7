@@ -1,0 +1,127 @@
+' Platformer - step 2
+' -------------------
+' Jump around with a sprite.
+'
+' Graphics by ansimuz: https://opengameart.org/content/platform-pixel-art-assets
+
+
+#win32
+
+include "tilemap.n7"
+
+' Create a window with NES screen resolution and 2x scaling, enable off automatic redraw.
+set window "Platformer", 256, 240, false, 2
+set redraw off
+
+' Load an NES:ish font that I created for a game once.
+set font loadfont("assets/font8b")
+
+' Load player sprite image. It has 7x2 cels, where the first row contains images where the figure
+' is turned right and the bottom row images where it's turned left. You should have a look at this
+' image in an image editor/viewer to better understand how the animations works.
+playerImage = loadimage("assets/player.png", 7, 2)
+
+' Load a map created with the tilemap.
+if not TM_LoadMap("assets/map1.txt")  end
+
+' Set up a "sprite" for the player.
+player = [
+    ' Image.
+    img: playerImage,
+    ' Position.
+    x: 0, y: 0,
+    ' Size.
+    w: width(playerImage), h: height(playerImage),
+    ' Horizontal and vertical speed.
+    dx: 0, dy: 0,
+    ' Base cel, will be 0 when the sprite is turned right and 7 when it's turned left.
+    baseCel: 0,
+    ' Cel, added to baseCel when drawing. If you look at the player image, you can see that cel
+    ' 4 (and 7 + 4 = 11) is where the figure stands still.
+    cel: 4]
+
+' Look for the loader flag "player", which contains the starting position of the player.
+foreach lf in TM_GetLoaderFlags()
+    if lf.flag = "player"
+        ' Multiply the load flag's x and y values with tile width and height.
+        player.x = lf.x*TM_TileWidth()
+        player.y = lf.y*TM_TileHeight()
+        break
+    endif
+next
+
+' Set up the rendering view for the library. Usually this is what you want, the top left corner of
+' the window (0, 0) and the same width and height.
+TM_SetView(0, 0, width(primary), height(primary))
+
+' Frame timer, controls when animations tick.
+frameTimer = 0
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' When frameTimer = 0, animations are updated.
+    frameTimer = (frameTimer + 1)%6
+    
+    ' Move left?
+    if keydown(KEY_LEFT)
+        player.dx = -1
+        player.baseCel = 7
+    ' Move right?
+    elseif keydown(KEY_RIGHT)
+        player.dx = 1
+        player.baseCel = 0
+    ' No horizontal movement.
+    else
+        player.dx = 0
+        player.cel = 4
+    endif
+
+    ' Only animate if player is moving left or right.
+    if player.dx <> 0 and frameTimer = 0  player.cel = (player.cel + 1)%4
+
+    ' TM_MoveSprite moves a sprite with collision detection. The function expects a table that
+    ' includes the keys 'x' and 'y' for position and 'w' and 'h' for size.
+    TM_MoveSprite(player, player.dx, player.dy)
+
+    ' We could also have used the TM_Move function, that expects an image and a position instead of
+    ' a "sprite" and returns the new position as a table with the keys 'x' and 'y'.
+    'newPosition = TM_Move(player.img, player.x, player.y, player.dx, player.dy)
+    'player.x = newPosition.x
+    'player.y = newPosition.y
+
+    ' We can use TM_CollisionLeft/Right/Up/Down to check if a collision occurred in any direction
+    ' during the last call to TM_MoveSprite/TM_Move.
+    '    If there was a collision down, the sprite is on the ground.
+    if TM_CollisionDown()
+        ' Jump?
+        if keydown(KEY_UP, true)
+            player.dy = -4
+        else
+            player.dy = 0
+        endif
+    ' If there was no collision down, apply some "gravity".
+    else
+        player.dy = min(player.dy + 0.15, 4)
+    endif
+
+    ' If there was a collision up, the sprite has bumped its head against something. If you remove
+    ' this line and jump under a platform, the sprite will "stick" to the platform until "gravity"
+    ' has made player.dy positive.
+    if TM_CollisionUp() player.dy = 0
+
+    ' Clear screen with a background color used by the tiles and let TM render the map.
+    set color 2, 23, 33
+    cls
+    TM_Render()
+
+    ' Draw player sprite.
+    draw image player.img, player.x, player.y, player.baseCel + player.cel
+
+    ' Write instructions.
+    set caret width(primary)/2, height(primary) - fheight()*3
+    center "Move with the arrow keys"
+    center "Press Esc to quit ..."
+
+    redraw
+    fwait 60
+wend

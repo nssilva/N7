@@ -1,0 +1,41 @@
+' string_art
+' ----------
+' Posted by johnno1956 on the naalaa forum.
+'
+' "Here is little something from bplus of the QB64pe community. String Art. One colour. Animated."
+
+set window "Animated String Art by Bplus", 600, 600
+set redraw off
+set color 0, 0, 0
+cls
+
+visible r = height(primary) / 2.1
+visible cx = width(primary) / 2
+visible cy = height(primary) / 2
+visible n = 250
+visible s = 360 / n
+
+visible red = 175
+visible green = 255
+visible blue = 155
+
+visible pi = 3.141592654
+
+for t = 1 to 50 step 0.00125
+    set color 0, 0, 0
+    cls
+    set color red, green, blue
+    draw ellipse cx - 1, cy, r, r
+    for i = 1 to n
+        a1 = s * i
+        a2 = s * i * t
+        set color red, green, blue
+        draw line cx+sin(d2r(a1))*r, cy+cos(d2r(a1))*r, cx+sin(d2r(a2))*r, cy+cos(d2r(a2))*r
+    next
+    wait 0
+    redraw       
+next
+
+function d2r(angle)
+    return angle * (pi / 180)
+endfunc

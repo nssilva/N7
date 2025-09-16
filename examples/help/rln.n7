@@ -1,0 +1,26 @@
+' rln
+' ---
+
+' 'rln()' waits for and returns keyboard input from the user.
+write "Enter your name: "
+name = rln()
+wln "So, your name is " + name + ", awesome!"
+
+system "pause"
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "save font, load font", 640, 480
+
+' 'rln(max_chars)' waits for and returns keyboard input with a max length of max_chars characters,
+' where 0 means no limit. This version of 'rln' only works when a window has been created.
+write "Enter your last name: "
+lastName = rln(10)
+
+' 'rln(max_chars, type)' waits for and returns keyboard input with a max length of max_chars
+' characters, where 0 means no limit. You can set type to TYPE_NUMBER to allow only numeric input.
+' The only other valid type value is TYPE_STRING, which is default.
+write "Enter your age: "
+age = rln(3, TYPE_NUMBER)
+
+wln "So your full name is " + name + " " + lastName + ", and you're " + age + " years old."
+wait 4000

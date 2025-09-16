@@ -1,0 +1,32 @@
+' typeof
+' ------
+
+' A function that returns a string representation of its argument's type.
+function TypeString(v)
+    ' 'typeof' returns a constant representing the type of a variable/or expression. The constants
+    ' are TYPE_UNSET, TYPE_NUMBER, TYPE_STRING, TYPE_TABLE and TYPE_FUNCTION.
+    select typeof(v)
+        case TYPE_NUMBER  return "Number"
+        case TYPE_STRING  return "String"
+        case TYPE_TABLE  return "Table"
+        case TYPE_FUNCTION  return "Function"
+        default  return "Unset"
+    endsel
+endfunc
+
+' Create five variables of different types.
+n = 3
+s = "foo"
+t = [1, 2, 3]
+f = TypeString
+foo = unset
+
+' Print their types.
+pln "n: " + TypeString(n)
+pln "s: " + TypeString(s)
+pln "t: " + TypeString(t)
+pln "f: " + TypeString(f)
+pln "foo: " + TypeString(foo)
+pln
+
+system "pause"

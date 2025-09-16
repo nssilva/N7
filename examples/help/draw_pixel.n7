@@ -1,0 +1,23 @@
+' draw pixel
+' ----------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw pixel", 640, 480
+
+' Print some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Set a random color.
+    set color rnd(256), rnd(256), rnd(256)
+    
+    ' 'draw pixel x, y' draws a pixel at position x, y.
+    draw pixel rnd(640), rnd(480)
+    
+    fwait 60
+wend

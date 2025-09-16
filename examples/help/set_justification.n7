@@ -1,0 +1,43 @@
+' set justification
+' -----------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set justification", 640, 480
+
+' Draw a line and set the caret at the horizontal center of the window.
+set color 64, 64, 64
+draw line 320, 0, 320, 480
+set color 255, 255, 255
+set caret 320, 192
+
+' 'set justification left' makes text left justified, which is the default justification.
+set justification left
+wln "set justification left"
+
+' 'set justification right' makes text right justified.
+set justification right
+wln "set justification right"
+
+' 'set justification center' makes text left centered.
+set justification center
+wln "set justification center"
+
+' 'set justification v' makes text left justified if v < 0, right if v > 0 or centered if v = 0.
+set justification -1
+wln "set justification -1"
+set justification 1
+wln "set justification 1"
+set justification 0
+wln "set justification 0"
+
+' Write some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+
+

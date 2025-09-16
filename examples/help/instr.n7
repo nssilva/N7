@@ -1,0 +1,16 @@
+' instr
+' -----
+
+' 'instr(s, sub)' returns the character index (starting at 0) in string s of the first occurrence of
+' sub. If sub doesn't exist in s, -1 is returned.
+s = "This is discrimination!"
+pln "s = " + s
+pln "instr(s, " + chr(34) + "is" + chr(34) + ") = " + instr(s, "is")
+pln "instr(s, " + chr(34) + "hello" + chr(34) + ") = " + instr(s, "hello")
+
+' 'instr(s, sub, n)' works the same way as 'instr(s, sub)' but starts searching at character index
+' n.
+pln "instr(s, " + chr(34) + "is" + chr(34) + ", 4) = " +
+        instr(s, "is", 4)
+
+system "pause"

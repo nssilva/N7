@@ -1,0 +1,141 @@
+' game_example_2.n7
+' -----------------
+' Create a new path after a set amount of enemies have spawned from the current one. 
+
+include "polyline.n7"
+
+#win32
+
+set window "PolyLine Game Example", 320, 240, false, 2
+set redraw off
+
+randomize time()
+
+enemies = []            ' List of enemies.
+enemyDelay = 30         ' Delay between enemies.
+enemyTimer = enemyDelay ' Time until next enemy should spawn.
+' Create a random path.
+path = RandomPath()
+' Number of enemies to use this path.
+pathEnemies = 4 + rnd(4)
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Time to spawn a new enemy?
+    enemyTimer = enemyTimer - 1
+    if enemyTimer <= 0
+        enemies[sizeof(enemies)] = Enemy(path)
+        ' Time for a new path?
+        pathEnemies = pathEnemies - 1
+        if pathEnemies = 0
+            ' Create a new path and wait some extra time.
+            path = RandomPath()
+            pathEnemies = 4 + rnd(4)
+            ' Calculate an okay delay until the new path should start spawning enemies.
+            enemyTimer = 0
+            foreach e in enemies  enemyTimer = max(enemyTimer, e.TimeLeft())
+            enemyTimer = enemyTimer - rnd(4)*60
+        else
+            enemyTimer = enemyTimer + enemyDelay
+        endif
+    endif
+    
+    ' Update enemies.
+    i = 0; while i < sizeof(enemies)
+        ' Alive?
+        if enemies[i].Update()  i = i + 1
+        ' Remove.
+        else  free key enemies, i
+    wend
+
+    ' Draw.    
+    set color 0, 0, 0
+    cls
+    foreach e in enemies  e.Draw()
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "enemies: " + sizeof(enemies)
+            
+    redraw
+    fwait 60
+wend
+
+' RandomPath
+' ----------
+' Return a random path.
+function RandomPath()
+    points = []
+    ' Always start at top.
+    points[0] = [rnd(width(primary)), -8]
+    ' Two random completely random points.
+    for i = 1 to 2  points[i] = [rnd(width(primary)), rnd(height(primary))]
+    ' Exit at any of the screen edges but top.
+    select rnd(3)
+        case 0  points[3] = [rnd(width(primary)), height(primary) + 8]  ' Bottom.
+        case 1  points[3] = [-8, rnd(height(primary))]                  ' Left.
+        case 2  points[3] = [width(primary) + 8, rnd(height(primary))]  ' Right.
+    endsel
+    ' Create and return path.
+    return PolyLine(points, false)
+endfunc
+
+' Enemy
+' -----
+' Return new enemy that follows the specified path.
+function Enemy(path)
+    e = []
+
+    ' Path, distance traveled and speed.
+    e.path = path    
+    e.dist = 0
+    e.spd = 2
+    ' Size.
+    e.w = 16
+    e.h = 16
+
+    ' UpdatePos
+    ' ---------
+    ' Update position based on currently traveled distance along path.
+    e.UpdatePos = function()
+        ' 'GetPoint' returns 'unset' if distance is out of path range.
+        pos = this.path.GetPoint(this.dist, true)
+        if pos
+            ' Set position and return true.
+            this.x = pos[0] - this.w/2
+            this.y = pos[1] - this.h/2
+            return true
+        else
+            return false
+        endif
+    endfunc
+
+    ' Update
+    ' ------
+    ' Return true while alive.        
+    e.Update = function()
+        ' Increase travel distance.
+        this.dist = this.dist + this.spd
+        ' Return false if end of path has been reached.
+        if not this.UpdatePos()  return false    
+        return true
+    endfunc
+
+    ' Draw
+    ' ----
+    e.Draw = function()
+        set color 0, 200, 0
+        draw rect this.x, this.y, this.w, this.h, true
+    endfunc
+
+    ' TimeLeft
+    ' --------
+    ' Return time left for this enemy.
+    e.TimeLeft = function()
+        return (this.path.GetLength() - this.dist)/this.spd
+    endfunc
+
+    ' Set initial position.
+    e.UpdatePos()
+            
+    return e
+endfunc

@@ -1,0 +1,68 @@
+' Zones can be used for buttons and probably nothing else.
+
+#win32
+
+' Create a window and turn off automatic redraw.
+set window "Zones", 640, 480
+set redraw off
+
+' This image has three cells representing the different states of a zone (explained later).
+buttonImage = loadimage("assets/pickle_button.png", 1, 3)
+
+' Create a zone in the middle of the window with:
+'   createzone(zone_x, zone_y, zone_width, zone_height)
+' The function returns an identifier for the created zone, a positive integer, that we can use to
+' get information about the zone. The command:
+'   create zone zone_id, zone_x, zone_y, zone_width, zone_height
+' creates or modifies the zone with the id zone_id.
+btn = createzone(
+        (width(primary) - width(buttonImage))/2,
+        (height(primary) - height(buttonImage))/2, 
+        width(buttonImage), height(buttonImage))
+
+' A message display timer.
+msgEndTime = 0
+
+do
+    ' zone() returns the id of the last zone that had a valid click. Each click is returned ONE
+    ' time. 
+    if zone() = btn
+        ' Display a message for one second.
+        msgEndTime = clock() + 1000
+    endif
+
+    ' Clear window and output some information.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret 8, 8
+
+    ' The id we got from createzone.
+    wln "btn = " + btn
+
+    ' zone(x, y) returns the zone at position (x, y) or an unset variable if no zone was found.
+    wln "zone(mousex(), mousey()) = " + zone(mousex(), mousey())
+    ' zone(zone_id) returns the state of a zone:
+    '   0: mouse cursor is not over the zone
+    '   1: mouse cursor is over the zone but the left mouse button is not pressed
+    '   2: mouse cursor is over the zone and the left mouse button is pressed
+    ' Note that if the user has started clicking (mouse button down) on a zone, no other zone will
+    ' get status 1 until the mouse button has been released. That's just how buttons usually works.
+    wln "zone(btn) = " + zone(btn)
+
+    ' Display click message?
+    if clock() < msgEndTime  wln "You clicked the pickle!"
+
+    ' The functions zonex(zone_id), zoney(zone_id), zonew(zone_id) and zoneh(zone_id) are used to 
+    ' get the position, width and height of a zone.
+    draw image buttonImage, zonex(btn), zoney(btn), zone(btn)
+
+    redraw
+    wait 16
+until keydown(KEY_ESCAPE)
+
+' You can use the command:
+'   free zone zone_id
+' to delete a zone. All zones are deleted when the program terminates, but let's delete our pickle
+' personally just to be mean.
+free zone btn

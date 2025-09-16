@@ -1,0 +1,10 @@
+' deg
+' ---
+
+' 'deg(a)' returns a, an angle expressed in radians, converted to degrees.
+pln "deg(PI/2) = " + deg(PI/2)
+pln "deg(PI) = " + deg(PI)
+pln "deg(2*PI) = " + deg(2*PI)
+
+system "pause"
+

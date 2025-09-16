@@ -1,0 +1,44 @@
+' Arrays have been replaced with tables in n7. A table is a set of key and value
+' pairs, where the keys can be integers or strings. A table where the keys is a
+' sequence of integers starting at 0 works pretty much like an array.
+
+' Create an empty array and put some values in it and print them.
+a = []
+for i = 0 to 2  a[i] = i*10
+pln "Array a:"
+for i = 0 to 2  pln "  " + a[i]
+
+' You can initialize an array with values.
+b = [300, 200, 100]
+pln "Array b:"
+for i = 0 to 2  pln "  " + b[i]
+
+' Same goes for multidimensional arrays, here with mixed value types. Note that
+' the sub-arrays needn't really be of the same size.
+c = [[1, 2], ["foo", "bar"], ["kek", 3]]
+pln "c[1][0]: " + c[1][0]
+pln "c[2][1]: " + c[2][1]
+
+' If you need to construct a single- or multidimensional array of a certain
+' size, you can use the function 'dim' or 'fill'. 'dim' creates an array with
+' unset variables. Here we create a two dimensional array of the size 4x2
+d = dim(4, 2) 
+pln "d[3][1]: " + d[3][1]
+' 'fill' does the same thing as dim but fills the array with (deep) copies of
+' its first parameter.
+e = fill("poop", 4, 2)
+pln "e[3][1]: " + e[3][1]
+
+' In my code you'll often see the following way of letting an array grow. I
+' use sizeof to set the correct index, starting at 0.
+f = []
+for i = 0 to 3  f[sizeof(f)] = (i + 1)*1000
+pln "Array f:"
+for i = 0 to sizeof(f) - 1  pln "  " + f[i]
+
+pln "Press enter to exit"
+tmp = rln()
+
+
+
+

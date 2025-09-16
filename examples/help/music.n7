@@ -1,0 +1,58 @@
+' load music, music, play music, stop music, set music volume
+' -----------------------------------------------------------
+
+' 'load music music_id, filename' loads music music_id from file filename. 'loadmusic(filename)'
+' does the same thing as the command 'load music' but auto-generates and returns an unused
+' identifier. The 'load music' command is for backward compability with n6, the preferred way of
+' loading music is through the 'loadmusic' function. Only wav files in PCM format are supported.
+tune = loadmusic("assets/gem_popper.mp3")
+
+' 'music(music_id)' returns true if the music music_id exists (has been loaded).
+if not music(tune)
+    pln "Could not load music"
+    pln "Press Esc to quit ..."
+    system "pause"
+    end
+endif
+
+' Create a window of the size 640x480.
+set window "music", 640, 480
+
+' Write unstructions.
+set color 255, 255, 255
+set caret 320, 216
+center "Press 1 to play music"
+center "Press 2 to stop music"
+center "Press 3 to increase music volume"
+center "Press 4 to decrease music volume"
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Music volume.
+vol = 1
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' 'play music music_id, looped' plays music music_id. If looped is not omitted and set to true,
+    ' the music will loop.
+    if keydown(KEY_1, true)  play music tune, true
+    ' 'stop music music_id' stops playing music music_id.
+    if keydown(KEY_2, true)  stop music tune
+    if keydown(KEY_3, true)
+        vol = min(vol + 0.1, 1)
+        ' 'set music volume music_id, v' sets the volume of music music_id to v, [0..1]. The default
+        ' volume is 1.
+        set music volume tune, vol
+    endif
+    if keydown(KEY_4, true)
+        vol = max(vol - 0.1, 0)
+        set music volume tune, vol
+    endif
+        
+    ' Cap the fps at 60.
+    fwait 60
+wend
+
+' 'free music music_id' removes the music music_id from memory. All music is automatically freed
+' when the program ends, so here it isn't really needed.
+free music tune

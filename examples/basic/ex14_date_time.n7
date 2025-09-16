@@ -1,0 +1,34 @@
+' The n6 'time' function has been replaced by 'clock', which returns the time in
+' ms since program start.
+pln "clock = " + clock()
+pln
+
+' 'time' in n7 returns the number of seconds since epoch (1970) for a date and
+' time:
+'   time(year, month, day, hour, minute, second)
+' Any number of arguments from 0 to 6 are allowed. For 0 arguments, the function
+' uses the current date.
+t = time(2017, 2, 1, 13, 0, 0)
+pln "time = " + t
+
+' You can use the 'datetime' function to convert a time value to a table with
+' the fields: year, month, day, hour, minute, second, wday and yday. As with
+' 'time', there's a no arguments version that uses the current date.
+dt = datetime(t)
+s = dt.day + "/" + dt.month + " " + dt.year + " was a "
+select dt.wday
+    case 1 s = s + "monday"
+    case 2 s = s + "tuesday"
+    case 3 s = s + "wednesday"
+    case 4 s = s + "thursday"
+    case 5 s = s + "friday"
+    case 6 s = s + "saturday"
+    case 7 s = s + "sunday"
+endsel
+pln s
+dt = datetime()
+pln "Today is " + dt.day + "/" + dt.month + " " + dt.year
+
+pln
+pln "Press enter to exit"
+tmp = rln()

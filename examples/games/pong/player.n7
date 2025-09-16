@@ -1,0 +1,34 @@
+'player
+
+function Player()
+    player = []
+    player.Width = 20
+    player.Height = 100
+    player.x = 32 - player.Width/2
+    player.y = 240 - player.Height/2
+    player.speed = 5
+    player.live = true
+   
+    player.update = function()
+        if this.live = true
+            this.move()
+        endif
+    endfunc
+   
+    player.Draw = function()
+        if this.live = true
+            set color 255,0,204
+            draw rect this.x,this.y,this.Width,this.Height,true
+        endif
+    endfunc
+   
+    player.move = function()
+        if keydown(KEY_UP,false) and this.y > 0
+            this.y = this.y - this.speed
+        elseif keydown(KEY_DOWN,false) and this.y < 480-this.Height
+            this.y = this.y + this.speed
+        endif
+    endfunc
+   
+    return player
+endfunc

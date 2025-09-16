@@ -1,0 +1,1671 @@
+' NED - NaaLaa Editor
+' -------------------
+' By Marcus 2022 - 2023.
+
+#win32
+#mem64000000
+
+include "ngui.n7"
+include "file.n7"
+include "qsort.n7"
+
+' Version.
+constant vVersion = "25.08.30"
+
+' Path and files.
+visible vPath
+visible vDataPath
+visible vCompiler = "n7.exe"
+visible vDLLs = ["libwinpthread-1.dll", "libportaudio.dll"]
+
+' Themes.
+visible vThemes
+
+' Widgets.
+visible vEditorTabs, vEditor, vEditorInfoLabel, vOutput, vOutputLabel
+visible vFindBar, vReplaceBar, vGotoBar
+visible vFindTextEntry
+visible vReplaceTextEntry, vReplaceWithTextEntry
+visible vGotoTextEntry
+
+visible vEdBoxCloseRequest
+
+' Settings.
+'visible vDarkMode = false
+visible vTheme = "Default light"
+visible vFindCaseSensitive = false
+visible vReplaceCaseSensitive = false
+visible vEditorFontName = "Courier New"
+visible vEdFontSize = 16
+visible vHiddenOutput = false
+visible vHiddenFunctionList = false
+
+' Command help.
+visible vCommandSyntax = unset, vCommandFile = unset
+
+' Only allow one running instance of NED.
+if window("NED")
+    ' Tell existing window to open the file or just bring the window to front.
+    if sizeof(args) > 1  SendWindowMessage("NED", args[1])
+    else  SendWindowMessage("NED", "show")
+    ' Terminate this instance.
+    end
+endif
+
+' Save path of executable. If you associate n7 files with ned, the current
+' working directory may be wrong when ned is launched.
+vPath = GetPath(args[0])
+vDataPath = GetPathCombined(GetAppDataDirectory(), "naalaa7")
+CreateDirectory(vDataPath)
+
+' Create themes list.
+vThemes = []
+AddToList(vThemes, [name: "Default light", filename: unset])
+AddToList(vThemes, [name: "Default dark", filename: unset])
+files = GetFiles(GetPathCombined(GetPathCombined(vPath, "assets"), "themes"))
+if files  for i = 0 to sizeof(files) - 1
+    AddToList(vThemes, [name: GetFilename(files[i], false), filename: files[i]])
+next
+
+' Load command help.
+LoadCommandHelp(GetPathCombined(GetPathCombined(vPath, "assets"), "command_help.txt"))
+
+' Create a resizable window.
+w = screenw()*2/3
+h = screenh()*2/3
+set window "NED", w, h, false, 0, min(w, 640), min(h, 480)
+set redraw off
+
+' Load settings.
+settings = LoadSettings()
+documents = settings.docs
+for i = 0 to sizeof(vThemes) - 1  if vThemes[i].name = vTheme
+    vTheme = vThemes[i]
+    break
+endif
+if i >= sizeof(vThemes)  vTheme = vThemes[0]
+if vTheme.filename  LoadTheme(vTheme.filename)
+else if vTheme.name = "Default light"  SetDarkMode(false)
+else  SetDarkMode(true)
+SetTextEditorFont(vEditorFontName, vEdFontSize)
+
+' Create gui.
+root = CreateGui()
+
+' Add commands (CTRL+<key>) that we want to process.
+AddCommand(KEY_N, NewDocument)
+AddCommand(KEY_O, LoadDocument)
+AddCommand(KEY_S, SaveOrSaveAll)
+AddCommand(KEY_F, ShowFindBar)
+AddCommand(KEY_H, ShowReplaceBar)
+AddCommand(KEY_G, ShowGotoBar)
+AddCommand(KEY_F5, CompileAndRunTarget)
+AddCommand(KEY_F7, CompileTarget)
+AddCommand(KEY_F6, RunTarget)
+
+' Add other keys that we want to process.
+AddFunction(KEY_F1, CommandHelp)
+AddFunction(KEY_F3, FindNextOrPrev)
+AddFunction(KEY_F5, CompileAndRun)
+AddFunction(KEY_F7, Compile)
+AddFunction(KEY_F6, Run)
+
+' Add an action for handling window messages from other n7 programs.
+SetWindowMessageAction(function(msg)
+        if exists(msg)
+            existing = unset
+            if vEditorTabs.Count() > 0
+                for i = 0 to vEditorTabs.Count() - 1
+                    if vEditorTabs.GetItem(i).editor.GetFilename() = msg
+                        existing = vEditorTabs.GetItem(i)
+                        break
+                    endif
+                next
+            endif
+            if existing
+                vEditorTabs.SelectItem(existing)
+            else
+                AddNewEditor()
+                vEditor.LoadDocument(msg)
+                FunctionScan(vEditor)
+                SaveSettings()
+            endif
+        endif
+        ShowWindow()
+        return true
+    endfunc)
+
+' Add some welcome lines to the output window.
+vOutput.AddLine("Welcome to the second most primitive IDE thinkable!")
+vOutput.AddLine("Compiled with n7 version " + VERSION)
+
+' Any documents from settings?
+if sizeof(documents)
+    ' Try to load them, last one is the last active file.
+    for i = 0 to sizeof(documents) - 2
+        if exists(documents[i])
+            AddNewEditor()
+            vEditor.LoadDocument(documents[i])
+            if settings.target = documents[i]
+                ToggleTarget()
+                settings.target = unset
+            endif
+            FunctionScan(vEditor)
+        endif
+    next
+    ' Select first tab or last if it exists.
+    if vEditorTabs.Count() > 0
+        vEditorTabs.SelectIndex(0)
+        last = Last(documents)
+        if last
+            for i = 0 to vEditorTabs.Count() - 1
+                if vEditorTabs.GetItem(i).editor.GetFilename() = last
+                    vEditorTabs.SelectIndex(i)
+                    break
+                endif 
+            next
+        endif
+    endif
+endif
+
+' Any document as parameter?
+if sizeof(args) > 1 and exists(args[1])
+    ' Check if it exists among the ones already loaded.
+    existing = unset
+    if vEditorTabs.Count() > 0
+        for i = 0 to vEditorTabs.Count() - 1
+            if vEditorTabs.GetItem(i).editor.GetFilename() = args[1]
+                existing = vEditorTabs.GetItem(i)
+                break
+            endif
+        next
+    endif
+    ' Set focus to its tab.
+    if existing
+        vEditorTabs.SelectItem(existing)
+    ' Put it in a new tab.
+    else
+        AddNewEditor()
+        vEditor.LoadDocument(args[1])
+        FunctionScan(vEditor)
+        SaveSettings()
+    endif
+endif
+
+' No loads?
+if vEditorTabs.Count() = 0
+    AddNewEditor()
+endif
+
+
+' Enter main loop.
+EnterMainLoop(root)
+
+
+' LoadSettings
+' ------------
+function LoadSettings()
+    f = openfile(GetPathCombined(vDataPath, "ned_config.txt"))
+    if not typeof(f)  f = openfile(GetPathCombined(vPath, "ned_config.txt")) 
+    documents = []
+    lastActive = unset
+    target = unset
+    if typeof(f)
+        setting = frln(f)
+        while setting
+            pair = split(setting, "=")
+            if sizeof(pair) = 2
+                select pair[0]
+                    case "last_doc"  documents[sizeof(documents)] = pair[1]
+                    case "last_act"  lastActive = pair[1]
+                    case "target_doc"  target = pair[1]
+                    case "dark_mode"
+                        ' vDarkMode = int(pair[1])
+                        if int(pair[1])  vTheme = "Default dark"
+                        else  vTheme = "Default light"
+                    case "theme"
+                        vTheme = pair[1]
+                    case "find_case"  vFindCaseSensitive = int(pair[1])
+                    case "replace_case"  vReplaceCaseSensitive = int(pair[1])
+                    case "ed_font_size"  vEdFontSize = int(pair[1])
+                    case "hidden_op"  vHiddenOutput = int(pair[1])
+                    case "hidden_fl"  vHiddenFunctionList = int(pair[1])
+                endsel
+            endif
+            setting = frln(f)
+        wend
+        if sizeof(documents) > 0  documents[sizeof(documents)] = lastActive
+        free file f
+    endif
+    return [docs: documents, target: target]
+endfunc
+
+' SaveSettings
+' ------------
+function SaveSettings()
+    f = createfile(GetPathCombined(vDataPath, "ned_config.txt"))
+    if typeof(f)
+        ' wln file f, "dark_mode=" + vDarkMode
+        wln file f, "theme=" + vTheme.name
+        wln file f, "find_case=" + vFindCaseSensitive
+        wln file f, "replace_case=" + vReplaceCaseSensitive
+        wln file f, "ed_font_size=" + vEdFontSize
+        wln file f, "hidden_op=" + vHiddenOutput
+        wln file f, "hidden_fl=" + vHiddenFunctionList
+        if vEditorTabs.Count() > 0
+            target = unset
+            for i = 0 to vEditorTabs.Count() - 1
+                item = vEditorTabs.GetItem(i)
+                filename = item.editor.GetFilename()
+                if filename  wln file f, "last_doc=" + filename
+                tabItem = vEditorTabs.GetTabItem(item)
+                if typeof(tabItem.icon)  target = filename
+            next
+            if vEditor and vEditor.GetFilename()  wln file f, "last_act=" + vEditor.GetFilename()
+            if typeof(target) wln file f, "target_doc=" + target
+        endif
+        free file f
+    endif   
+endfunc
+
+' CreateGui
+' ---------
+function CreateGui()
+    ' The root of the gui.
+    root = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    root.background = GetColor(COLOR_BACKGROUND)
+    root.SetPadding(0)
+
+    ' Creat a menu bar and add menus to it.
+    menuBar = MenuBar()
+    ' File menu.
+    menu = Menu(FileMenuAction)
+    menu.Add("New", "Ctrl+N")
+    menu.Add("Load", "Ctrl+O")
+    menu.Add("Save", "Ctrl+S")
+    menu.Add("Save as", unset)
+    menu.Add("Toggle target", unset)
+    menu.Add("Save all", "Ctrl+Shift+S")
+    menu.Add("Close", unset)
+    menu.Add("Close all", unset)
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Exit", unset)
+    menuBar.Add("File", menu)
+    ' Edit menu.
+    menu = Menu(EditMenuAction)
+    menu.Add("Undo", "Ctrl+Z")
+    menu.Add("Redo", "Ctrl+Y")
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Cut", "Ctrl+X")
+    menu.Add("Copy", "Ctrl+C")
+    menu.Add("Paste", "Ctrl+V")
+    menu.Add("Delete", "Del")
+    menu.Add("Select all", "Ctrl+A")
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Find", "Ctrl+F")
+    menu.Add("Find next", "F3")
+    menu.Add("Find previous", "Shift+F3")
+    menu.Add("Replace", "Ctrl+H")
+    menu.Add("Goto line", "Ctrl+G")
+    menuBar.Add("Edit", menu)
+    ' Program menu.
+    menu = Menu(ProgramMenuAction)
+    menu.Add("Compile and run", "F5")
+    menu.Add("Compile", "F7")
+    menu.Add("Run", "F6")
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Compile and run target", "Ctrl+F5")
+    menu.Add("Compile target", "Ctrl+F7")
+    menu.Add("Run target", "Ctrl+F6")
+    menuBar.Add("Program", menu)
+    ' Help menu.
+    menu = Menu(HelpMenuAction)
+    menu.Add("Syntax help/example", "F1")
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Increase font size", unset)
+    menu.Add("Decrease font size", unset)
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("About", unset)
+    menuBar.Add("Help", menu)
+    ' Add menu
+    root.Add(menuBar)
+    
+    ' Create box for everything but the menu.
+    content = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    content.SetPadding(0)
+    content.SetSpacing(0)
+
+    ' Create a box for the toolbar and settings bar. 
+    hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetPadding(0)
+
+    ' Create toolbar.
+    toolbar = HBox(SIZE_EXPAND, SIZE_AUTO)
+    toolbar.SetValign(ALIGN_CENTER)
+    toolbar.SetPadding(4)
+    toolbar.SetSpacing(4)
+    ' Add document buttons.
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/new.png")), function(wdg)
+            NewDocument()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Create a new document")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/open.png")), function(wdg)
+            LoadDocument()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Open a document")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/save.png")), function(wdg)
+            SaveDocument()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Save document")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/close.png")), function(wdg)
+            CloseDocument()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Close document")
+    toolbar.Add(VDivider(1, 4))
+    
+    ' Add program buttons.
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/compile_target.png")), function(wdg)
+            CompileTarget()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Compile target file")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/run_target.png")), function(wdg)
+            CompileAndRunTarget()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Compile and run target file")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/compile.png")), function(wdg)
+            Compile()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Compile file")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/run.png")), function(wdg)
+            CompileAndRun()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Compile and run file")
+
+    toolbar.Add(VDivider(1, 4))
+    ' Add undo and redo buttons.
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/undo.png")), function(wdg)
+            Undo()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Undo")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/redo.png")), function(wdg)
+            Redo()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Redo")
+    toolbar.Add(VDivider(1, 4))
+    ' Add zoom in and out buttons.
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/zoom_in.png")), function(wdg)
+            IncreaseFontSize()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Increase the editor font size")
+    toolbar.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/zoom_out.png")), function(wdg)
+            DecreaseFontSize()
+        endfunc))
+    Last(toolbar.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(toolbar.GetChildren()).SetTooltip("Decrease the editor font size")
+    ' Add toolbar to box
+    hb.Add(toolbar)
+
+    ' Create settings bar.
+    settings = HBox(SIZE_EXPAND, SIZE_AUTO)
+    settings.SetHalign(ALIGN_RIGHT)
+    settings.SetValign(ALIGN_CENTER)
+    settings.SetPadding(4)
+    settings.SetSpacing(4)
+    settings.Add(ImageButton(loadimage(GetPathCombined(vPath, "assets/functions.png")), function(wdg)
+            vHiddenFunctionList = not vHiddenFunctionList
+            vEditor.box.flist.SetHidden(vHiddenFunctionList)
+            vEditor.box.fvbox.SetHidden(vHiddenFunctionList)
+            SaveSettings()
+        endfunc))
+    Last(settings.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(settings.GetChildren()).SetTooltip("Show/Hide function list")
+    ' Add dark mode checkbox.
+    'settings.Add(LabledCheckBox("Night mode", vDarkMode, function(wdg, checked)
+    '        vDarkMode = checked
+    '        SetDarkMode(vDarkMode)
+    '        SaveSettings()
+    '    endfunc))
+    ' Use a function as tooltip for this one.
+    'Last(settings.GetChildren()).GetCheckBox().SetTooltip(function(wdg)
+    '        if wdg.IsChecked()  return "Disable night mode"
+    '        else  return "Enable night mode"
+    '    endfunc)
+    settings.Add(Label("Theme", SIZE_AUTO, SIZE_AUTO))
+    settings.Add(ComboBox(108, vThemes, function(cb, index)
+            item = cb.GetSelectedItem()
+            if item
+                if item.filename  LoadTheme(item.filename)
+                else if item.name = "Default light"  SetDarkMode(false)
+                else if item.name = "Default dark"  SetDarkMode(true)
+                vTheme = item
+                SaveSettings()
+            endif
+        endfunc))
+    Last(settings.GetChildren()).SetDisplayField("name")
+    Last(settings.GetChildren()).SelectItem(vTheme)
+    ' Add settings to box.
+    hb.Add(settings)
+
+    ' Add toolbar and settings bar and a divider.
+    content.Add(hb) 
+    content.Add(HDivider(1, 0))
+
+    ' Hidden find bar.
+    vFindBar = VBox(SIZE_EXPAND, SIZE_AUTO)
+    vFindBar.SetPadding(0)
+    vFindBar.SetHalign(ALIGN_RIGHT)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetPadding(4)
+    hb.SetSpacing(8)
+    hb.Add(Label("Find", SIZE_AUTO, SIZE_AUTO))
+    vFindTextEntry = TextEntry(100, false)
+    vFindTextEntry.SetReturnAction(function(wdg)
+            FindNext()
+        endfunc)
+    vFindTextEntry.SetEscapeAction(function(wdg)
+            vFindBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc)
+    hb.Add(vFindTextEntry)
+    hb.Add(LabledCheckBox("Match case", vFindCaseSensitive, function(wdg, checked)
+            vFindCaseSensitive = checked
+            SaveSettings()
+        endfunc))
+    Last(hb.GetChildren()).GetCheckBox().SetTooltip("Match case when searching")
+    hb.Add(TextButton("Next", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            FindNext()
+        endfunc))
+    Last(hb.GetChildren()).SetTooltip("Find next")
+    hb.Add(TextButton("Prev", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            FindPrev()
+        endfunc))
+    Last(hb.GetChildren()).SetTooltip("Find previous")
+    hb.Add(ImageButton(GetImage(IMAGE_CLOSE), function(wdg)
+            vFindBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc))
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(hb.GetChildren()).SetPadding(4)
+    vFindBar.Add(hb)
+    vFindBar.Add(HDivider(1, 0))
+    vFindBar.SetHidden(true)
+    content.Add(vFindBar)
+
+    ' Hidden find and replace bar.
+    vReplaceBar = VBox(SIZE_EXPAND, SIZE_AUTO)
+    vReplaceBar.SetPadding(0)
+    vReplaceBar.SetHalign(ALIGN_RIGHT)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetPadding(4)
+    hb.SetSpacing(8)
+    hb.Add(Label("Replace", SIZE_AUTO, SIZE_AUTO))
+    vReplaceTextEntry = TextEntry(100, false)
+    vReplaceTextEntry.SetReturnAction(function(wdg)
+            ReplaceNext()
+        endfunc)
+    vReplaceTextEntry.SetTabAction(function(wdg)
+            vReplaceWithTextEntry.SelectAll()
+            SetFocus(vReplaceWithTextEntry)
+        endfunc)
+    vReplaceTextEntry.SetEscapeAction(function(wdg)
+            vReplaceBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc)           
+    hb.Add(vReplaceTextEntry)
+    hb.Add(Label("With", SIZE_AUTO, SIZE_AUTO))
+    vReplaceWithTextEntry = TextEntry(100, false)
+    vReplaceWithTextEntry.SetReturnAction(function(wdg)
+            Replace()
+        endfunc)
+    vReplaceWithTextEntry.SetTabAction(function(wdg)
+            vReplaceTextEntry.SelectAll()
+            SetFocus(vReplaceTextEntry)
+        endfunc)
+    vReplaceWithTextEntry.SetEscapeAction(function(wdg)
+            vReplaceBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc)
+    hb.Add(vReplaceWithTextEntry)
+    hb.Add(LabledCheckBox("Match case", vReplaceCaseSensitive, function(wdg, checked)
+            vReplaceCaseSensitive = checked
+            SaveSettings()
+        endfunc))
+    Last(hb.GetChildren()).GetCheckBox().SetTooltip("Match case when searching")
+    hb.Add(TextButton("Find", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ReplaceNext()
+        endfunc)) 
+    Last(hb.GetChildren()).SetTooltip("Find next")
+    hb.Add(TextButton("Replace", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            Replace()
+        endfunc))
+    Last(hb.GetChildren()).SetTooltip("Replace current occurrence and find next")
+    hb.Add(TextButton("Replace all", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ReplaceAll()
+        endfunc))
+    Last(hb.GetChildren()).SetTooltip("Replace all occurences")
+    hb.Add(ImageButton(GetImage(IMAGE_CLOSE), function(wdg)
+            vReplaceBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc))
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(hb.GetChildren()).SetPadding(4)
+    vReplaceBar.Add(hb)
+    vReplaceBar.Add(HDivider(1, 0))
+    vReplaceBar.SetHidden(true)
+    content.Add(vReplaceBar)
+    
+    ' Hidden goto bar.
+    vGotoBar = VBox(SIZE_EXPAND, SIZE_AUTO)
+    vGotoBar.SetPadding(0)
+    vGotoBar.SetHalign(ALIGN_RIGHT)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetPadding(4)
+    hb.SetSpacing(8)
+    hb.Add(Label("Line", SIZE_AUTO, SIZE_AUTO))
+    vGotoTextEntry = TextEntry(100, true)
+    vGotoTextEntry.SetReturnAction(function(wdg)
+            Goto()
+        endfunc)
+    vGotoTextEntry.SetEscapeAction(function(wdg)
+            vGotoBar.SetHidden(true)
+        endfunc)
+    hb.Add(vGotoTextEntry)
+    hb.Add(TextButton("Goto", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            Goto()
+        endfunc))
+    Last(hb.GetChildren()).SetTooltip("Goto line")
+    hb.Add(ImageButton(GetImage(IMAGE_CLOSE), function(wdg)
+            vGotoBar.SetHidden(true)
+            SetFocus(vEditor)
+        endfunc))
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    Last(hb.GetChildren()).SetPadding(4)
+    vGotoBar.Add(hb)
+    vGotoBar.Add(HDivider(1, 0))
+    vGotoBar.SetHidden(true)
+    content.Add(vGotoBar)
+
+    vEditorTabs = TabBox(SIZE_EXPAND, SIZE_EXPAND)
+    vEditorTabs.SetAction(EditorTabChanged)
+    vEditorTabs.SetCloseRequestAction(EditorTabCloseRequest)
+    vEditorTabs.SetCloseAction(EditorTabClosed)
+    content.Add(vEditorTabs)
+
+    ' Create a box with a header label for the output text area to the left and
+    ' a label with document info to the right.    
+    hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+    hb.SetPadding(2)
+    hb.SetValign(ALIGN_CENTER)
+    ' 2k23
+    ' Create a box for the output text area and its scrollbar.
+    outputBox = HBox(SIZE_EXPAND, 128)
+    outputBox.SetHidden(vHiddenOutput)
+    if vHiddenOutput  img = GetImage(IMAGE_ARROW_UP)
+    else  img = GetImage(IMAGE_ARROW_DOWN)
+    hb.Add(ImageButton(img, function(wdg)
+        vHiddenOutput = not this.ob.IsHidden()
+        this.ob.SetHidden(vHiddenOutput)
+        if this.ob.IsHidden()
+            this.img = GetImage(IMAGE_ARROW_UP)
+            lines = vOutput.GetLines()
+            if lines and sizeof(lines)
+                vOutputLabel.SetText("Output:  " + lines[sizeof(lines) - 1])
+            else
+                vOutputLabel.SetText("Output:")
+            endif
+        else
+            this.img = GetImage(IMAGE_ARROW_DOWN)
+            vOutputLabel.SetText("Output")
+        endif
+        this.MarkDirty()
+        SaveSettings()
+    endfunc))
+    Last(hb.GetChildren()).ob = outputBox
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    vOutputLabel = Label("Output", SIZE_EXPAND, SIZE_AUTO)
+    hb.Add(vOutputLabel)
+    vEditorInfoLabel = Label("", SIZE_EXPAND, SIZE_AUTO)
+    vEditorInfoLabel.SetHalign(ALIGN_RIGHT)
+    hb.Add(vEditorInfoLabel)
+    ' Connect the empty label to the editor.
+    'vEditor.SetInfoLabel(Last(hb.GetChildren()))
+    ' Add the box.
+    content.Add(hb)
+    outputBox.SetPadding(2)
+    outputBox.SetBorder(1)
+    outputBox.SetBorderInside(true)
+    ' Create the output text area (a read-only text editor).
+    vOutput = TextEditor(SIZE_EXPAND, SIZE_EXPAND)
+    vOutput.background = GetColor(COLOR_ED_BACKGROUND)
+    vOutput.readOnly = true
+    vOutput.maxLines = 64
+    vOutput.AddLine_ = vOutput.AddLine
+    vOutput.AddLine = function(txt)
+        this.AddLine_(txt)
+        if vHiddenOutput
+            lines = vOutput.GetLines()
+            if lines and sizeof(lines)  vOutputLabel.SetText("Output:  " + lines[sizeof(lines) - 1])
+        endif
+    endfunc
+    outputBox.Add(vOutput)
+    vsb = VerticalScrollbar(vOutput, SIZE_AUTO, SIZE_EXPAND)
+    outputBox.Add(vsb)
+    content.Add(outputBox)
+    
+    ' Add content box to the root.
+    root.Add(content)
+
+    return root
+endfunc
+
+' AddNewEditor
+' ------------
+function AddNewEditor()
+    ' Create a box for the line number bar, editor and a scrollbar.
+    edBox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+    edBox.SetPadding(2)
+    edBox.SetBorder(1)
+    edBox.SetBorderInside(true)
+    ' Create and add a line number bar.
+    lnBar = LineNumberBar(SIZE_AUTO, SIZE_EXPAND)
+    edBox.Add(lnBar)
+    ' Create and add the editor.
+    vEditor = TextEditor(SIZE_EXPAND, SIZE_EXPAND)
+    LoadKeywords(vEditor, GetPathCombined(GetPathCombined(vPath, "assets"), "keywords.txt"))
+    vEditor.SetLineNumberBar(lnBar)
+    vEditor.SetMaxColumnMarker(100)
+    vEditor.SetInfoLabel(vEditorInfoLabel)
+    edBox.Add(vEditor)
+    edBox.editor = vEditor
+    vEditor.box = edBox
+    vsb = VerticalScrollbar(vEditor, SIZE_AUTO, SIZE_EXPAND)
+    edBox.Add(vsb)
+    
+    vEditor.helpSyntax = unset
+
+    ' Create and add a function listbox.
+    edBox.flist = ListBox([], SIZE_AUTO, SIZE_EXPAND, FunctionSelectAction)
+    edBox.flist.ed = vEditor
+    edBox.flist.SetInnerPadding(4)
+    edBox.flist.SetMinWidth(128)
+    edBox.flist.SetBackground(GetColor(COLOR_ED_BACKGROUND))
+    vsb = VerticalScrollbar(edBox.flist, SIZE_AUTO, SIZE_EXPAND)
+    edBox.fvbox = vsb
+    edBox.flist.SetDisplayField("name")
+    edBox.flist.SetVolatileTooltip(function(wdg, x, y)
+            index = wdg.overIndex ' hack ...
+            if index >= 0 and index < sizeof(wdg.GetItems())
+                return wdg.GetItems()[index].full
+            else
+                return unset
+            endif
+        endfunc)
+    edBox.flist.SetHidden(vHiddenFunctionList)
+    edBox.fvbox.SetHidden(vHiddenFunctionList)
+
+    edBox.Add(edBox.flist)
+    edBox.Add(vsb)
+
+    vEditor.NewDocument()    
+
+    vEditorTabs.Add(vEditor.GetDocumentName(), edBox, true)
+    vEditor.SetHeaderLabel(vEditorTabs.GetLabel(edBox))
+    vEditorTabs.SelectItem(edBox)
+endfunc
+
+' EditotTabChanged
+' ----------------
+function EditorTabChanged(edBox)
+    vEditor = edBox.editor
+    vEditor.box.flist.SetHidden(vHiddenFunctionList)
+    vEditor.box.fvbox.SetHidden(vHiddenFunctionList)    
+    SetFocus(vEditor)
+endfunc
+
+' EditorTabCloseRequest
+' ---------------------
+function EditorTabCloseRequest(edBox)
+    if edBox.editor.Touched()
+        ' Warn about changes. Should add a button "Save and close", could look at vEdBoxCloseRequest
+        ' after saving, close and unset.
+        msg = chr(34) + edBox.editor.GetDocumentName() + chr(34) + " has unsaved changes." + chr(10)
+        msg = msg + "Do you still want to close the tab?"
+        vEdBoxCloseRequest = edBox
+        ShowMessageBox("Warning", msg, ["Yes", "No"], function(popup, buttonIndex)
+                if buttonIndex = 0
+                    if vEditorTabs.Count() = 1  AddNewEditor()
+                    vEditorTabs.Close(vEdBoxCloseRequest)
+                endif
+                vEdBoxCloseRequest = unset
+            endfunc)
+        return false
+    else
+        ' Add a new empty document if this is the last tab.
+        if vEditorTabs.Count() = 1  AddNewEditor()
+        return true
+    endif
+endfunc
+
+' EditorTabClosed
+' ---------------
+function EditorTabClosed(edBox)
+    SaveSettings()
+endfunc
+
+' FileMenuAction
+' --------------
+function FileMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  NewDocument()
+        case 1  LoadDocument()
+        case 2  SaveDocument()
+        case 3  SaveDocumentAs()
+        case 4  ToggleTarget()
+        case 5  SaveAllDocuments()
+        case 6  CloseDocument()
+        case 7  CloseAllDocuments()
+        case 8  Exit()
+    endsel
+endfunc
+
+' EditMenuAction
+' --------------
+function EditMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  Undo()
+        case 1  Redo()
+        case 2  Cut()
+        case 3  Copy()
+        case 4  Paste()
+        case 5  Delete()
+        case 6  SelectAll()
+        case 7  ShowFindBar()
+        case 8  FindNext()
+        case 9  FindPrev()
+        case 10  ShowReplaceBar()
+        case 11  ShowGotoBar()
+    endsel
+endfunc
+
+' ProgramMenuAction
+' -----------------
+function ProgramMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  CompileAndRun()
+        case 1  Compile()
+        case 2  Run()
+        case 3  CompileAndRunTarget()
+        case 4  CompileTarget()
+        case 5  RunTarget()
+    endsel
+endfunc
+
+' HelpMenuAction
+' --------------
+function HelpMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  CommandHelp()
+        case 1  IncreaseFontSize()
+        case 2  DecreaseFontSize()
+        case 3  About()
+    endsel
+endfunc
+
+' NewDocument
+' -----------
+function NewDocument()
+    AddNewEditor()
+endfunc
+
+' LoadDocument
+' ------------
+function LoadDocument()
+    filename = openfiledialog("n7")
+    if filename and exists(filename)
+        ' Loaded document goes into a new editor unless the active editor is an empty new document.
+        if vEditor.Touched() or vEditor.GetFilename()  AddNewEditor()
+        vEditor.LoadDocument(filename)
+        SaveSettings()
+        FunctionScan(vEditor)
+    endif
+endfunc
+
+' SaveDocument
+' --------------
+function SaveDocument()
+    if vEditor.GetFilename()
+        if vEditor.SaveDocument()
+            vOutput.AddLine("Saved " + chr(34) + vEditor.GetFilename() + chr(34))
+            SaveSettings()
+            FunctionScan(vEditor)
+            return true
+        else
+            vOutput.AddLine("Could not save " + chr(34) + vEditor.GetFilename() + chr(34))
+            return false
+        endif
+    else
+        return SaveDocumentAs()
+    endif
+endfunc
+
+' SaveDocumentAs
+' --------------
+function SaveDocumentAs()
+    filename = savefiledialog("n7")
+    if filename
+        extFound = false
+        for i = len(filename) - 1 to 0
+            c = mid(filename, i)
+            if c = "\" or c = "/"  break
+            if c = "."
+                extFound = true
+                break
+            endif
+        next
+        if not extFound  filename = filename + ".n7"
+
+        vEditor.SetFilename(filename)
+        return SaveDocument()
+    else
+        return false
+    endif
+endfunc
+
+' ToggleTarget
+' ------------
+function ToggleTarget()
+    edBox = vEditorTabs.GetCurrentItem()
+    current = vEditorTabs.GetTabItem(edBox)
+    if current.icon
+        current.SetIcon(unset, unset)
+        SaveSettings()
+    else
+        if len(edBox.editor.GetFilename())
+            foreach item in vEditorTabs.items.children  item.SetIcon(unset, unset)
+            current.SetIcon(GetImage(IMAGE_ARROW_RIGHT), GetColor(COLOR_PRIMARY_BACKGROUND))
+            SaveSettings()
+        else
+            txt =       "You can't target a document" + chr(10)
+            txt = txt + "that has never been saved."
+            ShowMessageBox("Sorry", txt, "Close", unset)        
+        endif
+    endif
+endfunc
+
+' SaveAllDocuments
+' ----------------
+' Well, doesn't save documents that hasn't previously been saved.
+function SaveAllDocuments()
+    if vEditorTabs.Count() > 0
+        for i = 0 to vEditorTabs.Count() - 1
+            ed = vEditorTabs.GetItem(i).editor
+            if ed.GetFilename()  ed.SaveDocument()
+        next
+    endif
+endfunc
+
+' SaveOrSaveAll
+' -------------
+' Comand key callback, have to check KEY_SHIFT ourselves to distinguish between ctrl+s and
+' ctrl+shift+s. Probably should extend AddCommand to handle the shift key.
+function SaveOrSaveAll()
+    if keydown(KEY_SHIFT)  SaveAllDocuments()
+    else  SaveDocument()
+endfunc
+
+' CloseDocument
+' -------------
+' Close current document.
+function CloseDocument()
+    if vEditor.Touched()
+        msg = chr(34) + vEditor.GetDocumentName() + chr(34) + " has unsaved changes." + chr(10)
+        msg = msg + "Do you still want to close the tab?"
+        ShowMessageBox("Warning", msg, ["Yes", "No"], function(popup, buttonIndex)
+                if buttonIndex = 0
+                    vEditorTabs.Close(vEditor.box)
+                    if vEditorTabs.Count() = 0  AddNewEditor()
+                endif
+            endfunc)
+    else
+        vEditorTabs.Close(vEditor.box)
+        if vEditorTabs.Count() = 0  AddNewEditor()
+    endif
+endfunc
+
+' UnsavedDocuments
+' ----------------
+function UnsavedDocuments()
+    unsaved = []
+    for i = 0 to vEditorTabs.Count() - 1
+        if vEditorTabs.GetItem(i).editor.Touched()
+            unsaved[sizeof(unsaved)] = vEditorTabs.GetItem(i).editor.GetDocumentName()
+        endif
+    next
+    return unsaved
+endfunc
+
+' CloseAllDocuments
+' -----------------
+' Close all dodumcnets
+function CloseAllDocuments()
+    unsaved = UnsavedDocuments()
+    if sizeof(unsaved)
+        txt = "The following documents have unsaved changes:" + chr(10)
+        for i = 0 to sizeof(unsaved) - 1  txt = txt + unsaved[i] + chr(10)
+        txt = txt + "Do you still want to close all documents?"
+        ShowMessageBox("Warning", txt, ["Yes", "No"], function(popup, buttonIndex)
+                if buttonIndex = 0
+                    vEditorTabs.CloseAll(false)
+                    AddNewEditor()
+                    SaveSettings()
+                endif
+            endfunc)
+        return
+    else
+        vEditorTabs.CloseAll(false)
+        AddNewEditor()
+        SaveSettings()
+    endif
+endfunc
+
+' Exit
+' ----
+' Sadly only called when using the menu to exit. Not quite sure how to lett n7 programs handle the
+' window's close button yet ...
+function Exit()
+    if vEditorTabs.Count() > 0
+        unsaved = UnsavedDocuments()
+        if sizeof(unsaved)
+            txt = "The following documents have unsaved changes:" + chr(10)
+            for i = 0 to sizeof(unsaved) - 1  txt = txt + unsaved[i] + chr(10)
+            txt = txt + "Do you still want to exit?"
+            ShowMessageBox("Warning", txt, ["Yes", "No"], function(popup, buttonIndex)
+                    if buttonIndex = 0
+                        ExitMainLoop()
+                    endif
+                endfunc)
+            return
+        endif
+    endif
+    ExitMainLoop()
+endfunc
+
+' Undo
+' ----
+function Undo()
+    vEditor.Undo()
+endfunc
+
+' Redo
+' ----
+function Redo()
+    vEditor.Redo()
+endfunc
+
+' Cut
+' ---
+function Cut()
+    vEditor.Cut()
+endfunc
+
+' Copy
+' ----
+function Copy()
+    vEditor.Copy()
+endfunc
+
+' Paste
+' -----
+function Paste()
+    vEditor.Paste()
+endfunc
+
+' Delete
+' ------
+function Delete()
+    vEditor.Delete()
+endfunc
+
+' SelectAll
+' ---------
+function SelectAll()
+    vEditor.SelectAll()
+endfunc
+
+' ShowFindBar
+' -----------
+function ShowFindBar()
+    if vFindBar.IsHidden()  vFindBar.SetHidden(false)
+    if not vReplaceBar.IsHidden()  vReplaceBar.SetHidden(true)
+    if not vGotoBar.IsHidden()  vGotoBar.SetHidden(true)
+    vFindTextEntry.SelectAll()
+    SetFocus(vFindTextEntry)
+endfunc
+
+' FindNext
+' --------
+function FindNext()
+    txt = vFindTextEntry.GetText()
+    if txt
+        if not vEditor.FindNext(txt, not vFindCaseSensitive)
+            vOutput.AddLine("Could not find " + chr(34) + txt + chr(34)) 
+        endif
+    endif
+endfunc
+
+' FindPrev
+' --------
+function FindPrev()
+    txt = vFindTextEntry.GetText()
+    if len(txt)
+        if not vEditor.FindPrev(txt, not vFindCaseSensitive)
+            vOutput.AddLine("Could not find " + chr(34) + txt + chr(34)) 
+        endif
+    endif
+endfunc
+
+' FindNextOrPrev
+' --------------
+' Command key callback.
+function FindNextOrPrev()
+    if keydown(KEY_SHIFT)  FindPrev()
+    else  FindNext()
+endfunc
+
+' ShowReplaceBar
+' --------------
+function ShowReplaceBar()
+    if vReplaceBar.IsHidden()  vReplaceBar.SetHidden(false)
+    if not vFindBar.IsHidden()  vFindBar.SetHidden(true)
+    if not vGotoBar.IsHidden()  vGotoBar.SetHidden(true)
+    SetFocus(vReplaceTextEntry)
+    vReplaceTextEntry.SelectAll()
+endfunc
+
+' Replace
+' -------
+function Replace()
+    txt = vReplaceTextEntry.GetText()
+    if len(txt) > 0
+        ' Replace if current selection matches search.
+        if (vReplaceCaseSensitive and vEditor.GetSelection() = txt) or
+                (vReplaceCaseSensitive = false and lower(vEditor.GetSelection()) = lower(txt))
+            vEditor.PasteString(vReplaceWithTextEntry.txt)
+        endif
+        ' Find next.
+        if not vEditor.FindNext(txt, not vReplaceCaseSensitive)
+            vOutput.AddLine("Could not find " + chr(34) + txt + chr(34))             
+        endif 
+    endif
+endfunc
+
+' ReplaceNext
+' -----------
+function ReplaceNext()
+    txt = vReplaceTextEntry.GetText()
+    if len(txt) > 0
+        if not vEditor.FindNext(txt, not vReplaceCaseSensitive)
+            vOutput.AddLine("Could not find " + chr(34) + txt + chr(34))             
+        endif 
+    endif
+endfunc
+
+' ReplaceAll
+' ----------
+function ReplaceAll()
+    txt = vReplaceTextEntry.GetText()
+    rep = vReplaceWithTextEntry.GetText()
+    if len(txt) > 0
+        count = vEditor.ReplaceAll(txt, rep, not vReplaceCaseSensitive)
+        if count
+            vOutput.AddLine("Replaced " + count + " occurrence(s) of " + chr(34) + txt + chr(34) +
+                    " with " + chr(34) + rep + chr(34))
+        else
+            vOutput.AddLine("Could not find " + chr(34) + txt + chr(34)) 
+        endif
+    endif
+endfunc
+
+' ShowGotoBar
+' -----------
+function ShowGotoBar()
+    if vGotoBar.IsHidden()  vGotoBar.SetHidden(false)
+    if not vFindBar.IsHidden()  vFindBar.SetHidden(true)
+    if not vReplaceBar.IsHidden()  vReplaceBar.SetHidden(true)
+    vGotoTextEntry.SelectAll()
+    SetFocus(vGotoTextEntry)
+endfunc
+
+' Goto
+' ----
+function Goto()
+    ln = int(vGotoTextEntry.GetText())
+    vGotoBar.SetHidden(true)
+    if not vEditor.Goto(ln) vOutput.AddLine(ln + " is an invalid line number")
+    SetFocus(vEditor)
+endfunc
+
+' CompileAndRun
+' -------------
+function CompileAndRun()
+    if Compile()  Run()
+endfunc
+
+' Compile
+' -------
+function Compile()
+    if SaveDocument()
+        fn = vEditor.GetFilename()
+        vOutput.AddLine("Compiling " + chr(34) + fn + chr(34))
+        cmd = chr(34) + chr(34) + GetPathCombined(vPath, vCompiler) + chr(34) + " " +
+                chr(34) + fn + chr(34) + chr(34)
+        result = system(cmd)
+        lines = split(result, chr(10))
+        vOutput.AddLine(result)
+        ' Success?
+        if sizeof(lines) = 3 and left(lines[2], 12) = "n7b: success"
+            ' Copy DLL files.
+            if sizeof(vDLLs)
+                for i = len(fn) - 1 to 0  if mid(fn, i) = "\" or mid(fn, i) = "/"  break
+                path = left(fn, i + 1)
+                for i = 0 to sizeof(vDLLs) - 1
+                    ' Uhm, what if the version has changed of a dll?
+                    'if not exists(path + vDLLs[i])
+                        system "copy /Y " + chr(34) + GetPathCombined(vPath, vDLLs[i]) + chr(34) + " " +
+                                chr(34) + path + chr(34)
+                    'endif
+                next
+            endif
+            return true
+        endif
+    endif
+    return false
+endfunc
+
+' Run
+' ---
+function Run()
+    fn = vEditor.GetFilename()
+    if len(fn) > 0
+        for i = len(fn) - 1 to 0  if mid(fn, i) = "."  break
+        fn = left(fn, i) + ".exe"
+        if exists(fn)
+            vOutput.AddLine("Executing " + chr(34) + fn + chr(34))
+            ' Old, nedgui, version
+            'system("start " + chr(34) + chr(34) + " " + chr(34) + fn + chr(34))
+            cmd = "cd /D " + chr(34) + GetPath(fn) + chr(34) +
+                    " && start " + chr(34) + chr(34) + " " + chr(34) + fn + chr(34)
+            'vOutput.AddLine(cmd)
+            system(cmd)
+        else
+            vOutput.AddLine("Could not find " + chr(34) + fn + chr(34))
+        endif
+    endif
+    return false
+endfunc
+
+' hack.
+function FindTargetEditor()
+    foreach item in vEditorTabs.items.children
+        if typeof(item.icon)  return item.content
+    next
+    return unset
+endfunc
+
+' CompileAndRunTarget
+' -------------------
+function CompileAndRunTarget()
+    target = FindTargetEditor()
+    if typeof(target)
+        current = vEditorTabs.GetCurrentItem()
+        vEditorTabs.SelectItem(target)
+        CompileAndRun()
+        vEditorTabs.SelectItem(current)
+    else
+        vOutput.AddLine("No target found for compiling and running")
+    endif
+endfunc
+
+' CompileTarget
+' --------------
+function CompileTarget()
+    target = FindTargetEditor()
+    if typeof(target)
+        current = vEditorTabs.GetCurrentItem()
+        vEditorTabs.SelectItem(target)
+        Compile()
+        vEditorTabs.SelectItem(current)
+    else
+        vOutput.AddLine("No target found for compiling")
+    endif
+endfunc
+
+' RunTarget
+' ---------
+function RunTarget()
+    target = FindTargetEditor()
+    if typeof(target)
+        current = vEditorTabs.GetCurrentItem()
+        vEditorTabs.SelectItem(target)
+        Run()
+        vEditorTabs.SelectItem(current)
+    else
+        vOutput.AddLine("No target found for running")
+    endif
+endfunc
+
+
+' IncreaseFontSize
+' ----------------
+function IncreaseFontSize()
+    vEdFontSize = min(vEdFontSize + 2, 24)
+    SetTextEditorFont(vEditorFontName, vEdFontSize)
+    SaveSettings()
+endfunc
+
+' DecreaseFontSize
+' ----------------
+function DecreaseFontSize()
+    vEdFontSize = max(vEdFontSize - 2, 14)
+    SetTextEditorFont(vEditorFontName, vEdFontSize)
+    SaveSettings()
+endfunc
+
+' About
+' -----
+function About()
+    txt = "Version " + vVersion + ", by Marcus" + chr(10)
+    txt = txt + "Compiled with n7 version " + VERSION + chr(10) + " " + chr(10)
+    txt = txt + "This program is public domain (CC0), so feel" + chr(10)
+    txt = txt + "free to do whatever you want with it."
+    ShowMessageBox("NED - NaaLaa Editor", txt, "Close", unset)
+endfunc
+
+' CommandHelp
+' -----------
+function CommandHelp()
+    hasHelp = vEditor.GetHelp()
+    
+    vEditor.ShowHelp(unset)
+
+    ln = vEditor.GetCurrentLine()
+    le = len(ln)
+    startPos = vEditor.GetCaretX()
+    leftPos = startPos
+    c = asc(mid(ln, leftPos))
+    while leftPos >= 0 and (c = 32 or IsAlpha(c))
+        leftPos = leftPos - 1
+        c = asc(mid(ln, leftPos))
+    wend
+    leftPos = leftPos + 1
+    rightPos = startPos
+    c = asc(mid(ln, rightPos))
+    while rightPos < le and (c = 32 or IsAlpha(c))
+        rightPos = rightPos + 1
+        c = asc(mid(ln, rightPos))
+    wend    
+    s = mid(ln, leftPos, rightPos - leftPos)
+    if not s  return
+
+    words = split(s, " ")
+    if not sizeof(words)  return
+
+    pos = startPos
+    while pos >= 0 and asc(mid(ln, pos)) = 32  pos = pos - 1
+    currentWord = GetWordAt(ln, pos)
+        
+    ' Check user functions.
+    if currentWord
+        foreach uf in vEditor.box.flist.GetItems()
+            if uf.name = currentWord
+                vEditor.ShowHelp(uf.full)
+                return
+            endif
+        next
+    endif
+
+    if not vCommandSyntax
+        vOutput.AddLine("No command help loaded")
+        return
+    endif    
+            
+    for index = 0 to sizeof(words) - 1  if words[index] = currentWord  break
+    while index >= 0 and not vEditor.IsKeyword(words[index])  index = index - 1
+    if index < 0
+        vOutput.AddLine("No syntax help found")
+        return
+    endif 
+    
+    mainKeyword = words[index]
+    
+    minKeywordIndex = index
+    maxKeywordIndex = index
+    
+    while minKeywordIndex > 0 and vEditor.IsKeyword(words[minKeywordIndex - 1])
+        minKeywordIndex = minKeywordIndex - 1
+    wend
+    while maxKeywordIndex < sizeof(words) - 1 and vEditor.IsKeyword(words[maxKeywordIndex + 1])
+        maxKeywordIndex = maxKeywordIndex + 1
+    wend
+
+    maxWords = 0
+    syntax = unset
+    link = unset
+    ' I have covid, and I'm tired ...
+    for i = minKeywordIndex to maxKeywordIndex
+        for j = i to maxKeywordIndex
+            if i <= index and j >= index
+                s = words[i]
+                if j > i  for k = i + 1 to j  s = s + " " + words[k]
+                if key(vCommandSyntax, s) and j + 1 - i > maxWords
+                    maxWords = j + 1 - i
+                    syntax = vCommandSyntax[s]
+                    if key(vCommandFile, s)
+                        link = vCommandFile[s]
+                    else ' Shouldn't happen unless I mess up the file ...
+                        link = unset
+                    endif
+                endif
+            endif
+        next
+    next
+    if syntax
+        if hasHelp and syntax = vEditor.helpSyntax
+            fn = GetPathCombined(GetPathCombined(GetPathCombined(vPath, "examples"), "help"), link)
+            if exists(fn)
+                vEditor.helpSyntax = unset
+                AddNewEditor()
+                vEditor.LoadDocument(fn)
+                SaveSettings()
+                FunctionScan(vEditor)
+                return
+            else
+                vOutput.AddLine("Could not load example " + chr(34) + fn + chr(34))
+            endif
+        else
+            if link
+                vEditor.ShowHelp(syntax + "   (Press F1 again to load an example)")
+                vEditor.helpSyntax = syntax
+            else
+                vEditor.ShowHelp(syntax)
+                vEditor.helpSyntax = unset
+            endif
+        endif
+    else
+        vOutput.AddLine("No syntax help found")
+    endif
+endfunc
+
+function GetWordAt(ln, pos)
+    le = len(ln)
+    if pos < 0 or pos >= le or not IsAlpha(asc(mid(ln, pos))) return unset
+
+    if pos = 0
+        s = 0
+    else
+        s = pos
+        while s > 0 and IsAlpha(asc(mid(ln, s - 1)))  s = s - 1
+    endif
+    e = pos + 1
+    while s < le and IsAlpha(asc(mid(ln, e)))  e = e + 1
+    return mid(ln, s, e - s)
+endfunc
+
+
+function IsAlpha(c)
+    return c >= 65 and c <= 90 or c >= 97 and c <= 122
+endfunc
+
+function IsLowerAlpha(c)
+    return c >= 97 and c <= 122
+endfunc
+
+function FunctionSelectAction(wdg, index)
+    if index < 0  return
+
+    'wdg.SelectIndex(-1)
+
+    ed = wdg.ed
+    wanted = wdg.GetItems()[index]
+    lines = ed.GetLines()
+    lineNumber = 0
+    ln = lines[lineNumber]
+    foundAtLine = -1
+    do
+        skipLine = true
+        if instr(ln, "function ") >= 0
+            ' Remove all string constants.
+            lft = instr(ln, chr(34))
+            while lft >= 0
+                rgt = instr(ln, chr(34), lft + 1)
+                if rgt >= 0
+                    ln = left(ln, lft) + right(ln, rgt + 1)
+                    lft = instr(ln, chr(34))
+                else
+                    break
+                endif
+            wend
+            ' Remove comment.
+            cmt = instr(ln, "'")
+            if cmt >= 0  ln = left(ln, cmt)
+            ' Look for function again.
+            fnc = instr(ln, "function ")
+            if fnc >= 0
+                fnc = fnc + 9
+                ' Look for (
+                lpt = instr(ln, "(", fnc)
+                if lpt >= 0
+                    fncName = replace(mid(ln, fnc, lpt - fnc), " ", "")
+                    ' Ignore unnamed functions.
+                    if len(fncName) and fncName = wanted.name
+                        foundAtLine = lineNumber
+                    else
+                        ln = right(ln, lpt + 1)
+                        skipLine = false
+                    endif
+                endif
+            endif
+        endif
+        if skipLine
+            lineNumber = lineNumber + 1
+            if lineNumber < sizeof(lines)
+                ln = lines[lineNumber]
+            else
+                ln = unset
+            endif
+        endif
+    until foundAtLine >= 0 or ln = unset
+
+    if not (foundAtLine >= 0 and vEditor.Goto(foundAtLine + 1))
+        vOutput.AddLine("Could not locate function " + wanted.name)
+    endif
+endfunc
+
+function FunctionScan(ed)
+    lines = ed.GetLines()
+    lineNumber = 0
+    ln = lines[lineNumber]
+    listBox = ed.box.flist;
+    flist = listBox.GetItems()
+
+    selIndex = listBox.GetSelectedIndex()
+    if selIndex >= 0
+        if selIndex < sizeof(listBox.GetItems())
+            selName = listBox.GetItems()[selIndex].name
+        endif
+    else
+        selName = unset
+    endif
+
+    clear flist
+    do
+        skipLine = true
+        if instr(ln, "function ") >= 0
+            ' Remove all string constants.
+            lft = instr(ln, chr(34))
+            while lft >= 0
+                rgt = instr(ln, chr(34), lft + 1)
+                if rgt >= 0
+                    ln = left(ln, lft) + right(ln, rgt + 1)
+                    lft = instr(ln, chr(34))
+                else
+                    break
+                endif
+            wend
+            ' Remove comment.
+            cmt = instr(ln, "'")
+            if cmt >= 0  ln = left(ln, cmt)
+            ' Look for function again.
+            fnc = instr(ln, "function ")
+            if fnc >= 0
+                fnc = fnc + 9
+                ' Look for (
+                lpt = instr(ln, "(", fnc)
+                if lpt >= 0
+                    fncName = replace(mid(ln, fnc, lpt - fnc), " ", "")
+                    ' Ignore unnamed functions.
+                    if len(fncName)
+                        ' Now let's see ...
+                        ln = right(ln, lpt + 1)
+                        foul = false
+                        prms = ""
+                        do
+                            ' Remove comment.
+                            cmt = instr(ln, "'")
+                            if cmt >= 0  ln = left(ln, cmt)
+                            cm = instr(ln, ",")
+                            while cm >= 0
+                                pname = replace(left(ln, cm), " ", "")
+                                ln = right(ln, cm + 1)
+                                if len(pname)
+                                    for i = 0 to len(pname) - 1
+                                        if not IsAlphaOrDigit(asc(mid(pname, i)))
+                                            foul = true
+                                            break
+                                        endif
+                                    next
+                                    if foul  break
+                                    prms = prms + pname + " "
+                                else
+                                    foul = true
+                                    break
+                                endif
+                                cm = instr(ln, ",")
+                            wend
+                            if foul  break
+                            rpt = instr(ln, ")")
+                            if rpt >= 0
+                                pname = replace(left(ln, rpt), " ", "")
+                                ln = right(ln, rpt + 1)
+                                if len(pname)
+                                    for i = 0 to len(pname) - 1
+                                        if not IsAlphaOrDigit(asc(mid(pname, i)))
+                                            foul = true
+                                            break
+                                        endif
+                                    next
+                                    if foul  break
+                                    prms = prms + pname + " "
+                                endif
+                                skipLine = false
+                                break
+                            else
+                                lineNumber = lineNumber + 1
+                                if lineNumber < sizeof(lines)
+                                    ln = lines[lineNumber]
+                                else
+                                    foul = true
+                                    ln = unset
+                                    break
+                                endif
+                            endif
+                        loop
+                        if not foul
+                            if len(prms) prms = left(prms, len(prms) - 1)
+                            flist[sizeof(flist)] = [
+                                    name: fncName,
+                                    full: fncName + "(" + replace(prms, " ", ", ") + ")"]
+                        endif
+                    endif
+                endif    
+            endif
+        endif
+
+        if skipLine
+            lineNumber = lineNumber + 1
+            if lineNumber < sizeof(lines)
+                ln = lines[lineNumber]
+            else
+                ln = unset
+            endif
+        endif
+    until ln = unset
+
+    listBox.ItemsChanged()
+    if selName
+        foreach k, i in listBox.GetItems()
+            if i.name = selName
+                listBox.SelectIndex(k)
+                break
+            endif
+        next
+    endif
+
+endfunc
+
+function LoadCommandHelp(filename)
+    f = openfile(filename)
+    if typeof(f)
+        vCommandSyntax = []
+        vCommandFile = []
+        cmd = fread(f)
+        while cmd
+            syntax = fread(f)
+            fn = fread(f)
+            if syntax and filename 
+                vCommandSyntax[cmd] = syntax
+                vCommandFile[cmd] = fn
+                
+                fn = GetPathCombined(GetPathCombined(GetPathCombined(vPath, "examples"), "help"), fn)
+            endif
+            cmd = fread(f)
+        wend
+        free file f
+    endif
+endfunc
+
+' LoadKeywords
+' ------------
+' Load keywords from file and add them to an editor.
+function LoadKeywords(ed, filename)
+    f = openfile(filename)
+    if typeof(f)
+        ed.ClearKeywords()
+        kw = fread(f)
+        type = 0
+        while typeof(kw)
+            ' There are two predefined keyword types with different colors (COLOR_SH_KEYWORD and
+            ' COLOR_SH_CONSTANT)
+            if kw = "keywords:"  type = 0
+            elseif kw = "constants:"  type = 1
+            else if len(kw)  ed.AddKeyword(kw, type)
+            kw = fread(f)
+        wend
+        free file f
+    endif
+endfunc

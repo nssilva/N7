@@ -1,0 +1,102 @@
+' Breakthrough - step 2
+' ---------------------
+' Make a ball bounce around.
+'
+' Graphics by pudman: https://opengameart.org/content/arkanoid-assets
+
+
+include "tilemap.n7"
+
+' Create a window with a weird size.
+set window "Breakthrough", 737, 737*9/16
+set redraw off
+
+' Load images.
+paddleImage = loadimage("assets/paddle.png")
+ballImage = loadimage("assets/ball.png")
+
+' Load a map created with the tilemap editor.
+if not TM_LoadMap("assets/level1.txt")  end
+
+' Set up the rendering view for the library. Usually this is what you want, the top left corner of
+' the window (0, 0) and the same width and height.
+TM_SetView(0, 0, width(primary), height(primary))
+
+' Y-coordinate of paddle.
+paddleY = height(primary) - height(paddleImage)*3
+
+' Create a ball sprite.
+ball = [
+    ' Image.
+    img: ballImage,
+    ' Position.
+    x: (width(primary) - width(ballImage))/2, y: paddleY - height(ballImage),
+    ' Size.
+    w: width(ballImage), h: height(ballImage),
+    ' Direction.
+    dx: cos(rad(30)), dy: sin(rad(30)),
+    ' Speed.
+    spd: 4]
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Update center x coordinate of paddle.
+    paddleX = mousex() - width(paddleImage)/2
+
+    ' Move the ball.
+    TM_MoveSprite(ball, ball.dx*ball.spd, ball.dy*ball.spd)
+    ' Bounce and break bricks on collision.
+    if TM_CollisionUp()
+        ' Call BreakBrick (defined below the game loop) to check if there's a brick at the top left
+        ' and top right corners of the ball.
+        BreakBrick(ball.x, ball.y + ball.dy)
+        BreakBrick(ball.x + ball.w, ball.y + ball.dy)
+        ' Invert y direction.
+        ball.dy = -ball.dy
+    elseif TM_CollisionDown()
+        ' Break bricks bottom left/right.
+        BreakBrick(ball.x, ball.y + ball.h + ball.dy)
+        BreakBrick(ball.x + ball.w, ball.y + ball.h + ball.dy)
+        ball.dy = -ball.dy
+    endif
+    if TM_CollisionLeft()
+        ' Break bricks top/bottom left.
+        BreakBrick(ball.x + ball.dx, ball.y)
+        BreakBrick(ball.x + ball.dx, ball.y + ball.h)
+        ball.dx = -ball.dx
+    elseif TM_CollisionRight()
+        ' Break bricks top/bottom right.
+        BreakBrick(ball.x + ball.w + ball.dx, ball.y)
+        BreakBrick(ball.x + ball.w + ball.dx, ball.y + ball.h)
+        ball.dx = -ball.dx
+    endif
+
+    ' Clear screen.
+    set color 95, 95, 95
+    cls
+
+    ' Render the tilemap.
+    TM_Render()
+
+    ' Draw paddle.
+    draw image paddleImage, paddleX, paddleY
+
+    ' Draw ball.
+    draw image ball.img, ball.x, ball.y
+
+    ' Update window content.
+    redraw
+
+    fwait 60
+wend
+
+' BreakBrick
+' ----------
+' Remove any brick at the specified position.
+function BreakBrick(x, y)
+    ' Convert to map (tile) coordinates.
+    x = TM_ToMapX(x)
+    y = TM_ToMapY(y)
+    ' Remove cel (set to -1) if there's a brick.
+    if TM_GetCel(x, y) >= 0 TM_SetCel(x, y, -1)
+endfunc

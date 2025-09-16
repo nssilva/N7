@@ -1,0 +1,56 @@
+' cos
+' ---
+
+' 'cos(a)' returns the cosine of the angle a, expressed in radians. We use degrees and convert to
+' radians with 'rad'.
+pln "cos(rad(0)) = " + cos(rad(0))
+pln "cos(rad(90)) = " + cos(rad(90))
+pln "cos(rad(180)) = " + cos(rad(180))
+pln "cos(rad(270)) = " + cos(rad(270))
+pln "cos(rad(360)) = " + cos(rad(360))
+
+system "pause"
+
+' Show how a cosine curve relates to a circle.
+set window "cos", 400, 600
+set redraw off
+
+' Current angle.
+angle = 0
+do
+    ' Increase angle.
+    angle = (angle + 1)%360
+    
+    ' Clear screen and draw a circle.
+    set color 0, 0, 0
+    cls
+    set color 128, 128, 128
+    draw ellipse 200, 500, 75, 75
+    
+    ' Draw a line from the center of the circle to its edge in the current angle.
+    set color 255, 255, 255
+    circleX = 200 + cos(rad(angle))*75
+    circleY = 500 + sin(rad(angle))*75
+    draw line 200, 500, circleX, circleY
+
+    ' Plot a curve.
+    y = 400
+    a = angle
+    for y = 400 to 75
+        draw pixel 200 + cos(rad(a))*75, y
+        a = a - 1
+    next
+
+    ' Show the connection.
+    set color 128, 128, 128
+    draw line circleX, 400, circleX, circleY
+
+    set color 255, 255, 255
+    set caret 200, 16
+    center "angle = " + angle
+    set caret 200, 32
+    center "Press Esc to exit ..."
+         
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE)

@@ -1,0 +1,159 @@
+' Game of life
+' ------------
+' Add some random life with the left mouse button, remove some with the right
+' and press space bar to destroy all life.
+'
+' For more information: https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
+
+'#dbg
+
+constant W = 320, H = 240
+
+set window "Game of life", W, H, false, 2
+set redraw off
+
+' Create a world.
+randomize time()
+world = CreateWorld(W, H)
+
+' Loop until esc is pressed.
+do
+    if keydown(KEY_SPACE, true)  world = CreateWorld(W, H)
+    if mousebutton(0)  ModifyLife(world, mousex(), mousey(), 1)
+    if mousebutton(1)  ModifyLife(world, mousex(), mousey(), 0)
+    if keydown(KEY_P, true) system("pause")
+
+    UpdateWorld(world)
+
+    DrawWorld(world, 0, 0, false)
+
+    redraw
+    fwait 30
+until keydown(KEY_ESCAPE)
+
+
+' CreateWorld
+' -----------
+function CreateWorld(w, h)
+    world = []
+    ' These arrays represents the word's current and previous state. We need the
+    ' previous when generating the current. They're simply swapped in
+    ' UpdateWorld.
+    world.c = fill(0, w, h)
+    world.p = fill(0, w, h)
+    world.w = w
+    world.h = h
+    ' UpdateWorld only updates cells that are present in this table. Whenever a
+    ' change is made to a cell, it and its neighbors are added to the table.
+    ' The table is reset (or rather replaced) every time UpdateWorld executes.
+    world.ch = []
+    world.img = createimage(w, h)
+    return world
+endfunc
+
+' DisposeWorld
+' ------------
+function DisposeWorld(world)
+    free image world.img
+endfunc
+
+' ModifyLife
+' ----------
+function ModifyLife(w, cx, cy, value)
+    for y = cy - 4 to cy + 4  for x = cx - 4 to cx + 4
+        if rnd(2)  SetCell(w, x, y, value)
+    next
+endfunc
+
+' SetCell
+' -------
+function SetCell(world, x, y, value)
+    x = x%world.w
+    y = y%world.h
+    world.c[x][y] = value
+
+    ' Only cells that MAY change are handled in UpdateWorld. So add the current
+    ' cell and its neighbors to the ch table.
+    '    Rather than storing the cell x and y coordinates as values, we
+    ' transform them into a key using the forumula k = y*w + x. We can then
+    ' extract the coordinates from the key as y = int(k/w) and x = k%w.
+    world.ch[((y - 1)%world.h)*world.w + (x - 1)%world.w] = unset
+    world.ch[((y - 1)%world.h)*world.w + (x)] = unset
+    world.ch[((y - 1)%world.h)*world.w + (x + 1)%world.w] = unset
+    world.ch[(y)*world.w + (x - 1)%world.w] = unset
+    world.ch[(y)*world.w + (x)] = unset
+    world.ch[(y)*world.w + (x + 1)%world.w] = unset
+    world.ch[((y + 1)%world.h)*world.w + (x - 1)%world.w] = unset
+    world.ch[((y + 1)%world.h)*world.w + (x)] = unset
+    world.ch[((y + 1)%world.h)*world.w + (x + 1)%world.w] = unset
+endfunc
+
+' UpdateWorld
+' -----------
+function UpdateWorld(world)
+    tmp = world.p
+    world.p = world.c
+    world.c = tmp
+
+    ' Grab the ch table, containing cells that may change.
+    ch = world.ch
+    ' Create a new ch list for the world.
+    world.ch = []
+    ' Iterate cells that may have changed.
+    set image world.img
+    foreach k, v in ch
+        ' Convert the key k into coordinates.
+        y = int(k/world.w)
+        x = k%world.w
+        ' Count neighbors.
+        t = (y - 1)%world.h
+        b = (y + 1)%world.h
+        l = (x - 1)%world.w
+        r = (x + 1)%world.w
+        n = world.p[l][t] + world.p[x][t] + world.p[r][t]
+        n = n + world.p[l][y] + world.p[r][y]
+        n = n + world.p[l][b] + world.p[x][b] + world.p[r][b]
+        ' Alive?
+        if world.p[x][y]
+            ' Die.
+            if n < 2 or n > 3
+                SetCell(world, x, y, 0)
+                set color 0, 0, 0
+                set pixel x, y
+            else
+                world.c[x][y] = 1
+            endif
+        ' Dead.
+        else
+            ' Live.
+            if n = 3
+                SetCell(world, x, y, 1)
+                set color 255, 255, 255
+                set pixel x, y
+            else
+                world.c[x][y] = 0
+            endif
+        endif    
+    next
+    set image primary
+    ' The previous ch list of the world, that we kept in ch, will eventually be
+    ' garbage collected. But to avoid high memory usage we can clear it before
+    ' it is lost in garbage space.
+    clear ch
+endfunc
+
+' DrawWorld
+' ---------
+function DrawWorld(world, x, y, plotAll)
+    if plotAll
+        set color 0, 0, 0
+        draw rect x, y, world.w, world.h, true
+        set color 255, 255, 255
+        for cy = 0 to world.h - 1  for cx = 0 to world.w - 1
+            if world.p[cx][cy]  set pixel x + cx, y + cy
+        next
+    else
+        set color 255, 255, 255
+        draw image world.img, x, y
+    endif
+endfunc

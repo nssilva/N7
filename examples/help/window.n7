@@ -1,0 +1,11 @@
+' window
+' ------
+
+' 'window(title)' returns true if there is any running n7 program with the specified title.
+if window("NED")  pln "NED is running"
+else  pln "NED is not running"
+
+if window("Tilemap Editor")  pln "Tilemap Editor is running"
+else  pln "Tilemap Editor is not running"
+
+system "pause"

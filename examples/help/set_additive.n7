@@ -1,0 +1,28 @@
+' set additive
+' ------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window.
+set window "set additive", 640, 480
+
+' 'set additive value' turns additive draw mode on if value is true. When additive draw mode is
+' active, the source color is added to the destination color.
+set additive true
+' Draw three circles in red, green and blue.
+set color 255, 0, 0
+draw ellipse 320, 200, 64, 64, true
+set color 0, 255, 0
+draw ellipse 320 - 48, 200 + 48, 64, 64, true
+set color 0, 0, 255
+draw ellipse 320 + 48, 200 + 48, 64, 64, true
+' Turn off additive drawing.
+set additive false
+
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

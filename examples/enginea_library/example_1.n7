@@ -1,0 +1,47 @@
+' example_1.n7
+' ------------
+
+include "enginea.n7"
+
+set window "Example 1", 320, 240, false, 2
+set redraw off
+
+' Use EA_SetView(target_image, fov, z_min, z_max) to set up the renderer.
+EA_SetView(primary, rad(65), 0.1, 6)
+
+' Use EA_LoadMap(filename) to load a map created with the EngineA editor.
+flags = EA_LoadMap("assets/map_1.json")
+assert typeof(flags), "Map could not be loaded"
+
+' Look for the flag "player".
+player = unset
+foreach f in flags
+    if f.flag = "player"
+        player = EA_FpsPlayer()
+        player.SetPos(f.x, f.floorY, f.z)
+        ' Disable jumping for now.
+        player.SetJumpKey(unset)
+    endif
+next
+assert typeof(player), "No player flag found"
+
+' Add the player object and set it to be the camera.
+EA_AddObject(player)
+EA_SetCamera(player)
+
+' Use SetMouseSens to change the mouse sensitivity of the player object so that it suits your
+' setup.
+player.SetMouseSens(0.75)
+
+' Update callback, called by EA once every frame.
+function Update(dt)
+    if keydown(KEY_ESCAPE, true)  EA_Stop()
+endfunc
+
+' Tell EA to use Update as update function.
+EA_SetUpdateAction(Update)
+
+' Enable fog effect with EA_SetFog(mode, r, g, b), where mode can be EA_RETRO or EA_NORMAL.
+EA_SetFog(EA_NORMAL, 0, 0, 0)
+
+EA_Run()

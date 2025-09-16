@@ -1,0 +1,37 @@
+' save font, load font, loadfont
+' ------------------------------
+
+' Create a window of the size 640x480.
+set window "save font, load font", 640, 480
+
+' Create a bold and smoothened Arial bitmap font of the heigh 24.
+font1 = createfont("Arial", 24, true, false, false, true)
+
+' 'save font font_id, filename' saves the font font_id to file filename.txt and filename.png.
+save font font1, "assets/arial24"
+
+' 'load font font_id, filename' loads the bitmap font font_id from filename.txt and filename.png.
+' 'loadfont(filename)' does the same thing as the command 'load font' but auto-generates and returns
+' an unused identifier. The 'load font' command is for backward compability with n6, the preferred
+' way of loading a font is through the 'loadfont' function.
+font2 = loadfont("assets/arial24")
+
+' Create a window of the size 640x480.
+set window "save font, load font", 640, 480
+
+' 'set font font_id' sets the font used by 'wln', 'write', 'center' and 'rln' to font_id.
+set font font1
+set caret 320, 120
+center "Not a saved and loaded font"
+
+set font font2
+set caret 320, 240
+center "A saved and loaded font"
+
+' Write some text with the default n7 font, id 0.
+set font 0
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

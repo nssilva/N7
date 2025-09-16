@@ -1,0 +1,11 @@
+' clock
+' -----
+
+' 'clock()' returns time in milliseconds since program execution started.
+pln clock() + " milliseconds have passed since program started"
+
+' Wait for one second then print again.
+wait 1000
+pln clock() + " milliseconds have passed since last output"
+
+system "pause"

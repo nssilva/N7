@@ -1,0 +1,46 @@
+' mousebutton
+' -----------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window and disable automatic redraw.
+set window "mousebutton", 640, 480
+set redraw off
+
+' For displaying a message.
+rightButtonTimer = 0
+
+' A text offset controlled by the mouse wheel.
+textOffset = 0
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' 'mousebutton(btn)' returns true if mouse button btn is being pressed. Use 0 as parameter for
+    ' the left mouse button, 1 for the right.
+    leftMouseButton = mousebutton(0)
+    
+    ' 'mousebutton(btn, unflag) returns true if mouse button btn is being pressed, and if unflag is 
+    ' set to true the function will return false for the button until it has been released and
+    ' pressed again. Here we use 'clock' to display a message for 1 second when the right button is
+    ' pressed.
+    if mousebutton(1, true)  rightButtonTimer = clock() + 1000
+    ' You can use a btn value of 2 to capture signed mouse wheel "ticks".
+    textOffset = textOffset + 16*mousebutton(2, true)
+
+    ' Clear screen and display some information.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret 320, 200 + textOffset
+    center "Try using the mouse buttons and wheel!"
+    center
+    if leftMouseButton  center "Left mouse button is pressed"
+    if rightButtonTimer > clock()  center "You pressed the right button"    
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Upate window content.
+    redraw
+    fwait 60
+wend

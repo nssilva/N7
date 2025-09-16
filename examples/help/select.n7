@@ -1,0 +1,45 @@
+' select, case, default, endsel
+' -----------------------------
+
+' Get a random number in the range [0..7].
+randomize time()
+day = rnd(7)
+
+write "A random day: "
+
+' Evaluate an expression with 'select'. Then you can compare that expression with one or more
+' other expressions using 'case'. If a 'case' expression matches the original expression, the
+' statements beween that 'case' and the next 'case', 'default' or 'endsel' are executed, whereafter
+' execution continues after 'endsel'.
+select day
+    case 0
+        pln "Monday"
+    case 1
+        pln "Tuesday"
+    case 2
+        pln "Wednesday"
+    case 3
+        pln "Thursday"
+    case 4
+        pln "Friday"
+    case 5
+        pln "Saturday"
+    case 6
+        pln "Sunday"
+endsel
+
+' Get a random number in the range [1..5]
+number = rnd(1, 5)
+
+' You can test multiple comma-separated expressions in a single 'case'. And you can use 'default'
+' to execute one or more statements if none of the cases matched the original expression.
+select number
+    case 1, 2
+        pln number + " is lower than 3"
+    case 4, 5
+        pln number + " is higher than 3"
+    default
+        pln number + " is equal to 3"
+endsel
+
+system "pause"

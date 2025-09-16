@@ -1,0 +1,14 @@
+' key
+' ---
+
+' 'key(t, k)' returns true if table 't' contains the key k.
+t = [foo: 13, bar: 4]
+if key(t, "foo")  pln "t contains the key foo"
+if not key(t, "qux")  pln "t does not contain the key qux"
+
+' For arrays, the keys are the indexes. In the case below, the only existing indexes are 0, 1 and 2.
+a = [100, 200, 300]
+if key(a, 1)  pln "a contains the key 1"
+if not key(a, 4)  pln "a does not contain the key 4"
+
+system "pause"

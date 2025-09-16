@@ -1,0 +1,56 @@
+'miscellaneous
+
+'variables y funciones para manejar los puntos
+'para el player---------------------
+visible score_player = 0
+
+function set_score_player(number)
+    score_player = number
+endfunc
+
+function add_score_player(number)
+    score_player = score_player + number
+endfunc
+
+function get_score_player()
+    return score_player
+endfunc
+'para el player cpu-------------------
+visible score_player_cpu = 0
+
+function set_score_player_cpu(number)
+    score_player_cpu = number
+endfunc
+
+function add_score_player_cpu(number)
+    score_player_cpu = score_player_cpu + number
+endfunc
+
+function get_score_player_cpu()
+    return score_player_cpu
+endfunc
+
+'funcion de colision--------------------------------
+function collision_rect(x1,y1,w1,h1,x2,y2,w2,h2)
+    return x1 + w1 > x2 and x1 < x2 + w2 and
+            y1 + h1 > y2 and y1 < y2 + h2
+endfunc
+
+'funcion para el sonido------------------------------
+function CreateSineSfx(duration, startFreq, endFreq, fadeOut, sampleRate)
+    data = []
+    a = 0
+    da = 2*PI*startFreq/sampleRate
+    dda = (2*PI*endFreq/sampleRate - 2*PI*startFreq/sampleRate)/(duration*sampleRate)
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        data[i] = sin(a)*vol
+        a = a + da
+        da = da + dda
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+   
+    return createsound(data, data, sampleRate)
+endfunc

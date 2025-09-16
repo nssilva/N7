@@ -1,0 +1,32 @@
+' sleepy_tunnel.n7
+' ----------------
+
+#win32
+constant WIN_W = 640, WIN_H = 480
+set window "Sleepy Tunnel", WIN_W, WIN_H
+set redraw off
+aa = 0
+while not keydown(KEY_ESCAPE, true)
+    aa = aa + 0.05
+    zoffset = (zoffset + 0.001)%0.01
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    maxz = 0.1 + 150*0.01
+    for i = 150 to 0
+        z = 0.1 + i*0.01 - zoffset
+        s = 50/z
+        x = cos(z*5 + aa)*(z - 0.1)*50
+        y = sin(z*5 + aa)*(z - 0.1)*25
+        intens = 255 - 255*z*1.5/maxz
+        set color intens*0.5, intens, intens*0.75
+        draw pixel WIN_W/2 + x/z + cos(rad(0))*s, WIN_H/2 + y/z + sin(rad(0))*s
+        a = 15
+        while a <= 360
+            draw line to WIN_W/2 + x/z + cos(rad(a))*s, WIN_H/2 + y/z + sin(rad(a))*s
+            a = a + 15
+        wend
+    next
+    redraw
+    fwait 60
+wend

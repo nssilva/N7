@@ -1,0 +1,101 @@
+' Images work the same way as in n6. But the commands 'load image' and 'create
+' image' have corresponding functions, 'loadimage' and 'createimage', that auto-
+' generates identifiers (handles).
+'   ' Load image and assign it to id 1.
+'   load image 1, "my_image.png"
+'   ' Load another image and get its id.
+'   myOtherImage = loadimage("my_other_image.png")
+' To avoid conflicts, you should stick with either the command or the function.
+
+' Tell the compiler to make this a win32 application to get rid of the console.
+#win32
+
+' Open a window and enable double buffering.
+set window "Images", 640, 480
+set redraw off
+
+' loadimage(<filename>[, numColumns, numRows])
+' Load a background image.
+bgImage = loadimage("assets/background.png")
+
+' Load an image of a smiley face.
+smileyImage = loadimage("assets/smiley.png")
+
+' Load an image containing several smileys in a grid and define the grid with
+' the two extra parameters. The line of code below gives the same result as:
+'   smileysImage = loadimage("assets/smileys.png")
+'   set image grid smileysImage, 3, 2
+smileysImage = loadimage("assets/smileys.png", 3, 2)
+
+' Create an empty image.
+sillyImage = createimage(32, 32)
+' Set destination image to 'sillyImage'.
+set image sillyImage
+' Fill the image with black and white noise.
+for y = 0 to 31  for x = 0 to 31
+    i = rnd(256)
+    set color i, i, i
+    set pixel x, y
+next
+' Set destination image back to primary (the window's back buffer).
+set image primary
+
+' Setup some "sprites".
+sprites = []
+for i = 0 to 99
+    a = rnd(PI*2)
+    speed = 1.0 + rnd()*2
+    sprites[i] = [
+            img: smileysImage, cel: rnd(6),
+            x: rnd(640), y: rnd(480),
+            dx: cos(a)*speed, dy: sin(a)*speed,
+            Update: function()
+                    this.x = this.x + this.dx
+                    this.y = this.y + this.dy
+                    if (this.x < 0 and this.dx < 0) or (this.x > 640 and this.dx > 0)
+                        this.dx = -this.dx
+                    endif
+                    if (this.y < 0 and this.dy < 0) or (this.y > 480 and this.dy > 0)
+                        this.dy = -this.dy
+                    endif
+                endfunc,
+            Draw: function()
+                    draw image this.img,
+                            this.x - width(this.img)/2,
+                            this.y - height(this.img)/2,
+                            this.cel
+                endfunc
+        ]
+next
+
+' Update, draw and loop until user presses the escape key.
+do
+    ' Update sprites.
+    for i = 0 to sizeof(sprites) - 1  sprites[i].Update()
+
+    ' Draw background.
+    set color 255, 255, 255
+    draw image bgImage, 0, 0
+
+    ' Draw sprites.
+    for i = 0 to sizeof(sprites) - 1  sprites[i].Draw()
+
+    ' Draw the image we loaded first at the center of the window. And let's
+    ' color it green.
+    set color 0, 255, 0
+    draw image smileyImage,
+            (width(primary) - width(smileyImage))/2,
+            (height(primary) - height(smileyImage))/2 
+
+    ' Draw the image we created at the top left corner half transparent.
+    set color 255, 255, 255, 128
+    draw image sillyImage, 0, 0
+
+    ' Write instructions.
+    set color 0, 0, 128
+    set caret width(primary)/2, 8
+    center "Press escape to exit"
+
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE)

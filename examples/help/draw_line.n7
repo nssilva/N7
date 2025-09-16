@@ -1,0 +1,41 @@
+' draw line
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw line", 640, 480
+
+' 'draw line x_1, y_1, x_2, y_2' draws a line between x_1, y_1 and x_2, y_2.
+draw line 100, 100, 540, 380
+
+' Write some text.
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Loop until spacebar is pressed.
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' Clear screen and display a new message.
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Draw a couple of random lines with random colors.
+    for i = 1 to 100
+        set color rnd(256), rnd(256), rnd(256), rnd(256)
+        draw line rnd(640), rnd(440), rnd(640), rnd(440)
+    next
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

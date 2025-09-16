@@ -1,0 +1,296 @@
+' List.n7
+' -------
+' Just an array with some helper functions.
+
+
+' List
+' ----
+' Return a new List.
+function List()
+    list = []
+    list.size = 0
+    list.ASCENDING = 1
+    list.DESCENDING = -1
+
+    ' Size
+    ' ----
+    ' Return size. Accessing the size field is okay.
+    list.Size = function()
+        return this.size
+    endfunc
+
+    ' Contains
+    ' --------
+    ' Return true if list contains x.
+    list.Contains = function(x)
+        if not this.size  return false
+        for i = 0 to this.size - 1  if this[i] = x  return true
+        return false
+    endfunc
+
+    ' IndexOf
+    ' -------
+    ' Return index of first occurrance of x in list or -1 if x wasn't found.
+    list.IndexOf = function(x)
+        if this.size  for i = 0 to this.size - 1  if this[i] = x  return i
+        return -1
+    endfunc
+    
+    ' IndexOfFrom
+    ' -----------
+    ' Return index of first occurance of x in list, starting the search at index index, or -1 if x
+    ' wasn't found.
+    list.IndexOfFrom = function(x, index)
+        if index < 0 or index >= this.size  return -1
+        for i = index to this.size - 1  if this[i] = x  return i
+        return -1
+    endfunc
+
+    ' Clone
+    ' -----
+    ' Return a shallow clone of this list. For a deep copy, just use the copy command.
+    list.Clone = function()
+        list = List()
+        if this.size  for i = 0 to this.size - 1  list.Add(this[i])
+        return list
+    endfunc
+
+    ' Clear
+    ' -----
+    ' Clear list.
+    list.Clear = function()
+        if not this.size  return false
+        for i = 0 to this.size - 1  free this[i]
+        this.size = 0
+        return true
+    endfunc
+            
+    ' Add
+    ' ---
+    ' Add x at the end of the list.
+    list.Add = function(x)
+        this[this.size] = x
+        this.size = this.size + 1
+    endfunc
+    
+    ' AddList
+    ' -------
+    ' Add the content of list to end of this list.
+    list.AddList = function(list)
+        if not list.size  return
+        for i = 0 to list.size - 1  this[this.size + i] = list[i]
+        this.size = this.size + list.size
+    endfunc
+    
+    ' Insert
+    ' ------
+    ' Insert x at index index.
+    list.Insert = function(x, index)
+        ' Should index be cropped? I think it's better to assert.
+        assert index >= 0 and index <= this.size, "List.Insert: Invalid index " + index
+        if index < this.size  for i = this.size - 1 to index  this[i + 1] = this[i]
+        this[index] = x
+        this.size = this.size + 1
+    endfunc
+    
+    ' Remove
+    ' ------
+    ' Remove x from the list.
+    list.Remove = function(x)
+        if not this.size  return 0
+        sub = 0
+        for i = 0 to this.size - 1
+            if this[i] = x
+                free this[i]
+                sub = sub + 1
+            else
+                this[i - sub] = this[i]
+            endif
+        next
+        this.size = this.size - sub
+    endfunc
+    
+    ' RemoveByIndex
+    ' -------------
+    ' Remove index index from list.
+    list.RemoveByIndex = function(index)
+        if index < 0 or index >= this.size  return false
+        free this[index]
+        if index < this.size - 1  for i = index to this.size - 2  this[i] = this[i + 1]
+        this.size = this.size - 1
+        return true
+    endfunc
+
+    ' Pop
+    ' ---
+    ' Remove and return the last item in the list.
+    list.Pop = function()
+        if not this.size  return unset
+        this.size = this.size - 1
+        x = this[this.size]
+        free this[this.size]
+        return x
+    endfunc
+            
+    ' Sort
+    ' ----
+    ' Sort list using quick sort, type can be list.ASCENDING, list.DESCENDING or a function. If a
+    ' function is used, it should take two arguments, like my_sorter(a, b). If a should come before
+    ' b the function must return a negative value (like -1). If a should come after b, return a
+    ' positive number. If a and b are equal, return 0.
+    list.Sort = function(type)
+        ' Sort ascending.
+        function reclh(a, low, high)
+            i = low; j = high
+            pivot = a[(low + high)/2]
+            do
+                while (a[i] < pivot)  i = i + 1
+                while (a[j] > pivot)  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  reclh(a, low, j)
+            if i < high  reclh(a, i, high)
+        endfunc
+    
+        ' Sort descending.
+        function rechl(a, low, high)
+            i = low; j = high
+            pivot = a[(low + high)/2]
+            do
+                while (a[i] > pivot)  i = i + 1
+                while (a[j] < pivot)  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  rechl(a, low, j)
+            if i < high  rechl(a, i, high)
+        endfunc
+    
+        ' Sort using function f.
+        function recf(a, low, high, f)
+            i = low; j = high
+            pivot = a[(low + high)/2]
+            do
+                while f(a[i], pivot) < 0  i = i + 1
+                while f(a[j], pivot) > 0  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  recf(a, low, j, f)
+            if i < high  recf(a, i, high, f)
+        endfunc
+    
+        if this.size > 1
+            if typeof(type) = TYPE_FUNCTION  recf(this, 0, this.size - 1, type)
+            elseif type >= 0  reclh(this, 0, this.size - 1)
+            else rechl(this, 0, this.size - 1)
+        endif
+    endfunc
+    
+    ' Sorted
+    ' ------
+    ' Works like Sort, but returns a sorted shallow copy instead of sorting this list.
+    list.Sorted = function(type)
+        list = this.Clone()
+        list.Sort(type)
+        return list
+    endfunc
+
+    ' SortByField
+    ' -----------
+    ' Works like Sort but compares a field f of the items in the list.
+    list.SortByField = function(f, type)
+        ' Sort ascending.
+        function reclh(a, f, low, high)
+            i = low; j = high
+            pivot = a[(low + high)/2][f]
+            do
+                while (a[i][f] < pivot)  i = i + 1
+                while (a[j][f] > pivot)  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  reclh(a, f, low, j)
+            if i < high  reclh(a, f, i, high)
+        endfunc
+    
+        ' Sort descending.
+        function rechl(a, f, low, high)
+            i = low; j = high
+            pivot = a[(low + high)/2][f]
+            do
+                while (a[i][f] > pivot)  i = i + 1
+                while (a[j][f] < pivot)  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  rechl(a, f, low, j)
+            if i < high  rechl(a, f, i, high)
+        endfunc
+    
+        ' Sort using function f.
+        function recf(a, f, low, high, fn)
+            i = low; j = high
+            pivot = a[(low + high)/2][f]
+            do
+                while fn(a[i][f], pivot) < 0  i = i + 1
+                while fn(a[j][f], pivot) > 0  j = j - 1
+                if i <= j
+                    tmp = a[i]; a[i] = a[j]; a[j] = tmp
+                    i = i + 1; j = j - 1
+                endif
+            until i > j
+            if low < j  recf(a, f, low, j, fn)
+            if i < high  recf(a, f, i, high, fn)
+        endfunc
+    
+        if this.size > 1
+            if typeof(type) = TYPE_FUNCTION  recf(this, f, 0, this.size - 1, type)
+            elseif type >= 0  reclh(this, f, 0, this.size - 1)
+            else rechl(this, f, 0, this.size - 1)
+        endif
+    endfunc
+
+    ' SortedByField
+    ' -------------
+    ' Works like SortByField, but returns a sorted shallow copy instead of sorting this list.
+    list.SortedByField = function(f, type)
+        list = this.Clone()
+        list.SortByField(f, type)
+        return list
+    endfunc
+            
+    ' ToString
+    ' --------
+    ' Return a string version of the list. If any item in the list is a table with a ToString
+    ' function, the function will be called to get a string representation for that item.
+    list.ToString = function()
+        s = "["
+        if this.size > 0
+            for i = 0 to this.size - 1
+                if typeof(this[i]) = TYPE_TABLE and key(this[i], "ToString") and
+                        typeof(this.ToString) = TYPE_FUNCTION
+                    if i = 0  s = s + this[i].ToString()
+                    else s = s + ", " + this[i].ToString()
+                else
+                    if i = 0  s = s + this[i]
+                    else s = s + ", " + this[i]
+                endif
+            next
+        endif
+        return s + "]"
+    endfunc
+    
+    return list
+endfunc

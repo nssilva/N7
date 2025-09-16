@@ -1,0 +1,79 @@
+' This program will open a window but is still built as a console application.
+' You can tell the compiler to build a win32 application by uncommenting the
+' line below, but then you won't see the first text output made with 'wln', and
+' all 'pln' output will be hidden.
+
+' Compiler flag.
+' #win32
+
+' Use 'wln' for writing to the console OR the window.
+wln "I'll open a window in three seconds ..."
+wait 3000
+
+' Set width and height of the window to be created. Let the height be 480 and
+' calculate a width so that the aspect matches the screen.
+h = 480
+w = int(h*screenw()/screenh())
+
+' set window <title>, <width>, <height>[, fullScreen[, scaleFactor]]
+' Create a window with the title "My window" and the width and height w and h.
+set window "My window", w, h
+wait 1000
+wln "Here I am!"
+wait 3000
+
+' Create a new window of half the size but with a 2x scale. The fourth
+' parameter is the full screen flag, that we'll look at next. If a window has
+' alredy been created, the new one replaces the old one.
+w = int(w/2)
+h = int(h/2)
+set window "My window", w, h, false, 2
+wait 1000
+wln "Look at my fat pixels!"
+wait 3000
+
+' Switch to full screen.
+set window "My window", w, h, true
+wait 1000
+wln "I'm all over the place!"
+wait 3000
+
+' Enable double buffering.
+set redraw off
+
+' We'll draw a square at these coordinates.
+squareX = w/2
+squareY = h/2
+' Loop until the user clicks anywhere.
+do
+    ' Use arrow keys to move the square. If you want to see the full list of
+    ' key identifiers, I suggest ... that you look in the keywords.txt file for
+    ' now.
+    if keydown(KEY_LEFT) squareX = squareX - 1
+    if keydown(KEY_RIGHT) squareX = squareX + 1
+    if keydown(KEY_UP) squareY = squareY - 1
+    if keydown(KEY_DOWN) squareY = squareY + 1
+
+    ' Fill the screen an awkward blueish color.
+    set color 0, 32, 48
+    cls
+    
+    ' Draw the square.
+    set color 128, 0, 128
+    draw rect squareX - 8, squareY - 8, 16, 16, true
+
+    ' Write instructions.
+    set color 255, 255, 255
+    set caret w/2, 4
+    center "Use the arrow keys to control the square"
+    center
+    center "Mouse coordinates: " + mousex() + ", " + mousey()    
+    center
+    center "Click anywhere to exit"
+
+    ' Copy backbuffer to the window.
+    redraw
+
+    ' Use 'fwait' to cap the fps to 60.    
+    fwait 60
+until mousebutton(0)

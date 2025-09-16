@@ -1,0 +1,515 @@
+' breakout3d.n7
+' -------------
+
+include "s3d.n7"
+include "sfx.n7"
+
+#win32
+
+constant FPS_CAP = 60
+constant MOUSE_SENS = 1 ' Modify this if mouse sensitivity feels wrong
+
+visible vSfx = SFX()
+visible vSoundMaxD = 32
+visible vRes = 480
+visible vBrickMesh, vPaddleMesh
+visible vRedBrickImage, vGreenBrickImage, vBlueBrickImage, vBallImage, vPaddleImage
+visible vWhiteImage
+visible vFloorImage
+visible vPaddleSound, vWallSound, vBrickHitSound, vBrickDestroyedSound
+visible vPaddleX, vPaddleZ, vPaddleW
+visible vCamX, vCamY, vCamZ, vCamYaw, vCamPitch
+
+set window "Breakout 3D", vRes*screenw()/screenh(), vRes, true
+set redraw off
+
+LoadAssets()
+
+S3D_SetView(primary, rad(60), 0.1, 30)
+
+visible vBricks = fill(unset, 15, 10, 3)
+for x = 0 to 14  for z = 0 to 9  for y = 0 to 2
+    if y = 0 and rnd(2) = 0 or y > 0 and vBricks[x][z][y - 1] and rnd(2) = 0
+        select rnd(3)
+            case 0  vBricks[x][z][y] = [st: 1, m: vBrickMesh, t: vRedBrickImage, offs: 0, ht: 0]
+            case 1  vBricks[x][z][y] = [st: 2, m: vBrickMesh, t: vGreenBrickImage, offs: 0, ht: 0]
+            case 2  vBricks[x][z][y] = [st: 3, m: vBrickMesh, t: vBlueBrickImage, offs: 0, ht: 0]
+        endsel
+    endif
+next
+
+visible vLastTick = 0
+
+vCamX = 7.5
+vCamZ = -8.5
+vCamY = -8
+vCamPitch = -rad(45)
+vCamYaw = 0
+vPaddleX = 7.5
+vPaddleZ = -5
+vPaddleW = 2
+ball = [x: 7.5, z: -2, dx: 1, dz: 1, spd: 5]
+k = 1/sqr(ball.dx^2 + ball.dz^2)
+ball.dx = ball.dx*k; ball.dz = ball.dz*k
+balls = []
+balls[sizeof(balls)] = ball
+
+set mouse off
+while not keydown(KEY_ESCAPE, true)
+    dt = DeltaTime()
+    mdx = mouserelx()
+    set mouse width(primary)/2, height(primary)/2
+
+    vPaddleX = min(max(vPaddleX + min(mdx*0.075*MOUSE_SENS, 0.5), vPaddleW/2), 15 - vPaddleW/2)
+    
+    vCamX = vCamX*0.975 + vPaddleX*0.025
+    ' camz can be modified a bit by the ball position
+    vCamYaw = -rad(5*(vPaddleX - 7.5)/7.5)
+
+    i = 0; while i < sizeof(balls) 
+        if UpdateBall(ball, dt)  i = i + 1
+        else free key balls, i
+    wend
+            
+    set color 0, 0,0 
+    cls
+    S3D_Clear()
+    S3D_RotateX(-vCamPitch)
+    S3D_RotateY(-vCamYaw)
+    S3D_Translate(-vCamX, -vCamY, -vCamZ)
+    S3D_Texture(vFloorImage)
+    S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+    S3D_SetSorting(S3D_NONE)
+    S3D_Begin(S3D_QUADS)
+    S3D_Color(255, 255, 255)
+    S3D_Vertex(0, 0.05, -6, 0, 1)
+    S3D_Vertex(0, 0.05, 10, 0, 0)
+    S3D_Vertex(15, 0.05, 10, 1, 0)
+    S3D_Vertex(15, 0.05, -6, 1, 1)    
+    S3D_End()
+    S3D_Render()
+    S3D_SetSorting(S3D_NONE)
+    S3D_SetDepthBuffer(S3D_Z_BUFFER)
+    for x = 0 to 14  for z = 0 to 9  for y = 0 to 2
+        b = vBricks[x][z][y]
+        if b
+            if b.offs > 0
+                b.spd = b.spd + 7*dt
+                b.offs = max(b.offs - b.spd*dt, 0)
+            endif
+            S3D_Push()
+            S3D_Translate(x, -(y + b.offs), z)
+            if b.ht
+                b.ht = max(b.ht - 1, 0)
+                S3D_Texture(vWhiteImage)
+            else
+                S3D_Texture(b.t)
+            endif
+            S3D_Mesh(b.m, 0)
+            S3D_Pop()
+        endif
+    next
+    S3D_Push()
+    S3D_Translate(vPaddleX, 0, vPaddleZ)
+    S3D_Scale(vPaddleW, 1, 1)
+    S3D_Texture(vPaddleImage)
+    S3D_Mesh(vPaddleMesh, 0)
+    S3D_Pop()
+    
+    foreach ball in balls
+        S3D_Push()
+        S3D_Translate(ball.x, -0.25, ball.z)
+        S3D_RotateY(vCamYaw)
+        S3D_RotateX(vCamPitch)
+        S3D_Texture(vBallImage)
+        S3D_Color(255, 255, 255)
+        S3D_Begin(S3D_QUADS)
+            S3D_Vertex(0.25, -0.25, 0, 1, 0)
+            S3D_Vertex(0.25, 0.25, 0, 1, 1)
+            S3D_Vertex(-0.25, 0.25, 0, 0, 1)
+            S3D_Vertex(-0.25, -0.25, 0, 0, 0)
+        S3D_End()
+        S3D_Pop()
+    next
+    
+    S3D_Render()
+    set caret 0, 0
+    set color 255, 255, 255
+    wln int(1/dt)
+    redraw
+    ' no fps cap might affect mouse input on fast computers, maybe wait more than 1?
+    if FPS_CAP > 0  fwait FPS_CAP
+    else  wait 1
+wend
+
+' UpdateBall
+' ----------
+function UpdateBall(ball, dt)
+    ' Move in z.
+    ball.z = ball.z + dt*ball.dz*ball.spd
+    if ball.dz < 0
+        iz = floor(ball.z - 0.25)
+        if iz >= 0 and iz < 10
+            ixl = floor(ball.x - 0.25); ixr = floor(ball.x + 0.25)
+            if ixl >= 0 and ixl < 15 and vBricks[ixl][iz][0]
+                HitBrick(ixl, iz)
+                ball.z = iz + 1 + 0.251; ball.dz = |ball.dz|
+            endif
+            if ixr >= 0 and ixr < 15 and vBricks[ixr][iz][0]
+                HitBrick(ixr, iz)
+                ball.z = iz + 1 + 0.251; ball.dz = |ball.dz|
+            endif
+        elseif iz < -10
+            ball.z = -10 + 0.251; ball.dz = |ball.dz|
+        endif
+    elseif ball.dz > 0
+        iz = floor(ball.z + 0.25)
+        if iz >= 0 and iz < 10
+            ixl = floor(ball.x - 0.25); ixr = floor(ball.x + 0.25)
+            if ixl >= 0 and ixl < 15 and vBricks[ixl][iz][0]
+                HitBrick(ixl, iz)
+                ball.z = iz - 0.251; ball.dz = -|ball.dz|
+            endif
+            if ixr >= 0 and ixr < 15 and vBricks[ixr][iz][0]
+                HitBrick(ixr, iz)
+                ball.z = iz - 0.251; ball.dz = -|ball.dz|
+            endif
+        elseif iz >= 10
+            ball.z = 10 - 0.251; ball.dz = -|ball.dz|
+            PlaySound3D(vWallSound, 1, ball.x, 0.25, ball.z, vSoundMaxD)
+        endif
+    endif
+    ' Move in x.
+    ball.x = ball.x + dt*ball.dx*ball.spd
+    if ball.dx < 0
+        ix = floor(ball.x - 0.25)
+        if ix >= 0 and ix < 15
+            izt = floor(ball.z - 0.25); izb = floor(ball.z + 0.25)
+            if izt >= 0 and izt < 10 and vBricks[ix][izt][0]
+                HitBrick(ix, izt)
+                ball.x = ix + 1 + 0.251; ball.dx = |ball.dx|
+            endif
+            if izb >= 0 and izb < 10 and vBricks[ix][izb][0]
+                HitBrick(ix, izb)
+                ball.x = ix + 1 + 0.251; ball.dx = |ball.dx|
+            endif
+        elseif ix < 0
+            ball.x = 0.251; ball.dx = |ball.dx|
+            PlaySound3D(vWallSound, 1, ball.x, 0.25, ball.z, vSoundMaxD)
+        endif 
+    elseif ball.dx > 0
+        ix = floor(ball.x + 0.25)
+        if ix >= 0 and ix < 15
+            izt = floor(ball.z - 0.25); izb = floor(ball.z + 0.25)
+            if izt >= 0 and izt < 10 and vBricks[ix][izt][0]
+                HitBrick(ix, izt)
+                ball.x = ix - 0.251; ball.dx = -|ball.dx|
+            endif
+            if izb >= 0 and izb < 10 and vBricks[ix][izb][0]
+                HitBrick(ix, izb)
+                ball.x = ix - 0.251; ball.dx = -|ball.dx|
+            endif
+        elseif ix >= 15
+            ball.x = 15 - 0.251; ball.dx = -|ball.dx|
+            PlaySound3D(vWallSound, 1, ball.x, 0.25, ball.z, vSoundMaxD)
+        endif
+    endif
+
+    dx = (ball.x - vPaddleX)/(vPaddleW*0.5 + 0.25)
+    if |dx| < 1 and ball.dz < 0 and ball.z > vPaddleZ and ball.z - vPaddleZ < 0.5
+        ball.dx = dx*2.5
+        ball.dz = 1
+        k = 1/sqr(ball.dx^2 + ball.dz^2)
+        ball.dx = ball.dx*k; ball.dz = ball.dz*k
+        PlaySound3D(vPaddleSound, 1, ball.x, 0.25, ball.z, vSoundMaxD)
+    endif
+    
+    return true
+endfunc
+
+' HitBrick
+' --------
+function HitBrick(x, z)
+    b = vBricks[x][z][0]
+    if b and b.ht = 0 and b.offs < 0.5
+        b.st = b.st - 1
+        if b.st > 0
+            b.ht = 10
+            PlaySound3D(vBrickHitSound, 1, x + 0.5, 0.5 + b.offs, z + 0.5, vSoundMaxD)
+        else
+            for i = 0 to 1
+                vBricks[x][z][i] = vBricks[x][z][i + 1]
+                if vBricks[x][z][i]
+                    if vBricks[x][z][i].offs = 0
+                        vBricks[x][z][i].spd = 0
+                    endif
+                    vBricks[x][z][i].offs = vBricks[x][z][i].offs + 1
+                endif
+            next
+            vBricks[x][z][2] = unset
+            PlaySound3D(vBrickDestroyedSound, 1, x + 0.5, 0.5 + b.offs, z + 0.5, vSoundMaxD)
+        endif
+    endif
+endfunc
+
+' DeltaTime
+' ---------
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' LoadAssets
+' ----------
+function LoadAssets()
+    ' Meshes.
+    vBrickMesh = S3D_BeginMesh()
+        S3D_Scale(0.5, 0.5, 0.5)
+        S3D_Translate(1, -1, 1)
+        S3D_Begin(S3D_QUADS)
+            ' Top face.
+            S3D_Vertex(1, -1, 1, 1, 1)
+            S3D_Vertex(1, -1, -1, 1, 0)    
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            S3D_Vertex(-1, -1, 1, 0, 1)
+            ' Front face.
+            S3D_Vertex(1, -1, -1, 1, 0)
+            S3D_Vertex(1, 1, -1, 1, 1)
+            S3D_Vertex(-1, 1, -1, 0, 1)
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            ' Left face.
+            S3D_Vertex(-1, 1, 1, 1, 1)
+            S3D_Vertex(-1, -1, 1, 0, 1)
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            S3D_Vertex(-1, 1, -1, 1, 0)
+            ' Right face.
+            S3D_Vertex(1, 1, -1, 1, 0)
+            S3D_Vertex(1, -1, -1, 0, 0)
+            S3D_Vertex(1, -1, 1, 0, 1)
+            S3D_Vertex(1, 1, 1, 1, 1)        
+        ' Done drawing quads.
+        S3D_End()            
+    S3D_EndMesh()
+    
+    vPaddleMesh = S3D_BeginMesh()
+        S3D_Scale(0.5, 0.25, 0.25)
+        S3D_Translate(0, -1, 0)
+        S3D_Begin(S3D_QUADS)
+            ' Top face.
+            S3D_Vertex(1, -1, 1, 1, 1)
+            S3D_Vertex(1, -1, -1, 1, 0)    
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            S3D_Vertex(-1, -1, 1, 0, 1)
+            ' Front face.
+            S3D_Vertex(1, -1, -1, 1, 0)
+            S3D_Vertex(1, 1, -1, 1, 1)
+            S3D_Vertex(-1, 1, -1, 0, 1)
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            ' Left face.
+            S3D_Vertex(-1, 1, 1, 0.25, 1)
+            S3D_Vertex(-1, -1, 1, 0, 1)
+            S3D_Vertex(-1, -1, -1, 0, 0)
+            S3D_Vertex(-1, 1, -1, 0.25, 0)
+            ' Right face.
+            S3D_Vertex(1, 1, -1, 0.25, 0)
+            S3D_Vertex(1, -1, -1, 0, 0)
+            S3D_Vertex(1, -1, 1, 0, 1)
+            S3D_Vertex(1, 1, 1, 0.25, 1)        
+        ' Done drawing quads.
+        S3D_End()            
+    S3D_EndMesh()
+    
+    ' Brick images.
+    vRedBrickImage = createimage(32, 32)
+    set image vRedBrickImage
+    set color 32, 0, 32; cls
+    
+    set color 255, 255, 255; draw rect 0, 0, 32, 32, false
+    set color 255, 0, 128; draw rect 1, 1, 30, 30, false
+    set color 128, 0, 0; draw rect 2, 2, 28, 28, false
+    set image primary
+    BoxBlur(vRedBrickImage, 3, 3)
+
+    vGreenBrickImage = createimage(32, 32)
+    set image vGreenBrickImage
+    set color 32, 16, 0; cls
+    set color 255, 255, 255; draw rect 0, 0, 32, 32, false
+    set color 255, 128, 0; draw rect 1, 1, 30, 30, false
+    set color 128, 0, 0; draw rect 2, 2, 28, 28, false
+    set image primary
+    BoxBlur(vGreenBrickImage, 3, 3)
+
+    vBlueBrickImage = createimage(32, 32)
+    set image vBlueBrickImage
+    set color 0, 16, 32; cls
+    set color 255, 255, 255; draw rect 0, 0, 32, 32, false
+    set color 0, 128, 255; draw rect 1, 1, 30, 30, false
+    set color 0, 0, 128; draw rect 2, 2, 28, 28, false
+    set image primary
+    BoxBlur(vBlueBrickImage, 3, 3)
+    
+    vBallImage = createimage(31, 31)
+    set image vBallImage
+    set color 255, 255, 255; cls
+    set color 16, 16, 16; draw ellipse 15, 15, 11, 11, true
+    set image primary
+    BoxBlur(vBallImage, 4, 4)
+    set image vBallImage
+    set color 255, 0, 255
+    for y = 0 to 30  for x = 0 to 30
+        d = sqr((x - 15)^2 + (y - 15)^2)
+        if d >= 14.5  set pixel x, y
+    next
+    set image primary
+    set image colorkey vBallImage, 255, 0, 255
+
+    ' Ground image, using midpoint displacement cloud.    
+    data = MD_Generate(257, 1, 0.1, 52)
+    vFloorImage = createimage(256, 256)
+    set image vFloorImage
+    for y = 0 to 255  for x = 0 to 255
+        c = data[x][y]
+        if int(y/17 + x/17)%2 = 0
+            set color c*8, c*32, c*64
+        else
+            set color c*4, c*16, c*32
+        endif
+        set pixel x, y
+    next
+    set image primary
+    BoxBlur(vFloorImage, 2, 2)
+
+    ' Paddle image.    
+    vPaddleImage = createimage(128, 32)
+    set image vPaddleImage
+    set color 0, 8, 32; cls
+    set color 204, 0, 0
+    draw rect 0, 0, 32, 32, true; draw rect 96, 0, 32, 32, true
+    set color 255, 255, 255, 204
+    draw rect 0, 0, 32, 32; draw rect 1, 1, 30, 30; draw rect 2, 2, 28, 28
+    draw rect 96, 0, 32, 32; draw rect 97, 1, 30, 30; draw rect 98, 2, 28, 28
+    set color 0, 64, 255, 128
+    draw rect 32, 0, 64, 32; draw rect 33, 1, 62, 30; draw rect 34, 2, 60, 28
+    set image primary
+    BoxBlur(vPaddleImage, 3, 3)
+          
+    vWhiteImage = createimage(32, 32)
+    set image vWhiteImage
+    set color 255, 255, 255
+    cls
+    set image primary
+
+    ' create sound effects.
+    vSfx.SetEcho(3, 0.25, 0.1, 0.25)
+    vPaddleSound = vSfx.SineWave(0.2, [400, 100, 200], [1, 0])
+    vWallSound = vSfx.SineWave(0.15, [200, 100, 400], [0.5, 0])
+    vBrickHitSound = vSfx.SquareWave(0.15, [150, 100, 50], [0.25, 0, 0])
+    vBrickDestroyedSound = vSfx.Noise(0.3, [1000, 100, 500], [1, 0])    
+endfunc
+
+' PlaySound3D
+' -----------
+function PlaySound3D(snd, vol, x, y, z, maxd)
+    dx = x - vCamX; dy = y - vCamY; dz = z - vCamZ
+    d = dx*dx + dy*dy + dz*dz
+    if d >= maxd*maxd  return
+    if d > 0
+        d = sqr(d); k = 1.0/d
+        dx = dx*k; dy = dy*k; dz = dz*k
+        d = (maxd - min(maxd, d))/maxd
+        cp = cos(vCamPitch)
+        pan = (cos(vCamYaw)*cp*dx - sin(vCamYaw)*cp*dz)*0.9
+    else
+        d = 1
+        pan = 0
+    endif
+    play sound snd, vol*d, pan
+endfunc
+
+' BoxBlur
+' -------
+function BoxBlur(img, rx, ry)
+    rx = max(int(rx), 0); ry = max(int(ry), 0)
+    set image img
+    w = width(img); h = height(img)
+    data = dim(w, h)
+
+    ' Blur vertically
+    for y = 0 to h - 1  for x = 0 to w - 1  data[x][y] = pixeli(img, x, y)
+    count = ry*2 + 1
+    for x = 0 to w - 1
+        sr = 0; sg = 0; sb = 0; sa = 0
+        for y = -ry to ry
+            p = data[x][y%h];
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+        for y = 0 to h - 1
+            set color sr/count, sg/count, sb/count, sa/count
+            set pixel x, y
+            p = data[x][(y - ry)%h]
+            sr = sr - Red(p); sg = sg - Green(p); sb = sb - Blue(p); sa = sa - Alpha(p)
+            p = data[x][(y + ry + 1)%h]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+    next
+    ' Blur horizontally.
+    for y = 0 to h - 1  for x = 0 to w - 1  data[x][y] = pixeli(img, x, y)
+    count = rx*2 + 1
+    for y = 0 to h - 1
+        sr = 0; sg = 0; sb = 0; sa = 0
+        for x = -rx to rx
+            p = data[x%w][y]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+        for x = 0 to w - 1
+            set color sr/count, sg/count, sb/count, sa/count
+            set pixel x, y
+            p = data[(x - rx)%w][y]
+            sr = sr - Red(p); sg = sg - Green(p); sb = sb - Blue(p); sa = sa - Alpha(p)
+            p = data[(x + rx + 1)%w][y]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+    next
+    set image primary
+
+    ' Pixeli helpers.
+    function Alpha(c); return int(c/16777216); endfunc
+    function Red(c); return int((c/65536))%256; endfunc
+    function Green(c); return int((c/256))%256; endfunc
+    function Blue(c); return c%256; endfunc
+endfunc
+
+' MD_Generate
+' -----------
+function MD_Generate(size, contrast, smooth, seed)
+    randomize seed
+    contrast = max(min(contrast, 1), 0)
+    smooth = 1 - max(min(smooth, 1), 0)
+    md = dim(size, size)
+    md[0][0] = 0.5 + contrast*rnd() - contrast*0.5
+    md[size - 1][0] = 0.5 + contrast*rnd() - contrast*0.5
+    md[size - 1][size - 1] = 0.5 + contrast*rnd() - contrast*0.5
+    md[0][size - 1] = 0.5 + contrast*rnd() - contrast*0.5
+    MD_Rec(md, 0, 0, size - 1, size - 1, contrast, smooth)
+    return md
+
+    function MD_Rec(md, xmin, ymin, xmax, ymax, contrast, smooth)
+        if xmax - xmin <= 1  return
+        if ymax - ymin <= 1  return
+        hw = (xmin + xmax)/2
+        hh = (ymin + ymax)/2
+        md[hw][hh] = (md[xmin][ymin] + md[xmax][ymin] + md[xmax][ymax] + md[xmin][ymax])*0.25 + contrast*rnd() - contrast*0.5
+        md[hw][hh] = max(md[hw][hh], 0)
+        md[hw][hh] = min(md[hw][hh], 1)
+        md[xmin][hh] = (md[xmin][ymin] + md[xmin][ymax])*0.5
+        md[xmax][hh] = (md[xmax][ymin] + md[xmax][ymax])*0.5
+        md[hw][ymin] = (md[xmin][ymin] + md[xmax][ymin])*0.5
+        md[hw][ymax] = (md[xmin][ymax] + md[xmax][ymax])*0.5
+        MD_Rec(md, xmin, ymin, hw, hh, contrast*smooth, smooth)
+        MD_Rec(md, hw, ymin, xmax, hh, contrast*smooth, smooth)
+        MD_Rec(md, xmin, hh, hw, ymax, contrast*smooth, smooth)
+        MD_Rec(md, hw, hh, xmax, ymax, contrast*smooth, smooth)
+    endfunc
+endfunc

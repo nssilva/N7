@@ -1,0 +1,58 @@
+' load image, loadimage, image, free image
+' ----------------------------------------
+
+' Create a window of the size 640x480.
+set window "images", 640, 480
+
+' 'load image image_id, filename' loads the image file filename and connects it to the identifier
+' image_id, which can be any integer value. 'loadimage(filename)' does the same thing as the command
+' 'load image' but auto-generates and returns an unused identifier. The 'load image' command is for
+' backward compability with n6, the preferred way of loading an image is through the 'loadimage'
+' function.
+smileyImage = loadimage("assets/smiley.png")
+
+' 'image(image_id)' returns true if image image_id has been loaded/created.
+if not image(smileyImage)
+    pln "Could not load smiley.png"
+    system "pause"
+    end
+endif
+
+' 'load image image_id, filename, cols, rows' and 'loadimage(filename, cols, rows)' loads an image
+' also splits it into cols columns and rows rows, generating cols*rows equally sized image cels.
+' Its the same thing as first loading an image and then calling 'set image grid' to set the number
+' of columns and rows. Look at 'set image grid' for more information.
+smileysImage = loadimage("assets/smileys.png", 3, 2)
+
+if not image(smileysImage)
+    pln "Could not load smileys.png"
+    system "pause"
+    end
+endif
+
+' Clear screen and draw the images.
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+draw image smileyImage, 128, 144
+draw image smileysImage, 432, 144
+for i = 0 to 5  draw image smileysImage, 152 + i*64, 256, i
+
+' Write some text.
+set color 255, 255, 255
+set caret 160, 120
+center "smileyImage"
+set caret 480, 120
+center "smileysImage"
+set caret 320, 232
+center "smileysImage cels"
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+
+' 'free image image_id' removes the image image_id from memory. All images are automatically freed
+' when the program ends, so the calls below are unnecessary.
+free image smileyImage
+free image smileysImage

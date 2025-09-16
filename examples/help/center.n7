@@ -1,0 +1,19 @@
+' center
+' ------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "center", 640, 480
+
+' 'center s' writes string s centered and moves to a new line. It's the same thing as calling 'wln'
+' after 'set justification center'.
+set caret 320, 232
+center "A centered line of text"
+
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

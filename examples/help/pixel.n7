@@ -1,0 +1,67 @@
+' pixel
+' -----
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "pixel", 640, 480
+set redraw off
+
+' Load an image containing some color squares.
+img = loadimage("assets/vga_palette.png")
+
+' Calculate the coordinates for centering it on the screen.
+imgX = (width(primary) - width(img))/2
+imgY = (height(primary) - height(img))/2
+
+' Selected color.
+selectedColor = [0, 0, 0]
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Pick a color from the image by clicking on it.
+    if mousebutton(0, true)
+        ' Get the mouse coordinates.
+        x = mousex()
+        y = mousey()
+        ' Translate them to the coordinate system of the image.
+        x = x - imgX
+        y = y - imgY
+        ' Are the coordinates valid?
+        if x >= 0 and x < width(img) and y >= 0 and y < height(img)
+            ' pixel(image_id, x, y) returns the color of image image_id at position x, y as an array
+            ' [r, g, b, a] with RGBA intensities in the range [0..255]. If image_id is omitted the
+            ' color is picked from the current destination image (usually 'primary', the window).
+            selectedColor = pixel(img, x, y)
+        endif
+    endif
+
+    ' Clear screen.
+    set color 64, 64, 96
+    cls
+    set color 255, 255, 255
+
+    ' Draw the image.
+    draw image img, imgX, imgY
+
+    ' Draw a square with the selected color.
+    set color selectedColor
+    draw rect 320 - 16, 96, 32, 32, true
+    set color 255, 255, 255
+
+    ' Write some text.
+    set color 255, 255, 255
+    set caret 320, 16
+    center "Click on the palette to select a color!"
+    set caret 320, 72
+    center "Selected color"
+    set caret 320, 136
+    center selectedColor[0] + ", " + selectedColor[1] + ", " + selectedColor[2]
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

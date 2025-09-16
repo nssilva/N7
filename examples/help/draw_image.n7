@@ -1,0 +1,94 @@
+' draw image
+' ----------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw image", 640, 480
+
+' Load an image of a smiley.
+smileyImage = loadimage("assets/smiley.png")
+
+' Load an image with six smileys in a uniform grid with 3 columns and 2 rows.
+smileysImage = loadimage("assets/smileys.png", 3, 2)
+
+' Clear screen.
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+
+' 'draw image image_id, x, y' draws image image_id at position x, y.
+draw image smileyImage, 128, 136
+draw image smileysImage, 432, 136
+set caret 160, 112
+center "smileyImage"
+set caret 480, 112
+center "smileysImage"
+
+' 'draw image image_id, x, y, cel' draw cell (see 'set image grid') cel of image image_id at
+' position x, y.
+draw image smileysImage, 432, 264, 0
+draw image smileysImage, 496, 264, 3
+set caret 448, 240
+center "cel 0"
+set caret 512, 240
+center "cel 3"
+
+' 'draw image image_id, x, y, src_x, src_y, w, h' draws a rectangular part of image image_id,
+' defined by the position src_x, src_y and the width and height w and h, at position x, y.
+draw image smileyImage, 136, 256, 8, 8, 48, 48
+set caret 160, 232
+center "center 48x48"
+
+' Write some text.
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Loop until spacebar is pressed.
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' The sine of this angle controls how much of smileyImage we'll draw.
+rectAngle = 0
+
+' Controls which cel of smileysImage we'll draw.
+cel = 0
+
+' An angle to offset the images.
+posAngle = 0
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Increase rectAngle and keep it in the range [0..359].
+    rectAngle = (rectAngle + 1)%360
+    
+    ' Increase cel.
+    cel = (cel + 0.05)%6
+
+    ' Increase posAngle.
+    posAngle = (posAngle + 2)%360
+
+    ' Clear screen.
+    set color 64, 64, 96
+    cls
+    set color 255, 255, 255
+
+    ' Draw part of smileyImage.
+    s = 32 + sin(rad(rectAngle))*32
+    draw image smileyImage,
+            160 + cos(rad(posAngle))*64 - s/2, 240 + sin(rad(posAngle))*64 - s/2,
+            (64 - s)/2, (64 - s)/2, s, s
+
+    ' Draw cel of smileysImage. 'draw image' converts cel to an integer.
+    draw image smileysImage, 464 + cos(rad(-posAngle))*64, 224 + sin(rad(-posAngle*2))*64, cel
+
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

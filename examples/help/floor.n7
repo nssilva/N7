@@ -1,0 +1,10 @@
+' floor
+' -----
+
+' 'floor(x)' returns the highest integer value that is lower than or equal to x. Simply put, it
+' rounds down.
+pln "floor(5.37) = " + floor(5.37)
+pln "floor(2) = " + floor(2)
+pln "floor(-3.12) = " + floor(-3.12)
+
+system "pause"

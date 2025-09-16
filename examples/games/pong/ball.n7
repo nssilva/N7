@@ -1,0 +1,167 @@
+'ball
+include "miscellaneous.n7"
+
+visible sound_bounce = CreateSineSfx(0.1,125,100,0.9,11025)
+visible sound_over = CreateSineSfx(0.2,1150,600,0.9,11025)
+
+function Ball()
+    ball = []
+    ball.Width = 16
+    ball.Height = 16
+    ball.x = 320 - ball.Width / 2
+    ball.y = 240 - ball.Height / 2
+    ball.speedX = 2
+    ball.speedY = 2
+    ball.live = true
+    ball.state = 0
+    ball.count = 0
+   
+    ball.update = function(player,player_cpu)
+        if this.live = true
+            select this.state
+            case 0
+                this.x = 320 - this.Width / 2
+                this.y = 240 - this.Height / 2
+                this.speedX = 2
+                this.speedY = 2
+               
+                this.count = this.count + 1
+                if this.count >= 120
+                    this.count = 0
+                    this.state = 1
+                endif   
+            case 1
+                this.move()
+                this.bounce()
+                this.collision_player(player)
+                this.collision_player_cpu(player_cpu)
+                this.score()
+            endsel
+        endif
+    endfunc
+   
+    ball.Draw = function()
+        if this.live = true
+            set  color 200,200,200
+            draw rect this.x,this.y,this.Width,this.Height,true
+        endif
+    endfunc
+   
+    ball.move = function()
+        this.x = this.x + this.speedX
+        this.y = this.y + this.speedY
+    endfunc
+   
+    ball.bounce = function()
+        if this.x <= 0 or this.x >= 640
+            'this.speedX = this.speedX * -1
+            play sound sound_over,0.5
+            this.state = 0
+            wait(1000)
+        endif
+       
+        if this.y <= 0 or this.y >= 480
+            this.speedY = this.speedY * -1
+            play sound sound_bounce,1
+        endif
+    endfunc
+   
+    ball.collision_player = function(player)
+        ' Marcus.
+        ' Check if they overlap.
+        if collision_rect(this.x,this.y,this.Width,this.Height,player.x,player.y,player.Width,player.Height)
+            play sound sound_bounce,1
+            ' Calculate delta x and delta y, between the center of the ball and the center of the
+            ' paddle. Divide the delta x value width the width of the paddle and delta y with the
+            ' height of the paddle to normalize them (make comparison valid).
+            ' Calcular delta x y delta y, entre el centro de la pelota y el centro de la
+            ' remo. Divida el valor delta x ancho el ancho de la paleta y delta y con el
+            ' altura de la paleta para normalizarlos (hacer válida la comparación).
+            dx = (this.x + this.Width/2 - (player.x + player.Width/2))/player.Width
+            dy = (this.y + this.Height/2 - (player.y + player.Height/2))/player.Height
+            ' If dx is higher, it means that there's less overlapping along the x-axis. In that
+            ' case bounce left or right.
+            ' Si dx es mayor, significa que hay menos superposición a lo largo del eje x. En eso
+            ' el caso rebota hacia la izquierda o hacia la derecha.
+            if |dx| >= |dy|
+                ' dx < 0, ball should bounce to the left, and we also move the ball to the left so
+                ' that there's no longer any collision.
+                ' dx < 0, la pelota debe rebotar hacia la izquierda, y también la movemos hacia la izquierda para que
+                ' que ya no hay ninguna colisión.
+                if dx < 0
+                    this.speedX = -|this.speedX|
+                    this.x = player.x - this.Width               
+                ' dx > 0, ball should bounce to the right, and move the ball to the right of the
+                ' paddle.
+                ' dx > 0, la pelota debe rebotar hacia la derecha y moverse hacia la derecha del
+                 ' remo.
+                else
+                    this.speedX = |this.speedX|
+                    this.x = player.x + player.Width
+                endif
+            ' dy is higher, same principle as for dx :)
+            ' dy es mayor, el mismo principio que para dx
+            else
+                if dy < 0
+                    this.speedY = -|this.speedY|
+                    this.y = player.y - this.Height
+                else
+                    this.speedY = |this.speedY|
+                    this.y = player.y + player.Height
+                endif
+            endif
+        endif
+    endfunc
+   
+    ball.collision_player_cpu = function(player_cpu)
+        ' Marcus.
+        ' Check if they overlap.
+        if collision_rect(this.x,this.y,this.Width,this.Height,player_cpu.x,player_cpu.y,player_cpu.Width,player_cpu.Height)
+            'sonido
+            play sound sound_bounce,1
+            'aumentar velocidad
+            this.increase_speed()
+           
+            dx = (this.x + this.Width/2 - (player_cpu.x + player_cpu.Width/2))/player_cpu.Width
+            dy = (this.y + this.Height/2 - (player_cpu.y + player_cpu.Height/2))/player_cpu.Height
+           
+            if |dx| >= |dy|
+                if dx < 0
+                    this.speedX = -|this.speedX|
+                    this.x = player_cpu.x - this.Width               
+                else
+                    this.speedX = |this.speedX|
+                    this.x = player_cpu.x + player_cpu.Width
+                endif
+            else
+                if dy < 0
+                    this.speedY = -|this.speedY|
+                    this.y = player_cpu.y - this.Height
+                else
+                    this.speedY = |this.speedY|
+                    this.y = player_cpu.y + player_cpu.Height
+                endif
+            endif
+        endif
+    endfunc
+   
+    ball.score = function()
+        if this.x <= 0
+            add_score_player_cpu(1)
+        endif
+       
+        if this.x >= 640
+            add_score_player(1)
+        endif
+    endfunc
+   
+    ball.increase_speed = function()
+        'aumentar velocidad al colisionar
+        this.speedX = this.speedX + 1
+        if this.speedX >= 10
+            this.speedX = 10
+        endif
+    endfunc
+
+    return ball
+endfunc

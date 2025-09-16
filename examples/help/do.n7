@@ -1,0 +1,27 @@
+' do, loop, until
+' ---------------
+
+' If 'do' is matched with a 'loop', the statements between 'do' and 'loop' will be executed until
+' the program is terminated by the user or the 'break' command is called.
+counter = 0
+do
+    pln "Looping"
+    counter = counter + 1
+    if counter > 4
+        ' 'break' can be called to leave any form of loop ('do', 'for', 'foreach' or 'while').
+        break
+    endif
+loop
+pln "I'm out!"
+pln
+
+' If 'do' is matched with an 'until', the statements between 'do' and 'until' will be executed until
+' the expression following 'until' is true.
+do
+    pln "Looping until ..."
+    counter = counter - 1
+until counter = 0
+pln "Now!"
+pln
+
+system "pause"

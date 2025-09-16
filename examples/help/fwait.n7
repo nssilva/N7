@@ -1,0 +1,38 @@
+' fwait
+' -----
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480 and disable automatic redraw.
+set window "fwait", 640, 480
+set redraw off
+
+' The starting position of a moving circle.
+x = 320
+y = 240
+
+do  
+    ' Move the circle by changing its coordinates.
+    x = x + 1
+    y = y + 0.5
+    if x > 656  x = -16
+    if y > 496  y = -16
+    
+    ' Clear the screen and draw the circle and some text.
+    set color 0, 0, 0
+    cls
+    set color 0, 255, 0
+    draw ellipse x, y, 16, 16, true
+    set color 255, 255, 255
+    set caret 320, 448
+    center "Press Esc to quit ..."
+           
+    ' Update the window content.
+    redraw
+    
+    ' 'fwait fps' waits until atleast 1000/fps milliseconds have passed since the previous call to
+    ' fwait. You can use this at the end of a game loop to cap the number of frames per second at
+    ' fps.
+    fwait 60
+until keydown(KEY_ESCAPE)

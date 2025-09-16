@@ -1,0 +1,291 @@
+' Open a window and enable double buffering.
+set window "Space Race ... 1973", 240, 320, false, 2
+set redraw off
+
+#win32
+
+visible rocksLX = []
+visible rocksLY = []
+visible rocksLW = []
+visible rocksLH = []
+visible rocksRX = []
+visible rocksRY = []
+visible rocksRW = []
+visible rocksRH = []
+
+visible playerX = 60
+visible playerY = 300
+visible playerW = 15
+visible playerH = 16
+visible player2X = 165
+visible player2Y = 300
+visible player2W = 15
+visible player2H = 16
+
+visible rocks = 10
+visible DX = 1
+visible score1
+visible score2
+visible hiscore
+
+visible r1x, r1y, r1w, r1h
+visible r2x, r2y, r2w, r2h
+
+visible GameOver
+visible counter
+
+'   Init "objects"
+for i = 1 to rocks
+    rocksLX[i] = rnd(240)
+    rocksLY[i] = rnd(290)
+    rocksLW[i] = 2
+    rocksLH[i] = 2
+    rocksRX[i] = rnd(240)
+    rocksRY[i] = rnd(290)
+    rocksRW[i] = 2
+    rocksRH[i] = 2
+next
+
+score1 = 0
+score2 = 0
+counter = 300
+GameOver = false
+
+'   INTRO
+
+do
+    set color 0, 0, 28
+    cls
+    
+    set color 255, 255, 0
+    set caret 120, 30
+    center "SPACE RACE 1973"
+    
+    set color 255, 255, 255
+    set caret 120, 60
+    center "Player1 and Player2 must try"
+    center "to get to the top of the"
+    center "screen before time runs out."
+    center ""
+    center "A point is awarded each time."
+    center "But, if you hit an object,"
+    center "you will start again."
+    center ""
+    center "Both players can ONLY move"
+    center "up and down."
+    center ""
+    center "Player 1: A and Z keys."
+    center "Player 2: Up and Down keys."    
+    
+    set color 0, 191, 0
+    set caret 120, 300
+    center "Press ENTER to go"
+    
+    redraw
+    fwait 60
+    if keydown(KEY_RETURN)
+        break
+    endif
+    if keydown(KEY_ESCAPE)
+        wait 1000
+        cls
+        end
+    endif
+loop
+
+do
+    '   Clear Baxkgound
+    set color 0, 0, 28
+    cls
+    
+    '   Move objects
+    set color 255, 255, 255
+    for i = 1 to rocks
+        ' ... from left to right
+        rocksLX[i] = rocksLX[i] + 0.5
+        if rocksLX[i] > 240 rocksLX[i] = 0
+        ' ... from right to left
+        rocksRX[i] = rocksRX[i] - 0.5
+        if rocksRX[i] < 0 rocksRX[i] = 240
+        '   Draw objects
+        '   ... from left to right
+        draw rect rocksLX[i], rocksLY[i], 2, 2, 1
+        '   ... from right to left
+        draw rect rocksRX[i], rocksRY[i], 2, 2, 1
+        ' ... check for collision with player 1 and left objects
+        if playerX < rocksLX[i] + rocksLW[i]
+            if playerX + playerW > rocksLX[i]
+                if playerY < rocksLY[i] + rocksLH[i]
+                    if playerY + playerH > rocksLY[i]
+                        playerY = 300
+                    endif
+                endif
+            endif
+        endif
+        ' ... check for collision with player 1 and right objects
+        if playerX < rocksRX[i] + rocksRW[i]
+            if playerX + playerW > rocksRX[i]
+                if playerY < rocksRY[i] + rocksRH[i]
+                    if playerY + playerH > rocksRY[i]
+                        playerY = 300
+                    endif
+                endif
+            endif
+        endif        
+        ' ... check for collision with player 2 and left objects
+        if player2X < rocksLX[i] + rocksLW[i]
+            if player2X + player2W > rocksLX[i]
+                if player2Y < rocksLY[i] + rocksLH[i]
+                    if player2Y + player2H > rocksLY[i]
+                        player2Y = 300
+                    endif
+                endif
+            endif
+        endif
+        ' ... check for collision with player 2 and right objects
+        if player2X < rocksRX[i] + rocksRW[i]
+            if player2X + player2W > rocksRX[i]
+                if player2Y < rocksRY[i] + rocksRH[i]
+                    if player2Y + player2H > rocksRY[i]
+                        player2Y = 300
+                    endif
+                endif
+            endif
+        endif        
+    next
+    
+    '   Display Players
+    p1 = [playerX + 7, playerY + 0, 
+        playerX + 11, playerY + 4, 
+        playerX + 9, playerY + 4, 
+        playerX + 9, playerY + 8, 
+        playerX + 14, playerY + 13, 
+        playerX + 11, playerY + 13, 
+        playerX + 11, playerY + 15, 
+        playerX + 9, playerY + 15, 
+        playerX + 9, playerY + 13, 
+        playerX + 5, playerY + 13, 
+        playerX + 5, playerY + 15, 
+        playerX + 3, playerY + 15, 
+        playerX + 3, playerY + 13, 
+        playerX + 0, playerY + 13, 
+        playerX + 5, playerY + 8, 
+        playerX + 5, playerY + 4, 
+        playerX + 3, playerY + 4]
+        
+    p2 = [player2X + 7, player2Y + 0, 
+        player2X + 11, player2Y + 4, 
+        player2X + 9, player2Y + 4, 
+        player2X + 9, player2Y + 8, 
+        player2X + 14, player2Y + 13, 
+        player2X + 11, player2Y + 13, 
+        player2X + 11, player2Y + 15, 
+        player2X + 9, player2Y + 15, 
+        player2X + 9, player2Y + 13, 
+        player2X + 5, player2Y + 13, 
+        player2X + 5, player2Y + 15, 
+        player2X + 3, player2Y + 15, 
+        player2X + 3, player2Y + 13, 
+        player2X + 0, player2Y + 13, 
+        player2X + 5, player2Y + 8, 
+        player2X + 5, player2Y + 4, 
+        player2X + 3, player2Y + 4]
+
+    set color 0, 191, 0
+    draw poly p1
+    set color 0, 191, 191
+    draw poly p2
+    
+    '   Boundary line
+    set color 0, 255, 0, 48
+    draw line 0, 295, 240, 295
+
+    '   Player Controls    
+    if keydown(KEY_A)
+        playerY = playerY - 1
+        if playerY <= -15
+            score1 = score1 + 1
+            playerY = 300
+        endif
+    endif
+    if keydown(KEY_Z)
+        playerY = playerY + 1
+        if playerY > 300
+            playerY = 300
+        endif
+    endif
+    if keydown(KEY_UP)
+        player2Y = player2Y - 1
+        if player2Y <= -15
+            score2 = score2 + 1
+            player2Y = 300
+        endif
+    endif
+    if keydown(KEY_DOWN)
+        player2Y = player2Y + 1
+        if player2Y > 300
+            player2Y = 300
+        endif
+    endif
+    
+    '    Game Countdown Timer
+    set color 255, 255, 255, 48
+    draw line 120, 295, 120, 300 - counter
+    draw line 121, 295, 121, 300 - counter
+    counter = counter - 0.1
+    if counter <= 4
+        counter = 4
+        GameOver = true
+    endif
+    if GameOver = true
+        set color 255, 0, 0
+        set caret 120, 100
+        center "GAME OVER"
+        redraw
+        if score1 > score2
+            set color 0, 255, 0
+            set caret 120, 180
+            center "Player 1 wins!"
+            redraw
+        endif
+        if score2 > score1
+            set color 0, 255, 255
+            set caret 120, 180
+            center "Player 2 wins!"
+            redraw
+        endif
+        if score1 = score2
+            set color 255, 128, 0
+            set caret 120, 180
+            center "It's a draw!"
+            redraw
+        endif
+        redraw
+        wait 5000
+        end
+    endif
+    
+    ' ... display score
+    set color 0, 191, 0
+    set caret 90, 300
+    wln str(score1)
+    set color 0, 191, 191
+    set caret 140, 300
+    wln str(score2)
+    
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE, true)
+end
+
+'function collideL(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h)
+'    if r1x < r2x + r2w and r1x + r1w > r2x and r1y < r2y + r2h and r1y + r1h > r2y then
+'        return true
+'    endif
+'endfunc
+'
+'function collideR(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h)
+'    if r1x < r2x + r2w and r1x + r1w > r2x and r1y < r2y + r2h and r1y + r1h > r2y then
+'        return true
+'    endif
+'endfunc

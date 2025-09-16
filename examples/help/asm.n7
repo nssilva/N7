@@ -1,0 +1,27 @@
+' asm, endasm
+' -----------
+
+' The n7 virtual machine instruction set is not documented anywhere. Still, you can add instructions
+' directly into your code using 'asm' and 'endasm'.
+'    When you compile an n7 program, the source code is first checked for errors and translated into
+' "assembler" code. You can actually view this code in the n7a file with the same name as your n7
+' file. It's a plain text file. Anything you put between 'asm' and 'endasm' is copied, without any
+' error checking, into the n7a file. Next, the compiler compiles the n7a file into a binary format
+' (an n7b file), which is then baked into an executable file (exe). The n7a and n7b files are NOT
+' needed for your program to run.
+
+foo = 13
+' An aweful lot of code to add 7 to foo. But what can I say? This was never meant to be done by
+' humans. One day I might document it all and make it a bit more human friendly.
+asm
+    mpush
+    mload   "foo"
+    mget    @0
+    move    @1  7
+    add     @0  @1
+    mset    @0
+    mpop
+endasm
+pln "a = " + foo
+
+system "pause"

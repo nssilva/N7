@@ -1,0 +1,12 @@
+' clipboard, set clipboard
+' ------------------------
+
+' 'set clipboard s' loads the clipboard with the string s. Try pressing Ctrl+V in Notepad after
+' running this program.
+set clipboard "Hello world!"
+
+' 'clipboard()' returns the content of the clipboard if it's text, else an empty string.
+pln "Content of clipboard: " + clipboard()
+
+system "pause"
+

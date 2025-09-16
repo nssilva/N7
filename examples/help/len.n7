@@ -1,0 +1,7 @@
+' len
+' ---
+
+' 'len(s)' returns the number of characters in the string s.
+pln "len(" + chr(34) + "Hello World!" + chr(34) + ") = " + len("Hello World!")
+
+system "pause"

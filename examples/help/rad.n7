@@ -1,0 +1,10 @@
+' rad
+' ---
+
+' 'rad(a)' returns a, an angle expressed in degrees, converted to radians.
+pln "rad(90) = " + rad(90)
+pln "rad(180) = " + rad(180)
+pln "rad(360) = " + rad(360)
+
+system "pause"
+

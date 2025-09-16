@@ -1,0 +1,2143 @@
+' enginea_editor.n7
+' -----------------
+' Map editor for engine a games, based on the tilemap editor.
+' This is the most messy code I've ever written. Haven't used ngui in a long while, just copying
+' and pasting stuff from other programs.
+
+
+include "ngui.n7"
+include "file.n7"
+include "json.n7"
+include "qsort.n7"
+
+#mem64000000
+'#dbg
+#win32
+
+constant MAX_TEXTURES = 64
+
+' edit modes.
+constant GEOMETRY = 0
+constant FLAGS = 1
+
+constant NONE = 0
+constant DRAW_SECTOR = 1 ' Drawing a sector
+constant DRAW_SUBSECTOR = 2 ' Drawing a sub-sector
+constant MOVE_VERTEX = 3
+constant MOVE_SECTOR = 4 ' After paste.
+
+' Sector types.
+constant SECTOR = 0
+constant SECTOR_SUB_WALL = 1
+constant SECTOR_SUB_FLOOR = 2
+constant SECTOR_SUB_CEILING = 3
+visible vEditor
+visible vEditorStatusLabel
+visible vMapFilename = unset
+
+' Sector settings widgets.
+visible vSectorBox
+visible vSectorHeader
+visible vSectorNameEntry
+
+visible vSectorFloorHeightBox ' for sectors
+visible vSectorFloorHeightEntry ' for sectors
+visible vSubSectorTypeRadioButtonBox ' for sub-sectors
+
+visible vSectorWallHeightBox, vSectorWallHeightEntry
+visible vSectorLightBox, vSectorLightEntry
+visible vSectorWallTexBox, vSectorWallTexSelector
+visible vSectorFloorTexBox, vSectorFloorTexSelector
+visible vSectorCeilingTexBox, vSectorCeilingTexSelector
+
+visible vWallBox
+visible vWallTexSelector
+visible vDoorTexSelectorBox, vDoorTexSelector
+visible vDoorIdBox, vDoorIdEntry
+
+visible vFlagBox
+visible vFlagEntry
+visible vFlagValueEntry
+
+visible vDrawPoly = fill(0, 64)
+' Fill and border color of selected polygon.
+visible vSelPolyFillColor = [128, 128, 224, 128]
+visible vSelPolyBorderColor = [64, 64, 128]
+visible vSelHullColor = [80, 128, 200]
+' Fill and border color of non selected polygons.
+visible vPolyFillColor = [224, 224, 224, 128]
+visible vPolyBorderColor = [176, 176, 176]
+visible vHullColor = [204, 204, 204]
+' Color of polygon while defining it
+visible vPolyDrawColor = [0, 224, 0]
+' Portal color.
+visible vPortalColor = [255, 0, 255]
+' Vertex color.
+visible vVertexColor = [128, 240, 128]
+visible vSelVertexColor = [16, 192, 16]
+
+visible vSelWallColor = [255, 0, 0]
+
+visible vTextures = fill([fn: unset, img: unset, tn: unset], MAX_TEXTURES)
+visible vEmptyTextureImage, vEmptyTextureThumbnail, vNoTextureThumbnail
+visible vTextureWidget = unset
+visible vTextureIndex = 0
+visible vTextureFilenameLabel
+
+visible vShowSubSectorWalls = true
+visible vShowSubSectorFloor = true
+visible vShowSubSectorCeiling = true
+
+set window "EngineA Map Editor", 800, 600, false, -1
+set redraw off
+
+vEmptyTextureImage = CreateEmptyTextureImage()
+vEmptyTextureThumbnail = CreateEmptyTextureThumbnail()
+vNoTextureThumbnail = CreateEmptyTextureThumbnail()
+set image vNoTextureThumbnail
+set color 255, 0, 0
+draw line 0, 0, 31, 31
+draw line 0, 31, 31, 0
+set image primary
+vEditor = Editor(100, 100, 32, 32)
+
+root = VBox(SIZE_EXPAND, SIZE_EXPAND)
+
+menuBar = MenuBar()
+menu = Menu(FileMenuAction)
+menuBar.Add("File", menu)
+menu.Add("New map", unset)
+menu.Add("Load map", "Ctrl+O")
+menu.Add("Save map", "Ctrl+S")
+menu.Add("Save map as", unset)
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Exit", unset)
+menu = Menu(EditMenuAction)
+menuBar.Add("Edit", menu)
+' Paste results in a hovering sector, click to place.
+menu.Add("Clear map", unset)
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Cut sector", "Ctrl+X")
+menu.Add("Copy sector", "Ctrl+C")
+menu.Add("Paste sector", "Ctrl+V")
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Split wall", unset)
+root.Add(menuBar)
+
+AddCommand(KEY_N, NewMap)
+AddCommand(KEY_O, LoadMap)
+AddCommand(KEY_S, SaveMap)
+AddCommand(KEY_X, CutSector)
+AddCommand(KEY_C, CopySector)
+AddCommand(KEY_V, PasteSector)
+
+
+hbox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+hbox.Add(vEditor)
+
+' TOOLBAR.
+toolbar = VBox(160, SIZE_EXPAND)
+toolbar.SetPadding(8)
+toolbar.SetSpacing(4)
+
+' TOOLBAR: TEXTURE SETTINGS
+toolbar.Add(Header("Textures", SIZE_AUTO, SIZE_AUTO))
+textureBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+toolbar.Add(textureBox)
+vTextureFilenameLabel = Label(vTextureIndex + ": Not loaded", SIZE_AUTO, SIZE_AUTO)
+textureBox.Add(vTextureFilenameLabel)
+vTextureWidget = Image(vEmptyTextureImage)
+textureBox.Add(vTextureWidget)
+hb = HBox(128, SIZE_AUTO)
+textureBox.Add(hb)
+hb.Add(TextButton("<", SIZE_EXPAND, SIZE_AUTO, function(wdg)
+        vTextureIndex = (vTextureIndex - 1)%MAX_TEXTURES
+        UpdateTextureWidgets()
+    endfunc))
+hb.Add(TextButton("Load", SIZE_EXPAND, SIZE_AUTO, function(wdg)
+        fn = openfiledialog("png")
+        if fn
+            img = loadimage(fn)
+            if image(img)
+                if image(vTextures[vTextureIndex].img)
+                    free image vTextures[vTextureIndex].img
+                    free image vTextures[vTextureIndex].tn
+                endif
+                vTextures[vTextureIndex].fn = fn
+                vTextures[vTextureIndex].img = CreateTextureImage(img)
+                vTextures[vTextureIndex].tn = CreateTextureThumbnail(img)
+                free image img
+                vTextureWidget.img = vTextures[vTextureIndex].img
+                UpdateTextureWidgets()
+            endif
+        endif
+    endfunc))
+hb.Add(TextButton("Del", SIZE_EXPAND, SIZE_AUTO, function(wdg)
+        if image(vTextures[vTextureIndex].img)
+            free image vTextures[vTextureIndex].img
+            free image vTextures[vTextureIndex].tn
+            vTextures[vTextureIndex].fn = unset
+            vTextures[vTextureIndex].img = unset
+            vTextures[vTextureIndex].tn = unset
+            UpdateTextureWidgets()
+        endif
+    endfunc))
+hb.Add(TextButton(">", SIZE_EXPAND, SIZE_AUTO, function(wdg)
+        vTextureIndex = (vTextureIndex + 1)%MAX_TEXTURES
+        UpdateTextureWidgets()
+    endfunc))
+
+' Edit.
+toolbar.Add(Header("Edit", SIZE_AUTO, SIZE_AUTO))
+toolbar.Add(LabledRadioButton("edit", "Geometry", true, EditRadioButtonCallback))
+toolbar.Add(LabledRadioButton("edit", "Flags", false, EditRadioButtonCallback))
+
+' TOOLBAR: SECTOR SETTINGS.
+vSectorBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorHeader = Header("Sector", SIZE_AUTO, SIZE_AUTO)
+vSectorBox.Add(vSectorHeader)
+vSectorBox.SetHidden(true)
+vSectorBox.SetSpacing(2)
+hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorBox.Add(hb)
+hb.Add(Label("Name: ", SIZE_AUTO, SIZE_AUTO))
+vSectorNameEntry = TextEntry(SIZE_EXPAND, 0)
+vSectorNameEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.selectedSector.name = wdg.GetText()
+        SetFocus(unset)
+    endfunc)
+vSectorNameEntry.LostFocus_ = vSectorNameEntry.LostFocus
+vSectorNameEntry.LostFocus = function()
+        vEditor.canvas.selectedSector.name = vSectorNameEntry.GetText()
+        .LostFocus_()
+    endfunc
+hb.Add(vSectorNameEntry)
+
+vSectorFloorHeightBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorBox.Add(vSectorFloorHeightBox)
+vSectorFloorHeightBox.Add(Label("Floor height: ", SIZE_EXPAND, SIZE_AUTO))
+vSectorFloorHeightEntry = TextEntry(64, FLOAT)
+vSectorFloorHeightEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.selectedSector.floorHeight = float(wdg.GetText())
+        SetFocus(unset)
+    endfunc)
+vSectorFloorHeightEntry.LostFocus_ = vSectorFloorHeightEntry.LostFocus
+vSectorFloorHeightEntry.LostFocus = function()
+        vEditor.canvas.selectedSector.floorHeight = float(vSectorFloorHeightEntry.GetText())
+        .LostFocus_()
+    endfunc
+vSectorFloorHeightBox.Add(vSectorFloorHeightEntry)
+
+vSubSectorTypeRadioButtonBox = VBox(SIZE_AUTO, SIZE_AUTO)
+vSectorBox.Add(vSubSectorTypeRadioButtonBox)
+vSubSectorTypeRadioButtonBox.Add(LabledRadioButton("subsectortype", "Wall", false, SubsectorRadioButtonCallback))
+vSubSectorTypeRadioButtonBox.Add(LabledRadioButton("subsectortype", "Floor", false, SubsectorRadioButtonCallback))
+vSubSectorTypeRadioButtonBox.Add(LabledRadioButton("subsectortype", "Ceiling", false, SubsectorRadioButtonCallback))
+
+vSectorWallHeightBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorBox.Add(vSectorWallHeightBox)
+vSectorWallHeightBox.Add(Label("Wall height: ", SIZE_EXPAND, SIZE_AUTO))
+vSectorWallHeightEntry = TextEntry(64, FLOAT)
+vSectorWallHeightEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.selectedSector.wallHeight = float(wdg.GetText())
+        SetFocus(unset)
+    endfunc)
+vSectorWallHeightEntry.LostFocus_ = vSectorWallHeightEntry.LostFocus
+vSectorWallHeightEntry.LostFocus = function()
+        vEditor.canvas.selectedSector.wallHeight = float(vSectorWallHeightEntry.GetText())
+        .LostFocus_()
+    endfunc
+vSectorWallHeightBox.Add(vSectorWallHeightEntry)
+' Light.
+vSectorLightBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorBox.Add(vSectorLightBox)
+vSectorLightBox.Add(Label("Light:", SIZE_EXPAND, SIZE_AUTO))
+vSectorLightEntry = TextEntry(64, 0)
+vSectorLightEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.selectedSector.light = wdg.GetText()
+        SetFocus(unset)
+    endfunc)
+vSectorLightEntry.LostFocus_ = vSectorLightEntry.LostFocus
+vSectorLightEntry.LostFocus = function()
+        vEditor.canvas.selectedSector.light = vSectorLightEntry.GetText()
+        .LostFocus_()
+    endfunc
+
+vSectorLightBox.Add(vSectorLightEntry)
+' Wall texture.
+vSectorWallTexBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorWallTexBox.SetValign(ALIGN_CENTER)
+vSectorBox.Add(vSectorWallTexBox)
+vSectorWallTexBox.Add(Label("Wall texture", SIZE_EXPAND, SIZE_AUTO))
+vSectorWallTexSelector = TextureSelector(function(wdg, texIndex)
+        if vEditor.canvas.selectedSector
+            vEditor.canvas.selectedSector.wallTexture = texIndex
+        endif
+    endfunc)
+vSectorWallTexBox.Add(vSectorWallTexSelector)
+' Floor texture.
+vSectorFloorTexBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorFloorTexBox.SetValign(ALIGN_CENTER)
+vSectorBox.Add(vSectorFloorTexBox)
+vSectorFloorTexBox.Add(Label("Floor texture", SIZE_EXPAND, SIZE_AUTO))
+vSectorFloorTexSelector = TextureSelector(function(wdg, texIndex)
+        vEditor.canvas.selectedSector.floorTexture = texIndex
+    endfunc)
+vSectorFloorTexBox.Add(vSectorFloorTexSelector)
+' Ceiling texture.
+vSectorCeilingTexBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vSectorCeilingTexBox.SetValign(ALIGN_CENTER)
+vSectorBox.Add(vSectorCeilingTexBox)
+vSectorCeilingTexBox.Add(Label("Ceiling texture", SIZE_EXPAND, SIZE_AUTO))
+vSectorCeilingTexSelector = TextureSelector(function(wdg, texIndex)
+        vEditor.canvas.selectedSector.ceilingTexture = texIndex
+    endfunc)
+vSectorCeilingTexBox.Add(vSectorCeilingTexSelector)
+
+
+toolbar.Add(vSectorBox)
+
+
+' TOOLBAR: WALL SETTINGS.
+vWallBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+vWallBox.Add(Header("Wall", SIZE_AUTO, SIZE_AUTO))
+vWallBox.SetHidden(true)
+hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+hb.SetValign(ALIGN_CENTER)
+vWallBox.Add(hb)
+hb.Add(Label("Texture", SIZE_EXPAND, SIZE_AUTO))
+vWallTexSelector = TextureSelector(function(wdg, texIndex)
+        'vEditor.canvas.selectedWall.texture = texIndex
+        sector = vEditor.canvas.selectedSector
+        if typeof(sector) and typeof(sector.selectedEdge)
+            sector.walls[sector.selectedEdge].texture = texIndex
+        endif
+    endfunc)
+hb.Add(vWallTexSelector)
+
+vDoorTexSelectorBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vDoorTexSelectorBox.SetValign(ALIGN_CENTER)
+vWallBox.Add(vDoorTexSelectorBox)
+vDoorTexSelectorBox.Add(Label("Door", SIZE_EXPAND, SIZE_AUTO))
+vDoorTexSelector = TextureSelector(function(wdg, texIndex)
+        sector = vEditor.canvas.selectedSector
+        if typeof(sector) and typeof(sector.selectedEdge) and
+                typeof(sector.walls[sector.selectedEdge].portal)
+            sector.walls[sector.selectedEdge].door = texIndex
+            opsector = sector.walls[sector.selectedEdge].portal
+            i = (sector.selectedEdge + 1)%sector.wallCount
+            x = sector.polygon[i*2]; y = sector.polygon[i*2 + 1]
+            for i = 0 to opsector.wallCount - 1
+                if opsector.walls[i].portal = sector
+                    if opsector.polygon[i*2] = x and opsector.polygon[i*2 + 1] = y
+                        opsector.walls[i].door = texIndex
+                        break
+                    endif
+                endif
+            next
+        endif
+    endfunc)
+vDoorTexSelectorBox.Add(vDoorTexSelector)
+vDoorIdBox = HBox(SIZE_EXPAND, SIZE_AUTO)
+vDoorIdEntry = TextEntry(SIZE_EXPAND, 0)
+function UpdatePortalId(wdg)
+    sector = vEditor.canvas.selectedSector
+    if typeof(sector) and typeof(sector.selectedEdge) and
+            typeof(sector.walls[sector.selectedEdge].portal)
+        if len(wdg.GetText()) txt = wdg.GetText()
+        else txt = unset
+        sector.walls[sector.selectedEdge].id = txt
+        opsector = sector.walls[sector.selectedEdge].portal
+        i = (sector.selectedEdge + 1)%sector.wallCount
+        x = sector.polygon[i*2]; y = sector.polygon[i*2 + 1]
+        for i = 0 to opsector.wallCount - 1
+            if opsector.walls[i].portal = sector
+                if opsector.polygon[i*2] = x and opsector.polygon[i*2 + 1] = y
+                    opsector.walls[i].id = txt
+                    break
+                endif
+            endif
+        next
+    endif        
+endfunc
+vDoorIdEntry.SetReturnAction(function(wdg)
+        UpdatePortalId(this)
+        SetFocus(unset)
+    endfunc)
+vDoorIdEntry.LostFocus_ = vDoorIdEntry.LostFocus
+vDoorIdEntry.LostFocus = function()
+        UpdatePortalId(this)
+        .LostFocus_()
+    endfunc
+vDoorIdBox.Add(Label("Door id: ", SIZE_AUTO, SIZE_AUTO))
+vDoorIdBox.Add(vDoorIdEntry)
+vWallBox.Add(vDoorIdBox)
+toolbar.Add(vWallBox)
+
+' FLAG BOX
+vFlagBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+toolbar.Add(vFlagBox)
+
+vFlagBox.Add(Header("Flag", SIZE_AUTO, SIZE_AUTO))
+vFlagBox.SetHidden(true)
+hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+vFlagBox.Add(hb)
+hb.Add(Label("Flag: ", SIZE_EXPAND, SIZE_AUTO))
+vFlagEntry = TextEntry(96, 0)
+vFlagEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.UpdateCellValues()
+        SetFocus(unset)
+    endfunc)
+vFlagEntry.LostFocus_ = vFlagEntry.LostFocus
+vFlagEntry.LostFocus = function()
+        vEditor.canvas.UpdateCellValues()
+        .LostFocus_()
+    endfunc
+hb.Add(vFlagEntry)
+
+hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+vFlagBox.Add(hb)
+hb.Add(Label("Value: ", SIZE_EXPAND, SIZE_AUTO))
+vFlagValueEntry = TextEntry(96, 0)
+vFlagValueEntry.SetReturnAction(function(wdg)
+        vEditor.canvas.UpdateCellValues()
+        SetFocus(unset)
+    endfunc)
+vFlagValueEntry.LostFocus_ = vFlagValueEntry.LostFocus
+vFlagValueEntry.LostFocus = function()
+        vEditor.canvas.UpdateCellValues()
+        .LostFocus_()
+    endfunc
+hb.Add(vFlagValueEntry)
+
+hbox.Add(toolbar)
+
+root.Add(hbox)
+
+' Show box.
+hb = HBox(SIZE_AUTO, SIZE_AUTO)
+hb.SetSpacing(8)
+root.Add(hb)
+' Show.
+hb.Add(Label("Show sub-sector", SIZE_AUTO, SIZE_AUTO))
+hb.Add(LabledCheckBox("Walls", true, function(wdg, checked)
+        vShowSubSectorWalls = checked
+        if vEditor.canvas.selectedSector and
+                vEditor.canvas.selectedSector.type = SECTOR_SUB_WALL and not checked
+            vEditor.canvas.selectedSector.selected = false
+            vEditor.canvas.selectedSector = unset
+            UpdateSectorBox(unset)
+        endif
+        vEditor.canvas.MarkDirty()
+    endfunc))
+hb.Add(LabledCheckBox("Floor", true, function(wdg, checked)
+        vShowSubSectorFloor = checked
+        if vEditor.canvas.selectedSector and
+                vEditor.canvas.selectedSector.type = SECTOR_SUB_FLOOR and not checked
+            vEditor.canvas.selectedSector.selected = false
+            vEditor.canvas.selectedSector = unset
+            UpdateSectorBox(unset)
+        endif
+        vEditor.canvas.MarkDirty()
+    endfunc))
+hb.Add(LabledCheckBox("Ceiling", true, function(wdg, checked)
+        vShowSubSectorCeiling = checked
+        if vEditor.canvas.selectedSector and
+                vEditor.canvas.selectedSector.type = SECTOR_SUB_CEILING and not checked
+            vEditor.canvas.selectedSector.selected = false
+            vEditor.canvas.selectedSector = unset
+            UpdateSectorBox(unset)
+        endif
+        vEditor.canvas.MarkDirty()
+    endfunc))
+
+
+EnterMainLoop(root)
+
+function FileMenuAction(menu, index)
+    select index
+        case 0  NewMap()
+        case 1  LoadMap()
+        case 2
+            if vMapFilename  SaveMap()
+            else  SaveMapAs()
+        case 3  SaveMapAs()
+        case 4  ExitMainLoop()
+    endsel
+endfunc 
+
+function NewMap()
+    vMapFilename = unset
+    vEditor.Clear(100, 100, 32, 32)
+    ClearTextures()
+endfunc
+
+function ClearMap()
+    vEditor.Clear(100, 100, 32, 32)
+endfunc
+
+function LoadMap()
+    filename = openfiledialog("json")
+    if filename
+        data = JSON_FromFile(filename)
+        if data
+            vMapFilename = filename
+            vEditor.Clear(100, 100, 32, 32)
+            clear vEditor.canvas.sectors
+            if sizeof(data.sectors)
+                for i = 0 to sizeof(data.sectors) - 1
+                    s = data.sectors[i]
+                    sector = Sector(vEditor.canvas, SECTOR)
+                    vEditor.canvas.sectors[sizeof(vEditor.canvas.sectors)] = sector
+                    sector.finalized = true
+                    sector.selected = false
+                    sector.name = s.name
+                    sector.polygon = s.polygon
+                    sector.walls = s.walls
+                    sector.wallCount = sizeof(s.walls)
+                    sector.RecalculateHull()
+                    sector.floorHeight = s.floorHeight
+                    sector.wallHeight = s.wallHeight
+                    sector.wallTexture = s.wallTexture
+                    sector.floorTexture = s.floorTexture
+                    sector.ceilingTexture = s.ceilingTexture
+                    if key(s, "light")  sector.light = RGBToHex(s.light[0], s.light[1], s.light[2])
+                    else  sector.light = RGBToHex(255, 255, 255)
+                    if key(s, "subSectors")
+                        foreach ss in s.subSectors
+                            subSector = Sector(vEditor.canvas, ss.type)
+                            sector.subSectors[sizeof(sector.subSectors)] = subSector
+                            subSector.finalized = true
+                            subSector.selected = false
+                            subSector.name = ss.name
+                            subSector.polygon = ss.polygon
+                            subSector.walls = ss.walls
+                            subSector.wallCount = sizeof(ss.walls)
+                            subSector.floorHeight = 0
+                            subSector.wallHeight = ss.wallHeight
+                            subSector.wallTexture = ss.wallTexture
+                            subSector.floorTexture = ss.floorTexture
+                            subSector.ceilingTexture = ss.ceilingTexture
+                            if subSector.type = SECTOR_SUB_WALL  subSector.wallHeight = sector.wallHeight
+                        next
+                    endif
+                next
+            endif
+            foreach sector in vEditor.canvas.sectors
+                foreach wall in sector.walls
+                    if not key(wall, "door") wall.door = unset
+                    if not key(wall, "id") wall.id = unset
+                    if typeof(wall.portal)
+                        wall.portal = vEditor.canvas.sectors[wall.portal]
+                    else
+                        wall.door = unset
+                        wall.id = unset
+                    endif
+                next
+                foreach ss in sector.subSectors
+                    foreach wall in ss.walls
+                        if not key(wall, "door") wall.door = unset
+                        if not key(wall, "id") wall.id = unset
+                    next
+                next
+            next
+            ' flags
+            foreach flag in data.flags
+                vEditor.canvas.tiles[flag.x][flag.z].flag = flag.flag
+                vEditor.canvas.tiles[flag.x][flag.z].value = flag.value
+            next
+            ClearTextures()
+            path = GetPath(vMapFilename)
+            for i = 0 to min(sizeof(data.textures), MAX_TEXTURES) - 1
+            'for i = 0 to MAX_TEXTURES - 1
+                if data.textures[i]
+                    fn = GetPathCombined(path, data.textures[i])
+                    img = loadimage(fn)
+                    if img
+                        vTextures[i].fn = fn
+                        vTextures[i].img = CreateTextureImage(img)
+                        vTextures[i].tn = CreateTextureThumbnail(img)
+                        free image img
+                    endif
+                endif
+            next
+            vTextureIndex = 0
+            vEditor.canvas.selectedSector = unset
+            UpdateSectorBox(unset)
+            UpdateTextureWidgets()
+            vEditor.canvas.MarkDirty()
+        endif
+    endif
+endfunc
+
+function SaveMap()
+    f = createfile(vMapFilename)
+    if typeof(f)
+        data = []
+        data.sectors = []
+        white = [255, 255, 255]
+        if sizeof(vEditor.canvas.sectors)
+            for s = 0 to sizeof(vEditor.canvas.sectors) - 1
+                sector = vEditor.canvas.sectors[s]
+                wallData = []
+                for w = 0 to sector.wallCount - 1
+                    wall = []
+                    wallData[sizeof(wallData)] = wall
+                    if sector.walls[w].portal
+                        wall.portal = IndexOf(vEditor.canvas.sectors, sector.walls[w].portal)
+                        wall.door = sector.walls[w].door
+                        wall.id = sector.walls[w].id
+                    else
+                        wall.portal = unset
+                    endif
+                    wall.texture = sector.walls[w].texture
+                next
+                subSectors = []
+                ' look for sub-sectors
+                foreach subSector in sector.subSectors
+                    subWallData = []
+                    for w = 0 to subSector.wallCount - 1
+                        subWall = []
+                        subWallData[sizeof(subWallData)] = subWall
+                        subWall.texture = subSector.walls[w].texture
+                        subWall.portal = unset
+                    next
+                    subSectors[sizeof(subSectors)] = [
+                            name: subSector.name,
+                            polygon: subSector.polygon,
+                            walls: subWallData,
+                            type: subSector.type,
+                            wallHeight: subSector.wallHeight,
+                            wallTexture: subSector.wallTexture,
+                            floorTexture: subSector.floorTexture,
+                            ceilingTexture: subSector.ceilingTexture]
+                next
+                
+                if HexToRGB(sector.light) = unset  light = white
+                else  light = sector.light
+                data.sectors[sizeof(data.sectors)] = [
+                    name: sector.name,
+                    polygon: sector.polygon,
+                    walls: wallData,
+                    floorHeight: sector.floorHeight,
+                    wallHeight: sector.wallHeight,
+                    wallTexture: sector.wallTexture,
+                    floorTexture: sector.floorTexture,
+                    ceilingTexture: sector.ceilingTexture,
+                    light: HexToRGB(light),
+                    subSectors: subSectors]
+            next
+        endif
+        data.textures = []
+        for i = 0 to MAX_TEXTURES - 1
+            t = vTextures[i]
+            if t.fn
+                data.textures[i] = right(replace(t.fn, GetPath(vMapFilename), ""), 1)
+            else
+                data.textures[i] = unset
+            endif
+        next
+        data.flags = []
+        for x = 0 to vEditor.canvas.mapW - 1  for z = 0 to vEditor.canvas.mapH - 1
+            if typeof(vEditor.canvas.tiles[x][z].flag) or typeof(vEditor.canvas.tiles[x][z].value)
+                data.flags[sizeof(data.flags)] = [
+                        x: x, z: z,
+                        flag: vEditor.canvas.tiles[x][z].flag,
+                        value: vEditor.canvas.tiles[x][z].value]
+            endif
+        next
+        wln file f, JSON_ToString(data)
+        free file f
+    endif
+endfunc
+
+function SaveMapAs()
+    filename = savefiledialog("json")
+    if filename
+        vMapFilename = GetPathCombined(GetPath(filename), GetFilename(filename, false) + ".json")
+        SaveMap()
+    endif
+endfunc
+
+function EditMenuAction(menu, index)
+    select index
+        case 0 ' Clear map.
+            ClearMap()
+        case 1 ' Cut sector.
+            CutSector()
+        case 2 ' Copy sector.
+            CopySector()
+        case 3 ' Paste sector.
+            PasteSector()
+        case 4 ' Split wall
+            ' Only returns false if a wall was selected and could not be split.
+            if typeof(vEditor.canvas.selectedSector) and typeof(vEditor.canvas.selectedSector.selectedEdge)
+                if not vEditor.canvas.selectedSector.SplitWall()
+                    ShowMessageBox("Error", "Selected wall could not be split.", ["Ok"], unset)
+                endif
+            else
+                ShowMessageBox("Error", "No wall selected.", ["Ok"], unset)
+            endif
+    endsel
+endfunc 
+
+function CutSector()
+    vEditor.canvas.CutSector()
+endfunc
+
+function CopySector()
+    vEditor.canvas.CopySector()
+endfunc
+
+function PasteSector()
+    vEditor.canvas.PasteSector()
+endfunc
+
+function UpdateTextureWidgets()
+    if vTextures[vTextureIndex].img  vTextureWidget.img = vTextures[vTextureIndex].img
+    else  vTextureWidget.img = vEmptyTextureImage
+    if vTextures[vTextureIndex].fn  vTextureFilenameLabel.SetText(vTextureIndex + ": " + GetFilename(vTextures[vTextureIndex].fn, true))
+    else vTextureFilenameLabel.SetText(vTextureIndex + ": Not loaded")
+    vTextureWidget.MarkDirty()
+    
+    vSectorWallTexSelector.RefreshTexture()
+    vSectorFloorTexSelector.RefreshTexture()
+    vSectorCeilingTexSelector.RefreshTexture()
+endfunc
+
+function ClearTextures()
+    for i = 0 to MAX_TEXTURES - 1
+        free image vTextures[i].img
+        free image vTextures[i].tn
+        vTextures[i].fn = unset
+    next
+endfunc
+
+function Editor(mapW, mapH, tileW, tileH)
+    wdg = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    wdg.SetBorder(1)
+    hbox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+    canvas = Canvas(SIZE_EXPAND, SIZE_EXPAND)
+    wdg.canvas = canvas
+    vsb = VerticalScrollbar(canvas, SIZE_AUTO, SIZE_EXPAND)
+    hsb = HorizontalScrollbar(canvas, SIZE_EXPAND, SIZE_AUTO)
+    hbox.Add(canvas)
+    hbox.Add(vsb)
+    wdg.Add(hbox)
+    btm = HBox(SIZE_EXPAND, SIZE_AUTO)
+    btm.Add(hsb)
+    btm.Add(Filler(vsb.MinWidth(), hsb.MinHeight()))
+    wdg.Add(btm)
+
+    vEditorStatusLabel = Label("", SIZE_AUTO, SIZE_AUTO)
+    wdg.Add(vEditorStatusLabel)
+    
+    canvas.edit = GEOMETRY
+    canvas.mode = NONE
+
+    canvas.wantsKeyboard = true
+
+    ' Tiles.
+    canvas.tiles = unset
+    canvas.mapW = 0
+    canvas.mapH = 0
+    canvas.tileW = 0
+    canvas.tileH = 0
+    
+    ' Sectors.
+    canvas.sectors = []
+    canvas.newSector = unset
+    canvas.copiedSector = unset
+    canvas.moveSector = unset
+    canvas.selectedSector = unset
+
+    ' Current display offsets.
+    canvas.scrollX = 0
+    canvas.scrollY = 0
+
+    ' Mouse status.
+    canvas.mouseOver = false
+    canvas.tileX = -1
+    canvas.tileY = -1
+    canvas.tileCX = -1
+    canvas.tileCY = -1
+
+    ' Current cell, for drawing.
+    canvas.cell = unset
+
+    canvas.DeleteSector = function()
+        if .selectedSector
+            if .selectedSector.type = SECTOR
+                foreach sector in .sectors
+                    foreach wall in sector.walls
+                        if wall.portal = .selectedSector
+                            wall.portal = unset
+                        endif
+                    next
+                next
+                free val .sectors, .selectedSector
+                .selectedSector = unset
+            else
+                ' find parent.
+                foreach sector in .sectors
+                    found = false
+                    foreach subSector in sector.subSectors
+                        if subSector = .selectedSector
+                            found = true
+                            break
+                        endif
+                    next
+                    if found
+                        free val sector.subSectors, .selectedSector
+                        .selectedSector = sector
+                        .selectedSector.selected = true
+                        break
+                    endif
+                next
+            endif
+            .MarkDirty()
+        endif
+    endfunc
+        
+    canvas.CopySector = function()
+        if .edit = GEOMETRY and .selectedSector then .copiedSector = .selectedSector.Clone(true)
+    endfunc
+    
+    canvas.CutSector = function()
+        if .edit = GEOMETRY and .selectedSector
+            .copiedSector = .selectedSector.Clone(true)
+            .DeleteSector()
+            .MarkDirty()
+        endif
+    endfunc
+    
+    canvas.PasteSector = function()
+        if .edit = GEOMETRY and .copiedSector
+            .moveSector = .copiedSector.Clone(true)
+            .mode = MOVE_SECTOR
+            .MarkDirty()
+        endif
+    endfunc
+
+    canvas.UpdateCellValues = function()
+        if typeof(.cell)
+            if len(vFlagEntry.GetText()) then .cell.flag = vFlagEntry.GetText()
+            else  .cell.flag = unset
+            if len(vFlagValueEntry.GetText()) then .cell.value = vFlagValueEntry.GetText()
+            else  .cell.value = unset
+            .MarkDirty()
+        endif
+    endfunc
+
+    ' Use a volatile tooltip that depends on mouse coordinates.
+    canvas.SetVolatileTooltip(function(wdg, x, y)
+            if .tileX >= 0 and .tileX < .mapW and .tileY >= 0 and .tileY < .mapH
+                txt = "(" + this.tileX + ", " + this.tileY + ")"
+                tile = this.tiles[this.tileX][this.tileY]
+                if tile.flag  txt = txt + " Flag: " + tile.flag
+                if tile.value txt = txt + " Value: " + tile.value
+                return txt
+            else
+                return unset
+            endif 
+        endfunc)
+
+    canvas.Clear = function(mapW, mapH, tileW, tileH)
+        this.tileX = 0
+        this.tileY = 0
+        this.cell = unset
+        this.scrollX = 0
+        this.scrollY = 0
+        this.selectedSector = unset
+        this.mode = NONE
+        this.newSector = unset
+        this.moveSector = unset
+        this.ClearTiles()
+        this.SetMapSize(mapW, mapH)
+        this.SetTileSize(tileW, tileH)
+        this.sectors = []
+        UpdateSectorBox(unset)
+        UpdateWallBox(unset)
+        UpdateFlagBox(unset)
+        this.MarkDirty()
+    endfunc
+
+    canvas.ClearTiles = function()
+        foreach col in this.tiles  foreach tile in col
+            tile.flag = unset
+            tile.value = unset
+        next
+        this.MarkDirty()
+    endfunc
+
+    ' Change map size.
+    canvas.SetMapSize = function(w, h)
+        oldTiles = this.tiles
+        oldW = this.mapW
+        oldH = this.mapH
+        this.tiles = fill([cel: -1, flag: unset, value: unset], w, h)
+        this.mapW = w
+        this.mapH = h
+       
+        if oldTiles  for y = 0 to min(oldH, h) - 1  for x = 0 to min(oldW, w) - 1
+            this.tiles[x][y] = oldTiles[x][y]
+        next
+        this.SetVirtualSize(this.mapW*this.tileW, this.mapH*this.tileH)
+    endfunc
+
+    ' Change tile size.
+    canvas.SetTileSize = function(w, h)
+        this.tileW = w
+        this.tileH = h
+        this.SetVirtualSize(this.mapW*this.tileW, this.mapH*this.tileH)
+    endfunc
+
+    ' Set virtual size.    
+    canvas.SetVirtualSize = function(w, h)
+        this.vw = w
+        this.vh = h
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Send scrollbars information about width/height, virtual width/height and current scroll
+    ' values.
+    canvas.UpdateScrollbars = function()
+        this.hsb.SetSourceProperties(this.vw, this.w, this.scrollX)
+        this.vsb.SetSourceProperties(this.vh, this.h, this.scrollY)
+    endfunc
+
+    ' Override default Resize function of a canvas to update the scrollbars.    
+    canvas.CanvasResize = canvas.Resize
+    canvas.Resize = function(w, h)
+        this.CanvasResize(w, h)
+        if this.w > this.vw  this.scrollX = 0
+        if this.h > this.vh  this.scrollY = 0
+        this.UpdateScrollbars()
+    endfunc
+
+    ' Calculate current tile position from mouse coordinates.
+    canvas.UpdateTilePos = function(mouseX, mouseY, markDirty)
+        oldtx = this.tileX
+        oldty = this.tileY
+        if .edit = FLAGS
+            .tileX = int((mouseX + this.tileW/2 + this.scrollX)/this.tileW)
+            .tileY = int((mouseY + this.tileH/2 + this.scrollY)/this.tileH)
+        else
+            .tileX = int((mouseX + this.scrollX)/this.tileW)
+            .tileY = int((mouseY + this.scrollY)/this.tileH)
+        endif
+        .tileCX = (.tileX + 0.5)*.tileW
+        .tileCY = (.tileY + 0.5)*.tileH
+        vEditorStatusLabel.SetText("Pos: " + .tileX + ", " + .tileY)
+        if markDirty and this.tileX <> oldtx or this.tileY <> oldty  this.MarkDirty()
+        
+    endfunc
+    
+    canvas.KeyDown = function(k)
+        if .mode = DRAW_SECTOR
+            if k = KEY_ESCAPE
+                .mode = NONE
+                .newSector = unset
+                .MarkDirty()
+            endif
+        elseif .mode = DRAW_SUBSECTOR
+            if k = KEY_ESCAPE
+                .mode = NONE
+                .newSector = unset
+                .MarkDirty()
+            endif
+        elseif .mode = MOVE_SECTOR
+            if k = KEY_ESCAPE
+                .mode = NONE
+                .moveSector = unset
+                .MarkDirty()
+            endif
+        elseif keydown(KEY_DELETE)
+            if .edit = GEOMETRY
+                if .selectedSector
+                    if typeof(.selectedSector.selectedVertex)
+                        if not .selectedSector.DeleteVertex()
+                            ShowMessageBox("Error", "Selected vertex could not be deleted.", ["Ok"], unset)
+                        endif
+                    elseif not typeof(.selectedSector.selectedEdge)
+                        .DeleteSector()
+                    endif
+                endif
+            else
+                if .cell
+                    .cell.flag = unset
+                    .cell.value = unset
+                    UpdateFlagBox(.cell)
+                    .MarkDirty()
+                endif
+            endif
+        endif
+    endfunc
+
+    ' Mouse enter action.
+    canvas.SetMouseEnterAction(function()
+            this.mouseOver = true
+            this.MarkDirty()
+        endfunc)
+
+    ' Mouse leave action.
+    canvas.SetMouseLeaveAction(function()
+            this.mouseOver = false
+            this.MarkDirty()
+        endfunc)
+
+    ' Mouse move action.
+    canvas.SetMouseMoveAction(function(x, y)
+            this.UpdateTilePos(x, y, true)
+        endfunc)
+        
+    canvas.FinalizeMoveSector = function()
+        for i = 0 to .moveSector.wallCount - 1
+            .moveSector.polygon[i*2] = .moveSector.polygon[i*2] + .tileCX
+            .moveSector.polygon[i*2 + 1] = .moveSector.polygon[i*2 + 1] + .tileCY
+        next
+        foreach ss in .moveSector.subSectors
+            for i = 0 to ss.wallCount - 1
+                ss.polygon[i*2] = ss.polygon[i*2] + .tileCX
+                ss.polygon[i*2 + 1] = ss.polygon[i*2 + 1] + .tileCY
+            next
+        next
+        .moveSector.RecalculateHull()
+    endfunc
+
+    ' Mouse down action.
+    canvas.SetMouseDownAction(function(x, y)
+            if .edit = GEOMETRY
+                ' Drawing new sector?
+                if .mode = DRAW_SECTOR or .mode = DRAW_SUBSECTOR
+                    ' Done drawing?
+                    if .newSector.AddPoint(.tileCX, .tileCY)
+                        if .newSector.xmin <> .newSector.xmax and .newSector.zmin <> .newSector.zmax
+                            if .mode = DRAW_SUBSECTOR
+                                .selectedSector.subSectors[sizeof(.selectedSector.subSectors)] = .newSector
+                                .selectedSector.selected = false
+                                .newSector.wallHeight = .selectedSector.wallHeight
+                            else
+                                .sectors[sizeof(.sectors)] = .newSector
+                                .UpdatePortals()
+                            endif
+                            .selectedSector = .newSector
+                            .selectedSector.selected = true
+                        else
+                            .selectedSector = unset
+                        endif
+                        .newSector = unset
+                        .mode = NONE
+                        UpdateSectorBox(.selectedSector)
+                    endif
+                elseif .mode = MOVE_SECTOR
+                    sectorClicked = unset
+                    foreach s in .sectors
+                        if s.PointInside(x + .scrollX, y + .scrollY)
+                            sectorClicked = s
+                        endif
+                    next
+                    ' Pasting sector?
+                    if .moveSector.type = SECTOR
+                        if not sectorClicked
+                            .FinalizeMoveSector()
+                            .sectors[sizeof(.sectors)] = .moveSector
+                            .moveSector = unset
+                            .UpdatePortals()
+                            .mode = NONE
+                            if .selectedSector then .selectedSector.selected = false
+                            .selectedSector = .sectors[sizeof(.sectors) - 1]
+                            .selectedSector.selected = true
+                            UpdateSectorBox(.selectedSector)
+                        endif
+                    ' Pasting sub-sector.
+                    else
+                        if sectorClicked
+                            .FinalizeMoveSector()
+                            sectorClicked.subSectors[sizeof(sectorClicked.subSectors)] = .moveSector
+                            .moveSector = unset
+                            .mode = NONE
+                            if .selectedSector then .selectedSector.selected = false
+                            .selectedSector = sectorClicked.subSectors[sizeof(sectorClicked.subSectors) - 1]
+                            .selectedSector.selected = true
+                            UpdateSectorBox(.selectedSector)
+                        endif
+                    endif
+                else
+                    ' Select vertices and walls.
+                    if .selectedSector
+                        ' Check for selection of vertices and edges.
+                        if .selectedSector.SelectVertex(x + .scrollX, y + .scrollY)
+                            .mode = MOVE_VERTEX
+                            .MarkDirty()
+                            return
+                        elseif .selectedSector.SelectEdge(x + .scrollX, y + .scrollY)
+                            ' Update wall info in toolbar
+                            UpdateWallBox(.selectedSector)
+                            .MarkDirty()
+                            return
+                        endif
+                    endif
+                    ' Sector clicked?
+                    sectorClicked = unset
+                    foreach s in .sectors
+                        if s.PointInside(x + .scrollX, y + .scrollY)
+                            sectorClicked = s
+                        endif
+                    next
+                    if sectorClicked
+                        foreach s in sectorClicked.subSectors
+                            if (s.type = SECTOR_SUB_WALL and vShowSubSectorWalls or
+                                    s.type = SECTOR_SUB_FLOOR and vShowSubSectorFloor or
+                                    s.type = SECTOR_SUB_CEILING and vShowSubSectorCeiling) and
+                                    s.PointInside(x + .scrollX, y + .scrollY)
+                                sectorClicked = s
+                            endif
+                        next
+                        ' sector was currently selected?
+                        if sectorClicked = .selectedSector
+                            if .selectedSector.type = SECTOR
+                                ' Add sub-sector
+                                .newSector = Sector(this, SECTOR_SUB_WALL)
+                                .newSector.AddPoint(.tileCX, .tileCY)
+                                .mode = DRAW_SUBSECTOR
+                            endif
+                        else
+                            if .selectedSector
+                                .selectedSector.selectedEdge = unset
+                                .selectedSector.selectedVertex = unset
+                                .selectedSector.selected = false
+                            endif
+                            UpdateSectorBox(unset) ' hack to save settings
+                            .selectedSector = sectorClicked
+                            foreach s in .sectors  s.selected = false
+                            .selectedSector = sectorClicked
+                            .selectedSector.selected = true
+                            UpdateSectorBox(sectorClicked) ' hack to save settings
+                        endif
+                    ' No sector clicked.
+                    else
+                        ' If any sector was selected, unselect it unless vertex or edge was clicked.
+                        if .selectedSector
+                            .selectedSector.selectedEdge = unset
+                            .selectedSector.selectedVertex = unset
+                            .selectedSector.selected = false
+                            UpdateSectorBox(unset)
+                            .selectedSector = unset
+                            foreach s in .sectors  s.selected = false
+                        ' If no sector was selected, start adding new.
+                        else
+                            .newSector = Sector(this, SECTOR)
+                            .newSector.AddPoint(.tileCX, .tileCY)
+                            .mode = DRAW_SECTOR
+                        endif
+                    endif
+                endif
+                .MarkDirty()
+            else
+                if this.tileX >= 0 and this.tileX < this.mapW and this.tileY >= 0 and this.tileY < this.mapH
+                    this.cell = .tiles[.tileX][.tileY]
+                    UpdateFlagBox(this.cell)
+                else
+                    this.cell = unset
+                    UpdateFlagBox(unset)
+                endif
+                .MarkDirty()
+            endif
+        endfunc)
+
+    ' Mouse drag action.
+    canvas.SetMouseDragAction(function(x, y)
+            .UpdateTilePos(x, y, true)
+            if .mode = MOVE_VERTEX
+                .selectedSector.MoveVertex(.tileCX, .tileCY)
+            endif
+        endfunc)
+
+    ' Mouse up action.
+    canvas.SetMouseUpAction(function(x, y)
+            if .mode = MOVE_VERTEX
+                .selectedSector.UnselectVertex()
+                .mode = NONE
+                .selectedSector.RecalculateHull()
+                .UpdatePortals()
+                .MarkDirty()
+            endif
+        endfunc)
+
+    ' Draw action.
+    canvas.SetDrawAction(function(dx, dy, dw, dh)            
+            set color GetColor(COLOR_ED_BACKGROUND)
+            cls
+            
+            tileX = floor(this.scrollX/this.tileW)
+            tileY = floor(this.scrollY/this.tileH)
+            baseX = floor(dx - this.scrollX%this.tileW)
+            set color 0, 255, 0
+            baseY = floor(dy - this.scrollY%this.tileH)
+            w = ceil(dw/this.tileW)
+            h = ceil(dh/this.tileH)
+            gridColor = GetColor(COLOR_LIGHT_BORDER)
+            set color gridColor
+            for y = 0 to h
+                ty = tileY + y
+                drawY = baseY + y*this.tileH
+                for x = 0 to w
+                    tx = tileX + x
+                    drawX = baseX + x*this.tileW
+                    if tx >= 0 and tx < this.mapW and ty >= 0 and ty < this.mapH
+                        tile = this.tiles[tx][ty]
+                        draw rect drawX - .tileW/2, drawY - .tileH/2, this.tileW + 1, this.tileH + 1
+                        if typeof(tile.flag) or typeof(tile.value)
+                            set color 255, 128, 0
+                            draw ellipse drawX, drawY, 4, 4, true
+                            set color gridColor
+                        endif
+                        if tile = this.cell
+                            set color 255, 128, 0
+                            draw ellipse drawX, drawY, 6, 6, false
+                            set color gridColor
+                        endif
+                    endif
+                next
+            next
+            
+            ' Draw existing sectors.
+            foreach sector in .sectors
+                if sector <> .selectedSector
+                    sector.Draw(dx - this.scrollX, dy - this.scrollY)
+                    foreach ss in sector.subSectors
+                        if (ss.type = SECTOR_SUB_WALL and vShowSubSectorWalls) or
+                                (ss.type = SECTOR_SUB_FLOOR and vShowSubSectorFloor) or
+                                (ss.type = SECTOR_SUB_CEILING and vShowSubSectorCeiling)
+                            ss.Draw(dx - this.scrollX, dy - this.scrollY)
+                        endif
+                    next
+                endif
+            next
+            if .selectedSector
+                .selectedSector.Draw(dx - this.scrollX, dy - this.scrollY)
+                foreach ss in .selectedSector.subSectors
+                    if (ss.type = SECTOR_SUB_WALL and vShowSubSectorWalls) or
+                            (ss.type = SECTOR_SUB_FLOOR and vShowSubSectorFloor) or
+                            (ss.type = SECTOR_SUB_CEILING and vShowSubSectorCeiling)
+                        ss.Draw(dx - this.scrollX, dy - this.scrollY)
+                    endif
+                next
+            endif
+            
+            if .mode = DRAW_SECTOR or .mode = DRAW_SUBSECTOR
+                ' Draw new sector?
+                if typeof(.newSector)
+                    .newSector.Draw(dx - .scrollX, dy - .scrollY)
+                endif
+                set color vPolyDrawColor
+            elseif .mode = MOVE_SECTOR
+                .moveSector.Draw(dx - .scrollX + .tileCX, dy - .scrollY + .tileCY)
+                foreach ss in .moveSector.subSectors
+                    if (ss.type = SECTOR_SUB_WALL and vShowSubSectorWalls) or
+                            (ss.type = SECTOR_SUB_FLOOR and vShowSubSectorFloor) or
+                            (ss.type = SECTOR_SUB_CEILING and vShowSubSectorCeiling)
+                        ss.Draw(dx - .scrollX + .tileCX, dy - .scrollY + .tileCY)
+                    endif
+                next
+                set color 0, 0, 0, 0
+            else
+                set color vVertexColor
+            endif
+            if .edit = GEOMETRY
+                draw rect .tileCX + dx - .scrollX - 4, .tileCY + dy - .scrollY - 4, 9, 9, false
+            else
+                draw ellipse .tileX*.tileW + dx - .scrollX, .tileY*.tileH + dy - .scrollY, 5, 5, false
+            endif
+        endfunc)    
+
+    ' Scroll up, called by the vsb.
+    canvas.ScrollUp = function()
+        this.scrollY = max(this.scrollY - max(this.tileH/4, 1), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll down, called by the vsb.
+    canvas.ScrollDown = function()
+        this.scrollY = min(this.scrollY + max(this.tileH/4, 1), this.vh - this.h)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page up, called by the vsb.
+    canvas.ScrollPageUp = function()
+        this.scrollY = max(this.scrollY - this.tileH, 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page down, called by the vsb.
+    canvas.ScrollPageDown = function()
+        this.scrollY = min(this.scrollY + this.tileH, this.vh - this.h)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll to y, called by the vsb.
+    canvas.ScrollToY = function(y)
+        y = y*(this.vh - this.h)
+        'this.scrollY = max(min(int(y/this.tileH)*this.tileH, this.vh - this.h), 0)
+        this.scrollY = max(min(y, this.vh - this.h), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll left, called by the hsb.
+    canvas.ScrollLeft = function()
+        this.scrollX = max(this.scrollX - max(this.tileW/4, 1), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll right, called by the hsb.
+    canvas.ScrollRight = function()
+        this.scrollX = min(this.scrollX + max(this.tileW/4, 1), this.vw - this.w)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page left, called by the hsb.
+    canvas.ScrollPageLeft = function()
+        this.scrollX = max(this.scrollX - this.tileW, 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page right, called by the hsb.
+    canvas.ScrollPageRight = function()
+        this.scrollX = min(this.scrollX + this.tileW, this.vw - this.w)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll to x, called by the hsb.
+    canvas.ScrollToX = function(x)
+        x = x*(this.vw - this.w)
+        'this.scrollX = max(min(int(x/this.tileW)*this.tileW, this.vw - this.w), 0)
+        this.scrollX = max(min(x, this.vw - this.w), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    canvas.UpdatePortals = function()
+        t = clock()
+        foreach s in .sectors  foreach wall in s.walls  wall.portal = unset
+        foreach a in .sectors  foreach b in .sectors
+            if a <> b
+                if not (a.xmax < b.xmin or a.xmin > b.xmax or a.zmax < b.zmin or a.zmin > b.zmax)
+                    awc = sizeof(a.walls); bwc = sizeof(b.walls)
+                    ap = a.polygon; bp = b.polygon
+                    for ai = 0 to awc - 1  for bi = 0 to bwc - 1
+                        if a.walls[ai].portal = unset and a.walls[ai].onHull and
+                                b.walls[bi].portal = unset and b.walls[bi].onHull
+                            aj = (ai + 1)%awc; bj = (bi + 1)%bwc
+                            if ap[ai*2] = bp[bj*2] and ap[ai*2 + 1] = bp[bj*2 + 1] and
+                                    ap[aj*2] = bp[bi*2] and ap[aj*2 + 1] = bp[bi*2 + 1]
+                                a.walls[ai].portal = b
+                                b.walls[bi].portal = a
+                                if a.walls[ai].door
+                                    b.walls[bi].door = a.walls[ai].door
+                                elseif b.walls[bi].door
+                                    a.walls[ai].door = b.walls[bi].door
+                                endif
+                                if a.walls[ai].id
+                                    b.walls[bi].id = a.walls[ai].id
+                                elseif b.walls[bi].id
+                                    a.walls[ai].id = b.walls[bi].id
+                                endif
+                            endif 
+                        endif
+                    next
+                endif
+            endif
+        next
+    endfunc
+
+
+    wdg.Clear = function(mapW, mapH, tileW, tileH)
+        this.canvas.Clear(mapW, mapH, tileW, tileH)
+    endfunc
+
+    wdg.ClearTiles = function()
+        this.canvas.ClearTiles()
+    endfunc
+
+    wdg.SetMapSize = function(w, h)
+        this.canvas.SetMapSize(w, h)
+    endfunc
+
+    wdg.GetMapWidth = function()
+        return this.canvas.mapW
+    endfunc
+
+    wdg.GetMapHeight = function()
+        return this.canvas.mapH
+    endfunc
+
+    wdg.GetTileWidth = function()
+        return this.canvas.srcTileW
+    endfunc
+
+    wdg.GetTileHeight = function()
+        return this.canvas.srcTileH
+    endfunc
+
+    wdg.GetTiles = function()
+        return this.canvas.tiles
+    endfunc
+
+    ' Set tile size.
+    wdg.SetTileSize = function(w, h)
+        this.canvas.SetTileSize(w, h)
+    endfunc
+
+    wdg.SetImage = function(img)
+        this.canvas.SetImage(img)        
+    endfunc
+
+    wdg.GetImage = function()
+        return this.canvas.img
+    endfunc
+
+    wdg.GetSourceImage = function()
+        return this.canvas.srcImg
+    endfunc
+
+    wdg.SetColorKey = function(r, g, b)
+        this.canvas.SetColorKey(r, g, b)
+    endfunc
+
+    wdg.GetColorKey = function()
+        return this.canvas.GetColorKey()
+    endfunc
+    
+    wdg.SetMapSize(mapW, mapH)
+    wdg.SetTileSize(tileW, tileH)
+
+    return wdg
+endfunc
+
+' Sector
+' ------
+function Sector(map, type)
+    s = [map: map]
+    ' For drawing, fill.
+    s.polygon = []
+    ' Minmax and hull.
+    s.xmin = 0
+    s.xmax = 0
+    s.zmin = 0
+    s.zmax = 0
+    s.hull = unset
+    ' Sub sectors.
+    ' Info about each line in the polygon.
+    s.walls = unset
+    s.wallCount = 0
+    s.selected = false
+    s.selectedVertex = unset
+    s.selectedEdge = unset
+    s.finalized = false
+    ' Properties.
+    s.name = ""
+    s.wallHeight = 1
+    s.floorHeight = 0
+    s.wallTexture = 0
+    s.floorTexture = 0
+    s.ceilingTexture = 0
+    s.light = "ffffff"
+    ' Type: SECTOR, SECTOR_SUB_WALL, SECTOR_SUB_FLOOR or SECTOR_SUB_CEILING
+    s.type = type
+    ' Subsectors.
+    s.subSectors = []
+
+    s.Clone = function(root)
+        s = Sector(.map, .type)
+        s.polygon = copy(.polygon)
+        s.walls = []
+        if .wallCount  for i = 0 to sizeof(.walls) - 1
+            s.walls[i] = [portal: unset, texture: .walls[i].texture, door: .walls[i].door, id: .walls[i].id]
+        next
+        s.wallCount = .wallCount
+        s.selected = false
+        s.selectedVertex = unset
+        s.selectedEdge = unset
+        s.finalized = true
+        s.wallHeight = .wallHeight
+        s.floorHeight = .floorHeight
+        s.wallTexture = .wallTexture
+        s.floorTexture = .floorTexture
+        s.ceilingTexture = .ceilingTexture
+        foreach ss in .subSectors  s.subSectors[sizeof(s.subSectors)] = ss.Clone(false)
+        
+        'if s.type = SECTOR
+        if root
+            xmin = .polygon[0]; xmax = .polygon[0]
+            zmin = .polygon[1]; zmax = .polygon[1]
+            for i = 1 to .wallCount - 1
+                xmin = min(xmin, .polygon[i*2])
+                xmax = max(xmax, .polygon[i*2])
+                zmin = min(zmin, .polygon[i*2 + 1])
+                zmax = max(zmax, .polygon[i*2 + 1])
+            next
+            dx = floor(((xmax - xmin)/2)/.map.tileW)*.map.tileW
+            dz = floor(((zmax - zmin)/2)/.map.tileH)*.map.tileH
+            for i = 0 to .wallCount - 1
+                s.polygon[i*2] = s.polygon[i*2] - xmin - dx
+                s.polygon[i*2 + 1] = s.polygon[i*2 + 1] - zmin - dz
+            next
+            foreach ss in s.subSectors  for i = 0 to ss.wallCount - 1
+                ss.polygon[i*2] = ss.polygon[i*2] - xmin - dx
+                ss.polygon[i*2 + 1] = ss.polygon[i*2 + 1] - zmin - dz
+            next
+        endif
+
+        return s
+    endfunc
+        
+    s.AddPoint = function(x, y)
+        if sizeof(.polygon) and x = .polygon[0] and y = .polygon[1]
+            if sizeof(.polygon) > 2
+                .Finalize()
+                return true
+            else
+                return false
+            endif
+        else
+            .polygon[sizeof(.polygon)] = x
+            .polygon[sizeof(.polygon)] = y
+            return false
+        endif
+    endfunc
+    
+    s.RecalculateHull = function()
+        ' Calculate convex hull.
+        .hull = ConvexHull(.polygon)
+        ' Minmax.
+        .xmin = .polygon[0]; .xmax = .polygon[0]; .zmin = .polygon[1]; .zmax = .polygon[1]
+        for i = 1 to .wallCount - 1
+            x = .polygon[i*2]; z = .polygon[i*2 + 1]
+            .xmin = min(.xmin, x); .xmax = max(.xmax, x)
+            .zmin = min(.zmin, z); .zmax = max(.zmax, z)
+        next
+        ' Hull status for all walls.
+        for i = 0 to .wallCount - 1  this.walls[i].onHull = .WallOnHull(i)
+    endfunc
+    
+    s.WallOnHull = function(windex)
+        x0 = .polygon[windex*2]; y0 = .polygon[windex*2 + 1]
+        x1 = .polygon[(windex + 1)%.wallCount*2]; y1 = .polygon[(windex + 1)%.wallCount*2 + 1]
+        c = sizeof(.hull)/2
+        for i = 0 to c - 1
+            j = (i + 1)%c
+            if x1 = .hull[i*2] and y1 = .hull[i*2 + 1] and x0 = .hull[j*2] and y0 = .hull[j*2 + 1]
+                return true
+            endif
+        next
+        return false
+    endfunc
+    
+    s.SplitWall = function()
+        if typeof(.selectedEdge)
+            i = .selectedEdge; j = (.selectedEdge + 1)%.wallCount
+            x0 = .polygon[i*2]; y0 = .polygon[i*2 + 1]
+            x1 = .polygon[j*2]; y1 = .polygon[j*2 + 1]
+            px = floor((x0 + x1)*0.5/.map.tileW)*.map.tileW + .map.tileW*0.5
+            py = floor((y0 + y1)*0.5/.map.tileH)*.map.tileH + .map.tileH*0.5
+            for i = 0 to .wallCount - 1
+                if px = .polygon[i*2] and py = .polygon[i*2 + 1]  break
+            next
+            if i = .wallCount
+                w = []
+                w.portal = unset
+                w.texture = .walls[.selectedEdge].texture
+                w.onHull = false
+                w.door = unset
+                w.id = unset
+                insert .walls, .selectedEdge, w
+                insert .polygon, (.selectedEdge + 1)*2, py
+                insert .polygon, (.selectedEdge + 1)*2, px
+                .wallCount = .wallCount + 1
+                .selectedEdge = .selectedEdge + 1
+                if not .type
+                    .RecalculateHull()
+                    .map.UpdatePortals()
+                endif
+                return true
+            endif
+        endif
+        return false
+    endfunc
+    
+    s.DeleteVertex = function()
+        if typeof(.selectedVertex) and .wallCount > 3
+            free key .polygon, .selectedVertex*2
+            free key .polygon, .selectedVertex*2
+            free key .walls, .selectedVertex
+            .wallCount = .wallCount - 1
+            .RecalculateHull()
+            .map.UpdatePortals()
+            .map.MarkDirty()
+            return true
+        endif
+        return false
+    endfunc    
+        
+    s.Finalize = function()
+        ' Check the order of the points.
+        sum = 0
+        .wallCount = sizeof(.polygon)/2
+        for i = 0 to .wallCount - 1
+            j = (i + 1)%.wallCount
+            sum = sum + (.polygon[j*2] - .polygon[i*2])*(.polygon[j*2 + 1] + .polygon[i*2 + 1])
+        next
+        ' Invert it?
+        if sum < 0 and .type = SECTOR or sum >= 0 and .type > SECTOR
+            old = .polygon
+            .polygon = []
+            for i = .wallCount - 1 to 0
+                .polygon[sizeof(.polygon)] = old[i*2]
+                .polygon[sizeof(.polygon)] = old[i*2 + 1]
+            next
+        endif
+        ' Create wall data.
+        .walls = fill([portal: unset, texture: unset, onHull: false, door: unset, id: unset], .wallCount)
+        ' Calculate convex hull.
+        .RecalculateHull()
+        .finalized = true
+    endfunc
+    
+    s.SelectVertex = function(x, y)
+        for i = 0 to .wallCount - 1
+            if |.polygon[i*2] - x| < 4 and |.polygon[i*2 + 1] - y| < 4
+                .selectedVertex = i
+                .selectedEdge = unset
+                return true
+            endif 
+        next
+        return false    
+    endfunc
+    
+    s.MoveVertex = function(x, y)
+        if typeof(.selectedVertex)
+            .polygon[.selectedVertex*2] = x
+            .polygon[.selectedVertex*2 + 1] = y
+        endif    
+    endfunc
+    
+    s.UnselectVertex = function()
+        .selectedVertex = unset
+    endfunc
+    
+    s.SelectEdge = function(x, y)
+        mind = unset
+        edge = unset
+        for i = 0 to .wallCount - 1
+            j = (i + 1)%.wallCount
+            d = DistanceToLine(x, y, .polygon[i*2], .polygon[i*2 + 1], .polygon[j*2], .polygon[j*2 + 1])
+            if edge = unset or d < mind
+                mind = d
+                edge = i
+            endif
+        next
+        if typeof(edge) and mind <= 4
+            .selectedEdge = edge
+            .selectedVertex = unset
+            return true
+        else
+            return false
+        endif
+    endfunc
+    
+    s.UnselectEdge = function()
+        .selectedEdge = unset
+    endfunc
+    
+    s.PointInside = function(x, y)
+        return PointInsidePolygon(.polygon, x, y)
+    endfunc
+    
+    s.Draw = function(dx, dy)
+        if .finalized
+            if sizeof(.polygon)
+                ' Draw hull.
+                if .hull
+                    c = sizeof(.hull)/2
+                    if .selected  set color vSelHullColor
+                    else  set color vHullColor
+                    for i = 0 to c - 1
+                        j = (i + 1)%c
+                        draw line .hull[i*2] + dx, .hull[i*2 + 1] + dy,
+                                .hull[j*2] + dx, .hull[j*2 + 1] + dy
+                    next
+                endif
+                ' Draw polygon.
+                if .selected  set color vSelPolyFillColor
+                else  set color vPolyFillColor
+                for i = 0 to sizeof(.polygon) - 1
+                    if i%2 = 0  vDrawPoly[i] = .polygon[i] + dx
+                    else  vDrawPoly[i] = .polygon[i] + dy
+                next
+                draw poly vDrawPoly, true, .wallCount
+                for i = 0 to .wallCount - 1
+                    j = (i + 1)%.wallCount
+                    if i = .selectedEdge
+                        set color vSelWallColor
+                    elseif typeof(.walls[i].portal)
+                        set color vPortalColor
+                    else
+                        if .selected  set color vSelPolyBorderColor
+                        else  set color vPolyBorderColor
+                    endif
+                    draw line .polygon[i*2] + dx, .polygon[i*2 + 1] + dy, .polygon[j*2] + dx, .polygon[j*2 + 1] + dy
+                    if typeof(.walls[i].portal)
+                        ddx = .polygon[j*2] - .polygon[i*2]; ddy = .polygon[j*2 + 1] - .polygon[i*2 + 1]
+                        cx = .polygon[i*2] + ddx*0.5; cy = .polygon[i*2 + 1] + ddy*0.5
+                        ddx = ddx*0.25; ddy = ddy*0.25
+                        draw line dx + cx - ddy, dy + cy + ddx, dx + cx + ddy, dy + cy - ddx
+                    endif
+                next
+                
+                if .selected  set color vSelVertexColor
+                else  set color vVertexColor
+                
+                for i = 0 to .wallCount - 1
+                    draw rect .polygon[i*2] - 4 + dx, .polygon[i*2 + 1] - 4 + dy, 9, 9, .selectedVertex = i
+                next
+            endif
+        else
+            if sizeof(.polygon)
+                set color vPolyDrawColor
+                c = sizeof(.polygon)/2
+                for i = 0 to c - 1
+                    if i > 0  draw line .polygon[(i - 1)*2] + dx, .polygon[(i -1)*2 + 1] + dy,
+                            .polygon[i*2] + dx, .polygon[i*2 + 1] + dy
+                    draw rect .polygon[i*2] - 4 + dx, .polygon[i*2 + 1] - 4 + dy, 9, 9, true
+                next
+            endif
+        endif
+    endfunc
+    
+    return s
+endfunc
+
+function PointInsidePolygon(p, pointx, pointy)
+    xmin = p[0]; xmax = p[0]
+    ymin = p[1]; ymax = p[1]
+    pcount = sizeof(p)/2
+    for i = 1 to pcount - 1
+        x = p[i*2]; y = p[i*2 + 1]
+        xmin = min(xmin, x); xmax = max(xmax, x)
+        ymin = min(ymin, y); ymax = max(ymax, y)
+    next
+    if pointx < xmin or pointx > xmax or pointy < ymin or pointy > ymax  return false
+    xcount = 0
+    for i = 0 to pcount - 1
+        j = (i + 1)%pcount
+        x0 = p[i*2]; y0 = p[i*2 + 1]
+        x1 = p[j*2]; y1 = p[j*2 + 1]
+        if y0 <= pointy and y1 > pointy or y1 <= pointy and y0 > pointy
+            k = (pointy - y0)/(y1 - y0)
+            if x0 + k*(x1 - x0) > pointx  xcount = xcount + 1
+        endif
+    next
+    return xcount%2 = 1
+endfunc
+
+function DistanceToLine(x, y, x0, y0, x1, y1)
+    ' Length of line x0, y0 -> x1, y1
+    dx = x1 - x0; dy = y1 - y0
+    l2 = dx*dx + dy*dy
+    if l2 = 0
+        dx = x - x0
+        dy = y - y0
+        return sqr(dx*dx + dy*dy)
+    endif
+    t = ((x - x0)*(x1 - x0) + (y - y0)*(y1 - y0))/l2
+    t = max(0, min(1, t))
+    px = x0 + t*(x1 - x0)
+    py = y0 + t*(y1 - y0)
+    dx = px - x
+    dy = py - y
+    return sqr(dx*dx + dy*dy)
+endfunc
+
+
+function UpdateSectorsBox()
+endfunc
+
+function CreateEmptyTextureImage()
+    img = createimage(128, 128)
+    set image img
+    set color 160, 160, 160
+    cls
+    set color 192, 192, 192
+    for y = 0 to 15  for x = 0 to 15  if (y + x)%2 = 1  draw rect x*8, y*8, 8, 8, true
+    set image primary
+    return img
+endfunc
+
+function CreateEmptyTextureThumbnail()
+    img = createimage(32, 32)
+    set image img
+    set color 160, 160, 160
+    cls
+    set color 192, 192, 192
+    for y = 0 to 7  for x = 0 to 7  if (y + x)%2 = 1  draw rect x*4, y*4, 4, 4, true
+    set image primary
+    return img
+endfunc
+
+function CreateTextureImage(src)
+    img = CreateEmptyTextureImage()
+    if width(src) >= height(src)
+        w = 128; h = 128*height(src)/width(src)
+        x = 0; y = 64 - h/2
+    else
+        h = 128; w = 128*width(src)/height(src)
+        x = 64 - w/2; y = 0
+    endif
+    set image img
+    set color 255, 255, 255
+    p = [x, y, 0, 0,
+        x + w, y, width(src), 0,
+        x + w, y + h, width(src), height(src),
+        x, y + h, 0, height(src)]
+    draw poly image src, p
+    set image primary
+    return img
+endfunc
+
+function CreateTextureThumbnail(src)
+    img = CreateEmptyTextureThumbnail()
+    if width(src) >= height(src)
+        w = 32; h = 32*height(src)/width(src)
+        x = 0; y = 16 - h/2
+    else
+        h = 32; w = 32*width(src)/height(src)
+        x = 16 - w/2; y = 0
+    endif
+    set image img
+    set color 255, 255, 255
+    p = [x, y, 0, 0,
+        x + w, y, width(src), 0,
+        x + w, y + h, width(src), height(src),
+        x, y + h, 0, height(src)]
+    draw poly image src, p
+    set image primary
+    return img
+endfunc
+
+function TextureSelector(action)
+    'visible vTextures = fill([fn: unset, img: unset, tn: unset], MAX_TEXTURES)
+    wdg = ImageButton(vEmptyTextureThumbnail, ShowTexturesPopup)
+    wdg.selectAction = action
+    wdg.textureIndex = 0
+    wdg.SetTextureIndex = function(index)
+        .textureIndex = index
+        .RefreshTexture()
+    endfunc
+    wdg.RefreshTexture = function()
+        if typeof(.textureIndex)
+            if image(vTextures[.textureIndex].tn) then .img = vTextures[.textureIndex].tn
+            else .img = vEmptyTextureThumbnail
+        else
+            .img = vNoTextureThumbnail
+        endif
+        .MarkDirty()
+    endfunc
+    
+    return wdg
+    
+    function ShowTexturesPopup(wdg)
+        popup = VBox(SIZE_AUTO, SIZE_AUTO)
+        popup.SetBackground(GetColor(COLOR_BACKGROUND))
+        popup.SetBorder(1)
+        popup.SetPadding(4)
+        popup.SetSpacing(2)
+        popup.shadow = 3
+        popup.textureSelector = wdg
+        index = 0
+        for y = 0 to 7
+            hb = HBox(SIZE_AUTO, SIZE_AUTO)
+            hb.SetSpacing(2)
+            popup.Add(hb)
+            for x = 0 to 7
+                if image(vTextures[index].tn) btn = ImageButton(vTextures[index].tn, Action)
+                else  btn = ImageButton(vEmptyTextureThumbnail, Action)
+                btn.textureIndex = index    
+                hb.Add(btn)
+                index = index + 1
+            next
+        next
+        hb = HBox(SIZE_AUTO, SIZE_AUTO)
+        popup.Add(hb)
+        btn = ImageButton(vNoTextureThumbnail, Action)
+        btn.textureIndex = MAX_TEXTURES
+        hb.Add(btn)
+        popup.x = wdg.x + wdg.w - 280
+        if height(primary) - (wdg.y + wdg.h) > wdg.y 
+            popup.y = wdg.y + wdg.h
+        else
+            popup.y = wdg.y - (272 + 8 + 36 )
+        endif
+        popup.Resize(SIZE_AUTO, SIZE_AUTO)
+        ShowPopup(popup, POPUP_CLOSE, function(popup, msg)
+                if typeof(msg)
+                    if msg = MAX_TEXTURES  msg = unset
+                    popup.textureSelector.SetTextureIndex(msg)
+                    if typeof(popup.textureSelector.selectAction)
+                        popup.textureSelector.selectAction(popup.textureSelector, msg)
+                    endif
+                    popup.textureSelector.MarkDirty()
+                endif
+            endfunc)
+        function Action(wdg)
+            ClosePopup(.textureIndex)
+        endfunc
+    endfunc
+endfunc
+
+function UpdateSectorBox(sector)
+    if typeof(sector)
+        if sector.type = SECTOR
+            vSectorHeader.SetText("Sector")
+            vSectorFloorHeightBox.SetHidden(false)
+            vSectorLightBox.SetHidden(false)
+            vSubSectorTypeRadioButtonBox.SetHidden(true)
+        else
+            vSectorHeader.SetText("Sub-sector")
+            vSectorFloorHeightBox.SetHidden(true)
+            vSectorLightBox.SetHidden(true)
+            vSubSectorTypeRadioButtonBox.SetHidden(false)
+            SelectRadioButtonIndex("subsectortype", sector.type - 1)
+        endif
+        vSectorNameEntry.SetText(sector.name)
+        vSectorFloorHeightEntry.SetText(str(sector.floorHeight))
+        vSectorWallHeightEntry.SetText(str(sector.wallHeight))
+        vSectorLightEntry.SetText(sector.light)
+        vSectorWallTexSelector.SetTextureIndex(sector.wallTexture)
+        vSectorFloorTexSelector.SetTextureIndex(sector.floorTexture)
+        vSectorCeilingTexSelector.SetTextureIndex(sector.ceilingTexture)
+        if sector.type = SECTOR_SUB_WALL
+            vSectorWallHeightBox.SetHidden(true)
+            vSectorWallTexBox.SetHidden(false)
+            vSectorFloorTexBox.SetHidden(true)
+            vSectorCeilingTexBox.SetHidden(true)
+        elseif sector.type = SECTOR_SUB_FLOOR
+            vSectorWallHeightBox.SetHidden(false)
+            vSectorWallTexBox.SetHidden(false)
+            vSectorFloorTexBox.SetHidden(false)
+            vSectorCeilingTexBox.SetHidden(true)
+        elseif sector.type = SECTOR_SUB_CEILING
+            vSectorWallHeightBox.SetHidden(false)
+            vSectorWallTexBox.SetHidden(false)
+            vSectorFloorTexBox.SetHidden(true)
+            vSectorCeilingTexBox.SetHidden(false)
+        else
+            vSectorWallHeightBox.SetHidden(false)
+            vSectorWallTexBox.SetHidden(false)
+            vSectorFloorTexBox.SetHidden(false)
+            vSectorCeilingTexBox.SetHidden(false)
+        endif
+        vSectorBox.SetHidden(false)
+    else
+        vSectorBox.SetHidden(true)
+    endif
+    UpdateWallBox(sector)
+endfunc
+
+function UpdateWallBox(sector)
+    if typeof(sector) and typeof(sector.selectedEdge)
+        vWallTexSelector.SetTextureIndex(sector.walls[sector.selectedEdge].texture)
+        if key(sector.walls[sector.selectedEdge], "door")
+            vDoorTexSelector.SetTextureIndex(sector.walls[sector.selectedEdge].door)
+        endif
+        if key(sector.walls[sector.selectedEdge], "id")
+            if typeof(sector.walls[sector.selectedEdge].id)  vDoorIdEntry.SetText(sector.walls[sector.selectedEdge].id)
+            else vDoorIdEntry.SetText("")
+        endif
+        vDoorTexSelectorBox.SetHidden(not sector.walls[sector.selectedEdge].portal)
+        vDoorIdBox.SetHidden(not sector.walls[sector.selectedEdge].portal)
+        vWallBox.SetHidden(false)
+    else
+        vWallBox.SetHidden(true)
+    endif
+endfunc
+
+function UpdateFlagBox(tile)
+    if typeof(tile)
+        vFlagBox.SetHidden(false)
+        if typeof(tile.flag)  vFlagEntry.SetText(tile.flag)
+        else  vFlagEntry.SetText("")
+        if typeof(tile.value)  vFlagValueEntry.SetText(tile.value)
+        else  vFlagValueEntry.SetText("")
+    else
+        vFlagBox.SetHidden(true)
+    endif
+endfunc
+
+function JustFuckingUnflagEverything()
+    vEditor.canvas.mode = NONE
+    vEditor.canvas.cell = unset
+    vEditor.canvas.moveSector = unset
+    vEditor.canvas.newSector = unset
+    if vEditor.canvas.selectedSector
+        vEditor.canvas.selectedSector.selectedEdge = unset
+        vEditor.canvas.selectedSector.selectedVertex = unset
+        vEditor.canvas.selectedSector.selected = false
+        vEditor.canvas.selectedSector = unset
+    endif
+    UpdateSectorBox(unset)
+    UpdateFlagBox(unset)
+endfunc
+
+function EditRadioButtonCallback(wdg, index)
+    if index = 0
+        vEditor.canvas.edit = GEOMETRY
+        vEditor.canvas.UpdateCellValues()
+        JustFuckingUnflagEverything()
+    else
+        JustFuckingUnflagEverything()
+        vEditor.canvas.edit = FLAGS
+    endif
+    vEditor.canvas.MarkDirty()
+endfunc
+
+function SubsectorRadioButtonCallback(wdg, index)
+    sector = vEditor.canvas.selectedSector
+    if sector and sector.type > SECTOR
+        sector.type = index + 1
+    endif
+    UpdateSectorBox(sector)
+endfunc
+
+' ConvexHull
+' ----------
+' Calculate the convex hull for a set of points in an array [x0, y0, x1, y1 ..], return as a polygon
+' in the same format. Modified from the thing I posted on the forum to include all points on hull
+' edges.
+function ConvexHull(points)
+    pcount = sizeof(points)/2
+    xminIndex = 0; xmaxIndex = 0
+    for i = 1 to pcount - 1
+        x = points[i*2]
+        if x < points[xminIndex*2] xminIndex = i
+        if x > points[xmaxIndex*2] xmaxIndex = i
+    next
+    lpoints = []; rpoints = []; mpoints = []
+    for i = 0 to pcount - 1
+        if i <> xminIndex and i <> xmaxIndex
+            cp = CrossProd(points[xminIndex*2], points[xminIndex*2 + 1],
+                    points[xmaxIndex*2], points[xmaxIndex*2 + 1],
+                    points[i*2], points[i*2 + 1])
+            ' Put zeroes in here too
+            if cp < 0
+                lpoints[sizeof(lpoints)] = points[i*2]
+                lpoints[sizeof(lpoints)] = points[i*2 + 1]
+            elseif cp > 0
+                rpoints[sizeof(rpoints)] = points[i*2]
+                rpoints[sizeof(rpoints)] = points[i*2 + 1]
+            else
+                mpoints[sizeof(mpoints)] = points[i*2]
+                mpoints[sizeof(mpoints)] = points[i*2 + 1]
+            endif
+        endif
+    next
+    if sizeof(lpoints) = 0
+        lpoints = mpoints
+    elseif sizeof(rpoints) = 0
+        rpoints = mpoints
+    endif
+    
+    hull = []
+    hull[sizeof(hull)] = points[xminIndex*2]
+    hull[sizeof(hull)] = points[xminIndex*2 + 1]
+    HullRec(hull, lpoints, points[xminIndex*2], points[xminIndex*2 + 1], points[xmaxIndex*2], points[xmaxIndex*2 + 1])
+    hull[sizeof(hull)] = points[xmaxIndex*2]
+    hull[sizeof(hull)] = points[xmaxIndex*2 + 1]
+    HullRec(hull, rpoints, points[xmaxIndex*2], points[xmaxIndex*2 + 1], points[xminIndex*2], points[xminIndex*2 + 1])
+    
+    return hull
+    
+    function HullRec(hull, points, x0, y0, x1, y1)
+        if not sizeof(points)  return
+        pcount = sizeof(points)/2
+        maxd = 0; maxdIndex = -1
+        ' keep an array, allmax, clear every time new maxd, add all with d = maxd
+        for i = 0 to pcount - 1
+            x = points[i*2]; y = points[i*2 + 1]
+            d = LinePointDist(x0, y0, x1, y1, x, y)
+            if d > maxd
+                maxd = d
+                maxdIndex = i
+            endif
+        next
+        ' sort by distance to x0, y1 and add to hull.
+        if maxd = 0
+            dlist = []
+            for i = 0 to pcount - 1
+                x = points[i*2]; y = points[i*2 + 1]
+                d = (x - x0)^2 + (y - y0)^2
+                dlist[sizeof(dlist)] = [x: x, y: y, d: d]
+            next
+            qsort(dlist, function(a, b); return a.d - b.d; endfunc)
+            for i = 0 to pcount - 1
+                hull[sizeof(hull)] = dlist[i].x
+                hull[sizeof(hull)] = dlist[i].y
+            next
+            return
+        endif
+            
+        npoints = []
+        for i = 0 to pcount - 1
+            if i <> maxdIndex
+                x = points[i*2]; y = points[i*2 + 1]
+                cp = CrossProd(x0, y0, points[maxdIndex*2], points[maxdIndex*2 + 1], x, y)
+                ' <= 0, need the on-liners too
+                if cp <= 0
+                    npoints[sizeof(npoints)] = x
+                    npoints[sizeof(npoints)] = y
+                endif
+            endif
+        next
+        if sizeof(npoints)
+            HullRec(hull, npoints, x0, y0, points[maxdIndex*2], points[maxdIndex*2 + 1])
+        endif
+        hull[sizeof(hull)] = points[maxdIndex*2]
+        hull[sizeof(hull)] = points[maxdIndex*2 + 1]
+        
+        npoints = []
+        for i = 0 to pcount - 1
+            if i <> maxdIndex
+                x = points[i*2]; y = points[i*2 + 1]
+                cp = CrossProd(points[maxdIndex*2], points[maxdIndex*2 + 1], x1, y1, x, y)
+                ' <= 0, need the one liners too
+                if cp <= 0
+                    npoints[sizeof(npoints)] = x
+                    npoints[sizeof(npoints)] = y
+                endif
+            endif
+        next
+        if sizeof(npoints)
+            HullRec(hull, npoints, points[maxdIndex*2], points[maxdIndex*2 + 1], x1, y1)
+        endif
+    endfunc
+    
+    function CrossProd(ax, ay, bx, by, cx, cy)
+        return (bx - ax)*(cy - ay) - (by - ay)*(cx - ax)
+    endfunc
+    
+    function LinePointDist(x0, y0, x1, y1, px, py)
+        dx = x1 - x0; dy = y1 - y0; d = dx*dx + dy*dy
+        if d <= 0   return 0
+        return |(x1 - x0)*(py - y0) - (px - x0)*(y1 - y0)|/sqr(d)
+    endfunc    
+endfunc

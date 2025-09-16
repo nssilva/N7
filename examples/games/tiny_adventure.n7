@@ -1,0 +1,130 @@
+' Tiny Adventure
+' --------------
+' By 1micha.elok, with modifications by johnno56.
+
+
+'----------------
+' INITIALIZATION
+'----------------
+'#win32
+set window "Tiny Adventure",200,100,false,4
+set redraw off
+
+player   = []
+fruit    = []
+q        = []
+camera   = []
+'enemy    = []
+
+'Initial Value
+randomize clock()
+player.x=width(primary)/2;player.y=height(primary)-15;player.img="P"
+player.dx=2;player.dy=5;player.jump = 0
+'enemy.x=width(primary);enemy.y=height(primary)-10;enemy.vel= -1;enemy.img="o"
+for i = 0 to 19; fruit[i] = [x:rnd(-80,280),y:rnd(50,80),img:"x"];next
+q = [x:rnd(-80,280),y:rnd(20,50),exist:0,img:"Q"]
+camera.x = 0
+score = 0
+
+'--------------
+' MAIN PROGRAM
+'--------------
+do  
+    set color 0,0,0 ; cls 'clear screen
+    Say(40,1,"Tiny Adventure")
+  
+    'camera's position on top left while the initial player's position in the middle
+    camera.x = player.x - width(primary)/2
+    camera.y = player.y - height(primary)/2
+
+    'update mountain's position relative to the camera.x
+    mountain =[-100-camera.x,90,0-camera.x,50,100-camera.x,70,200-camera.x,50,300-camera.x,90]
+   
+    'player's control  
+    if keydown(KEY_LEFT) then
+        player.x = player.x - player.dx
+    elseif keydown(KEY_RIGHT) then
+        player.x = player.x + player.dx
+    elseif keydown(KEY_UP) and player.y > 32 then
+        player.y = player.y - player.dy; player.jump = 1 'jump
+    endif
+   
+    'set color 255, 128, 0
+    'set caret 0, 0
+    'wln player.y
+   
+    'move enemy
+    'enemy.x=enemy.x+enemy.vel
+    'if enemy.x<=0   enemy.vel=1
+    'if enemy.x>=width(primary)  enemy.vel= -1
+  
+    'collision detection between player and fruits
+    for i = 0 to 19
+        if (player.x>= fruit[i].x-10-camera.x and player.x <= fruit[i].x+10-camera.x) and
+        (player.y >= fruit[i].y-10-camera.y and player.y <= fruit[i].y+10-camera.y) then
+            score = score + 1
+            fruit[i].y = -10 'out of screen
+        endif
+    next
+   
+    'collisiom between player and enemy
+    'if player.x>=enemy.x and player.x<=enemy.x+10 and
+    '    player.y>=enemy.y-10 and player.y<=enemy.y+10 and score>0 then
+    '    score = score - 1
+    '    enemy.x=width(primary)-10
+    'endif
+  
+    'collision detection between player and "Q"
+    if (player.x>=q.x-10-camera.x and player.x<=q.x+10-camera.x) and
+    (player.y>=q.y-10-camera.y and player.y<=q.y+10-camera.y) and q.exist then
+        Say(40,24,"Completed")
+        'q.y = -10 'out of screen
+        q.exist = 0
+        'enemy.x = -10
+        redraw
+        do;wait 1;until keydown(KEY_RETURN)
+        end  
+    endif
+  
+    'if the player jumps then goes down slowly
+    if player.jump and player.y<=(height(primary)-15) then
+        player.y = player.y + 1
+        if player.y < 0 then player.y = 0 'don't fly to outer space :-)
+    endif  
+
+    'boundaries
+    if player.x <5 then 'left boundary
+        player.x = player.x+5
+        Say(5,40,"Rrr")
+    elseif player.x >width(primary)-5 then 'right boundary
+        player.x = player.x-5
+        Say(width(primary)-35,40,"Rrr")         
+    endif
+
+    'draw blue mountains , green fruits , white player and red "Q"
+    set color 255,255,255; set caret width(primary)/2,12; center "Score :"+score
+    set color 0,0,70 ; draw poly mountain,1
+    set color 0,150,0
+        foreach i in fruit
+            set caret fruit[i].x-camera.x,fruit[i].y
+            wln fruit[i].img
+        next
+    if score >= 20 then
+        q.exist = 1
+    endif
+    if q.exist
+        set color 150,0,0;set caret q.x-camera.x,q.y; wln q.img
+    endif
+    set color 255,255,255; set caret player.x,player.y; wln player.img
+    'set color 255,255,0; set caret enemy.x,enemy.y; wln enemy.img
+
+    redraw
+    fwait 30
+until keydown(KEY_ESCAPE)
+
+'-----------
+' FUNCTIONS
+'-----------
+function Say(x,y,msg)
+    set color 255,0,0; set caret x,y; wln msg
+endfunc

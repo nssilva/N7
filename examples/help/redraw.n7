@@ -1,0 +1,64 @@
+' set redraw, redraw
+' ------------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "redraw", 640, 480
+
+' By default, the window content is updated every time you use a command that draws something, 
+' such as 'wln' or 'draw image'. When this behavior is disabled, you manually have to call 'redraw'
+' to update the window content. You can disable or enable automatic redraw with 'set redraw value'.
+'    In most games you will definitely want to turn automatic redraw off and manually update the
+' window once per frame after doing all the drawing. Else the result will be slow and flickering
+' graphics.
+set redraw off
+
+' Create some "sprites" to clearly show the difference between automatic and manual redraw.
+sprites = []
+for i = 0 to 99
+    sprites[i] = [
+            x: rnd(640), y: rnd(480),
+            dx: rnd(-4, 4), dy: rnd(-4, 4),
+            col: [rnd(256), rnd(256), rnd(256)]]
+next
+
+' Enter a loop where the user can turn automatic redraw on and off.
+automaticRedraw = off
+
+do
+    ' Turn automatic redraw on and off with spacebar.
+    if keydown(KEY_SPACE, true)
+        automaticRedraw = not automaticRedraw
+        set redraw automaticRedraw
+    endif
+
+    ' Clear screen.
+    set color 64, 64, 96
+    cls
+    
+    ' Move and draw the sprites.
+    foreach s in sprites
+        s.x = s.x + s.dx
+        s.y = s.y + s.dy
+        if s.x < 0  s.x = s.x + 640
+        elseif s.x >= 640  s.x = s.x - 640
+        if s.y < 0  s.y = s.y + 480
+        elseif s.y > 480  s.y = s.y + 480
+        
+        set color s.col
+        draw rect s.x - 16, s.y - 16, 32, 32, true
+    next
+    
+    ' Write instructions.
+    set color 255, 255, 255
+    set caret width(primary)/2, 8
+    if automaticRedraw  center "Press spacebar to disable automatic redraw"
+    else  center "Press spacebar to enable automatic redraw"
+    center "Press Esc to exit ..." 
+
+    ' 'redraw' updates the window content. Call it if automatic redraw is turned off.
+    if not automaticRedraw  redraw
+    fwait 60
+until keydown(KEY_ESCAPE)

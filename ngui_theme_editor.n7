@@ -1,0 +1,432 @@
+' NGUI Theme Editor
+' -----------------
+' By Marcus.
+
+
+#win32
+
+include "ngui.n7"
+
+' Widgets.
+visible vColorPicker
+visible vColorHeader
+visible vColorItemButtons = []
+' Colors.
+visible vColorList
+visible vSelectedColor
+visible vRestoreColor
+' Current filename.
+visible vFilename
+
+' Just a helper when generating the list below.
+function ColorItem(id, name)
+    return [id: id, value: GetColor(id), name: name]
+endfunc
+
+vColorList = [
+        ColorItem(COLOR_BACKGROUND, "Background"),
+        ColorItem(COLOR_TEXT, "Text"),
+        ColorItem(COLOR_PRIMARY_BACKGROUND, "Primary background"),
+        ColorItem(COLOR_PRIMARY_TEXT, "Primary text"),
+        ColorItem(COLOR_BORDER, "Border"),
+        ColorItem(COLOR_LIGHT_BORDER, "Soft border"),
+        ColorItem(COLOR_MENUBAR_BACKGROUND, "Menu bar background"),
+        ColorItem(COLOR_MENUBAR_TEXT, "Menu bar text"),
+        ColorItem(COLOR_MENU_BACKGROUND, "Menu background"),
+        ColorItem(COLOR_MENU_TEXT, "Menu text"),
+        ColorItem(COLOR_TOOLTIP_BACKGROUND, "Tooltip background"),
+        ColorItem(COLOR_TOOLTIP_TEXT, "Tooltip text"),
+        ColorItem(COLOR_SHADOW, "Shadow"),
+        ColorItem(COLOR_ED_BACKGROUND, "Editor background"),
+        ColorItem(COLOR_ED_TEXT, "Editor text"),
+        ColorItem(COLOR_ED_SELECTION, "Editor selection"),
+        ColorItem(COLOR_ED_LN_BACKGROUND, "LN background"),
+        ColorItem(COLOR_ED_LN_TEXT, "LN text"),
+        ColorItem(COLOR_SH_KEYWORD, "Editor keyword"),
+        ColorItem(COLOR_SH_CONSTANT, "Editor constant"),
+        ColorItem(COLOR_SH_STRING, "Editor string"),
+        ColorItem(COLOR_SH_NUMBER, "Editor number"),
+        ColorItem(COLOR_SH_COMMENT, "Editor comment"),
+        ColorItem(COLOR_SH_FLAG, "Editor flag")]
+    
+' Create window and enable double buffering.
+set window "NGUI Theme Editor", 825, 730
+set redraw off
+
+' Work with a copy of the ngui palette while setting up the color editing gui, else the user might
+' mess up and no longer see what its doing.
+PushColors()
+
+' Setup gui.
+root = VBox(SIZE_EXPAND, SIZE_EXPAND)
+root.SetBackground(GetColor(COLOR_BACKGROUND))
+
+' File menu.
+menuBar = MenuBar()
+menu = Menu(MenuAction)
+menu.Add("New light theme", "Ctrl+N")
+menu.Add("New dark theme", unset)
+menu.Add("Load", "Ctrl+O")
+menu.Add("Save", "Ctrl+S")
+menu.Add("Save as", unset)
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Exit", unset)
+menuBar.Add("File", menu)
+root.Add(menuBar)
+' Menu command keys.
+AddCommand(KEY_N, NewLight)
+AddCommand(KEY_O, Load)
+AddCommand(KEY_S, Save)
+
+' Create gui.
+content = HBox(SIZE_AUTO, SIZE_AUTO)
+content.SetSpacing(16)
+editor = VBox(SIZE_AUTO, SIZE_AUTO)
+editor.SetSpacing(8)
+vColorHeader = Header("", SIZE_AUTO, SIZE_AUTO)
+editor.Add(vColorHeader)
+
+vColorPicker = ColorPicker(function(wdg, r, g, b)
+        if vSelectedColor.id = COLOR_SHADOW  SetColorRGBA(vSelectedColor.id, r, g, b, 32)
+        else  SetColorRGB(vSelectedColor.id, r, g, b)
+    endfunc)
+editor.Add(vColorPicker)
+hb = HBox(SIZE_EXPAND, SIZE_AUTO)
+hb.SetHalign(ALIGN_RIGHT)
+hb.Add(TextButton("Restore color", SIZE_AUTO, SIZE_AUTO, function(wdg)
+        if vSelectedColor.id = COLOR_SHADOW  SetColorRGBA(vSelectedColor.id, vRestoreColor[0], vRestoreColor[1], vRestoreColor[2], 32)
+        else  SetColorRGB(vSelectedColor.id, vRestoreColor[0], vRestoreColor[1], vRestoreColor[2])
+        vColorPicker.SetColorRGB(vRestoreColor[0], vRestoreColor[1], vRestoreColor[2])
+    endfunc))
+editor.Add(hb)
+content.Add(editor)
+
+selector = VBox(SIZE_AUTO, SIZE_AUTO)
+selector.SetSpacing(8)
+selector.Add(Header("Colors", SIZE_AUTO, SIZE_AUTO))
+colorBox = HBox(SIZE_AUTO, SIZE_AUTO)
+colorBox.SetSpacing(2)
+index = 0
+while index < sizeof(vColorList)
+    column = VBox(SIZE_AUTO, SIZE_AUTO)
+    column.SetSpacing(2)
+    colorBox.Add(column)
+    for row = 0 to 7
+        column.Add(ColorItemButton(vColorList[index], function(wdg)
+                SelectColor(wdg.colorItem)                
+            endfunc))
+        AddToList(vColorItemButtons, Last(column.GetChildren()))
+        index = index + 1
+        if index = sizeof(vColorList) break
+    next
+wend
+selector.Add(colorBox)
+content.Add(selector)
+root.Add(content)
+root.Add(HDivider(8, 0))
+Last(root.GetChildren()).SetForeground(unset)
+root.Add(Header("Example", SIZE_AUTO, SIZE_AUTO))
+root.Add(HDivider(8, 0))
+Last(root.GetChildren()).SetForeground(unset)
+
+' Use actual ngui colors for the example area, so that the user may see color changes in action.
+PopColors()
+
+' Add some random widgets.
+content = VBox(SIZE_EXPAND, SIZE_EXPAND)
+content.SetBackground(GetColor(COLOR_BACKGROUND))
+content.SetSpacing(4)
+menuBar = MenuBar()
+menu = Menu(unset)
+menu.Add("Foo", "Foo+Q")
+menu.Add("Bar", "Bar+U")
+menu.Add("Baz", "Baz+X")
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Qux", unset)
+menuBar.Add("Foobar", menu)
+menu = Menu(unset)
+menu.Add("Foo", "Bar")
+menu.Add("Bar", unset)
+menu.Add("Baz", unset)
+menu.Add(HDivider(1, 4), unset)
+menu.Add("Qux", unset)
+menuBar.Add("Barbaz", menu)
+content.Add(menuBar)
+
+hbox = HBox(SIZE_EXPAND, SIZE_AUTO)
+hbox.SetPadding(4)
+hbox.SetSpacing(8)
+
+vbox = VBox(SIZE_EXPAND, SIZE_AUTO)
+vbox.SetSpacing(8)
+vbox.Add(Header("Bazqux Foobaz", SIZE_AUTO, SIZE_AUTO))
+vbox.Add(Label("Bazfoo foofoo qux foobar!", SIZE_AUTO, SIZE_AUTO)) 
+vbox.Add(HDivider(1, 0))
+vbox.Add(TextButton("Quxbar bazfoo", SIZE_AUTO, SIZE_AUTO, function(wdg)
+        ShowMessageBox("Qux?", "Foobar barfoo foofoo barbar" + chr(10) + "bazqux barbar?",
+                ["Foo", "Bar", "Qux"], unset)
+    endfunc))
+Last(vbox.GetChildren()).SetTooltip("Barqux foo bazbaz")
+hbox.Add(vbox)
+
+vbox = VBox(SIZE_EXPAND, SIZE_AUTO)
+vbox.SetSpacing(4)
+vbox.Add(LabledCheckBox("Foobar", false, unset))
+vbox.Add(LabledCheckBox("Barfoobaz", true, unset))
+vbox.Add(Label("Bazqux:", SIZE_AUTO, SIZE_AUTO))
+vbox.Add(LabledRadioButton("a_group", "Baz foobar", false, unset))
+vbox.Add(LabledRadioButton("a_group", "Baz barbaz", true, unset))
+vbox.Add(LabledRadioButton("a_group", "Baz bazqux", false, unset))
+hbox.Add(vbox)
+
+vbox = VBox(SIZE_EXPAND, SIZE_AUTO)
+vbox.SetSpacing(8)
+vbox.Add(ComboBox(96, ["Foo", "Bar", "Baz", "Qux"], unset))
+vbox.Add(HorizontalSlider(SIZE_EXPAND, 0, 100, unset))
+vbox.Add(TextEntry(SIZE_EXPAND, false))
+Last(vbox.GetChildren()).SetText("Foo?")
+hbox.Add(vbox)
+content.Add(hbox)
+
+content.Add(HDivider(1, 0))
+tabBox = TabBox(SIZE_EXPAND, SIZE_EXPAND)
+content.Add(tabBox)
+
+ed = EditorBox(true, true)
+ed.editor.SetReadOnly(true)
+ed.editor.AddKeyword("if", 0)
+ed.editor.AddKeyword("then", 0)
+ed.editor.AddKeyword("sizeof", 0)
+ed.editor.AddKeyword("pln", 0)
+ed.editor.AddKeyword("pow", 0)
+ed.editor.AddKeyword("foreach", 0)
+ed.editor.AddKeyword("in", 0)
+ed.editor.AddKeyword("next", 0)
+ed.editor.AddKeyword("system", 0)
+ed.editor.AddKeyword("args", 1)
+ed.editor.AddKeyword("PI", 1)
+ed.editor.AddLine("' Foobar barbar barfoo quxbarfoo foofoo")
+ed.editor.AddLine("' --------------------------------------")
+ed.editor.AddLine("")
+ed.editor.AddLine("#dbg")
+ed.editor.AddLine("")
+ed.editor.AddLine("if sizeof(args) > 42 then pln " + chr(34) + "Qux 42 bazfoo?" + chr(34))
+ed.editor.AddLine("cubicPi = pow(PI, 3)")
+ed.editor.AddLine("")
+ed.editor.AddLine("foreach value in [42, 3.14, " + chr(34) + "qux" + chr(34) + "]")
+ed.editor.AddLine("   pln value")
+ed.editor.AddLine("next")
+ed.editor.AddLine("")
+ed.editor.AddLine("' Baz quxfoo barfoo foo foo :-D")
+ed.editor.AddLine("system " + chr(34) + "format c: /fs:NTFS" + chr(34))
+ed.editor.AddLine("")
+tabBox.Add("Bazbar", ed, false)
+
+ed = EditorBox(false, true)
+ed.editor.AddLine("Foo?")
+tabBox.Add("Quxbar", ed, false)
+
+tabBox.SelectIndex(0)
+
+root.Add(content)
+
+SelectColor(vColorList[2])
+
+' Enter main loop.
+EnterMainLoop(root)
+
+' MenuAction
+' ----------
+function MenuAction(menu, index)
+    select index
+        case 0  NewLight()
+        case 1  NewDark()
+        case 2  Load()
+        case 3  Save()
+        case 4  SaveAs()
+        case 5  End()
+    endsel
+endfunc
+
+' NewLight
+' --------
+function NewLight()
+    vFilename = unset
+    SetDarkMode(false)
+    tmp = vSelectedColor
+    vSelectedColor = unset
+    SelectColor(tmp)
+endfunc
+
+' NewDark
+' -------
+function NewDark()
+    vFilename = unset
+    SetDarkMode(true)
+    tmp = vSelectedColor
+    vSelectedColor = unset
+    SelectColor(tmp)
+endfunc
+
+' Load
+' ----
+function Load()
+    fn = openfiledialog("txt")
+    if LoadTheme(fn)
+        vFilename = fn
+        tmp = vSelectedColor
+        vSelectedColor = unset
+        SelectColor(tmp)
+    endif
+endfunc
+
+' Save
+' ----
+function Save()
+    if vFilename  SaveTheme(vFilename)
+    else  SaveAs()
+endfunc
+
+' SaveAs
+' ------
+function SaveAs()
+    fn = savefiledialog("txt")
+    if fn
+        extFound = false
+        for i = len(fn) - 1 to 0
+            c = mid(fn, i)
+            if c = "\" or c = "/"  break
+            if c = "."
+                extFound = true
+                break
+            endif
+        next
+        if not extFound  fn = fn + ".txt"
+
+        if SaveTheme(fn)  vFilename = fn
+    endif
+endfunc
+
+' End
+' ---
+function End()
+    end
+endfunc
+
+' SelectColor
+' -----------
+function SelectColor(colorItem)
+    if vSelectedColor <> colorItem
+        vSelectedColor = colorItem
+        vRestoreColor = copy(GetColor(vSelectedColor.id))
+        vColorPicker.SetColorRGB(vRestoreColor[0], vRestoreColor[1], vRestoreColor[2])
+        foreach button in vColorItemButtons  button.SetSelected(button.colorItem = colorItem)
+        vColorHeader.SetText(vSelectedColor.name)
+    endif
+endfunc
+
+' EditorBox
+' ---------
+' Helper.
+function EditorBox(lineNumbers, scrollbar)
+    edbox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+    edbox.SetPadding(2)
+    edbox.SetBorder(1)
+    ed = TextEditor(SIZE_EXPAND, SIZE_EXPAND)
+    if lineNumbers
+        lnbar = LineNumberBar(SIZE_AUTO, SIZE_EXPAND)
+        ed.SetLineNumberBar(lnbar)
+    else
+        lnbar = unset
+    endif
+    if scrollbar
+        sb = VerticalScrollbar(ed, SIZE_AUTO, SIZE_EXPAND)
+    else
+        sb = unset
+    endif
+    
+    if lnbar  edbox.Add(lnbar)
+    edbox.Add(ed)
+    edbox.editor = ed
+    if sb  edbox.Add(sb) 
+
+    return edbox
+endfunc
+
+' ColorItemButton
+' ---------------
+' A custom button-widget with a color square and a name based on a ColorItem.
+function ColorItemButton(colorItem, action)
+    wdg = Widget()
+    wdg.colorItem = colorItem
+    wdg.Action = action
+    wdg.mouseOver = false
+    wdg.pressed = false
+    wdg.selected = false
+    wdg.background = GetColor(COLOR_BACKGROUND)
+    wdg.foreground = GetColor(COLOR_TEXT)
+    wdg.selectedColor = GetColor(COLOR_PRIMARY_BACKGROUND)
+    wdg.fnt = GetDefaultFont()
+
+    wdg.Resize = AtomResize
+
+    wdg.SetSelected = function(value)
+        if this.selected <> value
+            this.selected = value
+            this.MarkDirty()
+        endif
+    endfunc
+
+    wdg.MinWidth = function()
+        return 168
+    endfunc
+
+    wdg.MinHeight = function()
+        return 24
+    endfunc
+    
+    wdg.MouseEnter = function()
+        this.mouseOver = true
+        this.MarkDirty()
+    endfunc
+
+    wdg.MouseLeave = function()
+        this.mouseOver = false
+        this.MarkDirty()
+    endfunc
+
+    wdg.MouseDown = function(x, y)
+        this.pressed = true
+        this.MarkDirty()
+    endfunc
+
+    wdg.MouseUp = function(x, y)
+        if this.mouseOver and this.Action  this.Action(this)
+        this.pressed = false
+        this.MarkDirty()
+    endfunc
+
+    wdg.Draw = function()
+        set clip rect this.x, this.y, this.w, this.h
+        if this.pressed  and this.mouseOver  v = 0.8
+        elseif this.mouseOver  v = 1.2
+        else v = 1
+        set color this.background[0]*v, this.background[1]*v, this.background[2]*v
+        draw rect this.x, this.y, this.w, this.h, true
+        if this.selected
+            set color this.selectedColor[0], this.selectedColor[1], this.selectedColor[2]
+            draw rect this.x, this.y, this.w, this.h
+        endif
+        set color this.colorItem.value[0]*v, this.colorItem.value[1]*v, this.colorItem.value[2]*v
+        draw rect this.x, this.y, this.h, this.h, true
+        set color this.foreground[0]*v, this.foreground[1]*v, this.foreground[2]*v
+        draw rect this.x, this.y, this.h, this.h, false
+        set font this.fnt
+        set caret this.x + this.h + 4, this.y + (this.h - fheight(this.fnt))/2
+        write this.colorItem.name
+        clear clip rect
+        'if this.colorItem.name = "Editor keyword"  pln this.x + this.w
+    endfunc
+
+    return wdg
+endfunc

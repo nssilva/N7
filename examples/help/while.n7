@@ -1,0 +1,12 @@
+' while, wend
+' -----------
+
+' As long as the the expression following 'while' is true, the statements between 'while' and 'wend'
+' are executed.
+a = 0
+while a < 5
+    pln a
+    a = a + 1
+wend
+
+system "pause"

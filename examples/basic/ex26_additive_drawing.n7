@@ -1,0 +1,19 @@
+' When additive draw mode is set to true, the source color is added to the destination color.
+' It works with all primitives and images.
+
+set window "Additive drawing", 640, 480
+
+' Turn on additive drawing.
+set additive true
+' Draw three circles in red, green and blue.
+set color 255, 0, 0
+draw ellipse 320, 200, 64, 64, true
+set color 0, 255, 0
+draw ellipse 320 - 48, 200 + 48, 64, 64, true
+set color 0, 0, 255
+draw ellipse 320 + 48, 200 + 48, 64, 64, true
+' Turn off additive drawing.
+set additive false
+
+' Wait for user to press escape.
+while not keydown(KEY_ESCAPE) wait 16

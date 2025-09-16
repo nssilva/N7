@@ -1,0 +1,45 @@
+' I have yet not decided what file format to use for n7's bitmap fonts. So
+' for now you can create fonts at run time but not load or save them.
+
+' You can use the command 'create font' or the function 'createfont' to create a
+' font. With the command you assign a font to an identifier (handle), while the
+' function generates and returns an unused identifier.
+'    create font <id>, <font name>[, <bold>[, <italic>[, <underline>[, <smooth>]]]]
+'    createfont(<font name>[, <bold>[, <italic>[, <underline>[, <smooth>]]]])
+aFont = createfont("courier new", 24)
+anotherFont = createfont("arial", 32, true, true, false, true)
+
+' Create window.
+set window "Fonts", 640, 480
+
+' Write something with the default font (it has the identifier 0).
+wln "This is the default and built in font"
+
+' Write some lines with different fonts, colors and justification.
+set font aFont
+set caret 320, 32
+center "I'm centered!"
+
+set font anotherFont
+set caret 320, 64
+set justification left
+wln "I'm left justified!"
+
+set color 255, 0, 0
+set justification right
+wln "I'm right justified"
+
+set color 0, 255, 255
+set justification center
+wln "I'm centered too!"
+
+wln
+
+' Use the function 'rln' to get input from the user.
+set font aFont
+set color 0, 255, 255
+wln "Enter a number to exit:"
+set color 128, 128, 128
+
+' rln([<max character>[, type]])
+a = rln(16, TYPE_NUMBER)

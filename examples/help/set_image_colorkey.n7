@@ -1,0 +1,31 @@
+' set image colorkey
+' ------------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set image colorkey", 640, 480
+
+' Load an image of a smiley with a magenta background.
+img = loadimage("assets/smiley_ck.png")
+
+' Clear the screen and draw the image
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+draw image img, 288, 128
+
+' 'set image colorkey image_id, r, g, b' makes RGB color r, g, b completely transparent in image
+' image_id.
+set image colorkey img, 255, 0, 255
+
+' Draw the image again.
+draw image img, 288, 240
+
+' Write some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

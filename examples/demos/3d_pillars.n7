@@ -1,0 +1,87 @@
+' 3d_pillars.n7
+' -------------
+
+include "s3d.n7"
+
+visible vLastTick = 0
+
+set window "pillars", 480*screenw()/screenh(), 480, true
+set redraw off
+
+S3D_SetView(primary, rad(60), 0.1, 60)
+
+cube = S3D_BeginMesh()
+    S3D_Translate(0, -1, 0)
+    S3D_Begin(S3D_QUADS)
+        S3D_Color(0, 0, 0)
+        S3D_Vertex(1, 1, -1, 0, 0)
+        S3D_Vertex(1, 1, 1, 0, 0)
+        S3D_Vertex(-1, 1, 1, 0, 0)
+        S3D_Vertex(-1, 1, -1, 0, 0)
+        S3D_Color(255, 255, 255)
+        S3D_Vertex(1, -1, 1, 0, 0)
+        S3D_Vertex(1, -1, -1, 0, 0)    
+        S3D_Vertex(-1, -1, -1, 0, 0)
+        S3D_Vertex(-1, -1, 1, 0, 0)
+        S3D_Color(64, 64, 64)
+        S3D_Vertex(1, 1, 1, 0, 0)
+        S3D_Vertex(1, -1, 1, 0, 0)
+        S3D_Vertex(-1, -1, 1, 0, 0)
+        S3D_Vertex(-1, 1, 1, 0, 0)
+        S3D_Color(204, 204, 204)
+        S3D_Vertex(1, -1, -1, 0, 0)
+        S3D_Vertex(1, 1, -1, 0, 0)
+        S3D_Vertex(-1, 1, -1, 0, 0)
+        S3D_Vertex(-1, -1, -1, 0, 0)
+        S3D_Color(128, 128, 128)
+        S3D_Vertex(-1, 1, 1, 0, 0)
+        S3D_Vertex(-1, -1, 1, 0, 0)
+        S3D_Vertex(-1, -1, -1, 0, 0)
+        S3D_Vertex(-1, 1, -1, 0, 0)
+        S3D_Color(128, 128, 128)
+        S3D_Vertex(1, 1, -1, 0, 0)
+        S3D_Vertex(1, -1, -1, 0, 0)
+        S3D_Vertex(1, -1, 1, 0, 0)
+        S3D_Vertex(1, 1, 1, 0, 0)
+    S3D_End()            
+S3D_EndMesh()
+
+angleA = 0
+angleB = 0
+angleC = 0
+res = 25
+
+while not keydown(KEY_ESCAPE, true)
+    dt = DeltaTime()
+    angleA = (angleA + 90*dt)%360
+    angleB = (angleB + 140*dt)%360
+    angleC = (angleC + 20*dt)%360
+    S3D_Clear()
+    S3D_RotateZ(sin(rad(angleC)*2)*0.5)
+    S3D_RotateX(rad(45))
+    S3D_Translate(0, 22, res*1.5)
+    S3D_RotateY(rad(45 + angleC))
+    for z = 0 to res - 1
+        for x = 0 to res - 1
+            s = (1 + sin(rad(angleA + x*10))) + (1.5 + 1.5*cos(rad(angleB + z*15)))
+            dx = x - res/2 + 0.5
+            dz = z - res/2 + 0.5
+            S3D_Push()
+            S3D_Translate(dx*3, 0, dz*3)
+            S3D_Scale(1, s, 1)
+            S3D_Mesh(cube, 0)
+            S3D_Pop()
+        next
+    next
+    S3D_Render()
+    S3D_RenderFog(128, 128, 128, false)
+    redraw
+    wait 1
+wend
+
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc

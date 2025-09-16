@@ -1,0 +1,333 @@
+' random_3d_maze.n7
+' -----------------
+
+include "wolf3d.n7"
+
+#win32
+
+constant RES = 480
+
+' Wolf3D instance.
+visible w3d = Wolf3D()
+' Images.
+visible vWallImage, vFloorImage, vCeilingImage
+
+set window "maze", RES*screenw()/screenh(), RES, true
+set redraw off
+
+' Generate some images.
+CreateAssets()
+
+randomize time()
+
+' Generate and display maze.
+maze = GenerateMaze(8, 8)
+side = 16
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+for x = 0 to sizeof(maze) - 1  for y = 0 to sizeof(maze[0]) - 1
+    dx = x*side
+    dy = y*side
+    if not maze[x][y].l  draw line dx, dy, dx, dy + side - 1
+    if not maze[x][y].r  draw line dx + side - 1, dy, dx + side - 1, dy + side - 1
+    if not maze[x][y].u  draw line dx, dy, dx + side - 1, dy
+    if not maze[x][y].d  draw line dx, dy + side - 1, dx + side - 1, dy + side - 1
+next
+set caret width(primary)/2, height(primary) - fheight()*3
+center "A random maze"
+center "Click to continue ..."
+redraw
+while not mousebutton(0, true)  fwait 60
+
+' Convert it to an 2d map array where each element is either empty or a wall. Let each room in the
+' maze array be represented by 5x5 elements in the map array - a 5x5 units large room.
+map = fill(true, sizeof(maze)*6 + 1, sizeof(maze[0])*6 + 1)
+removedWallsLeft = 0
+removedWallsUp = 0
+for x = 0 to sizeof(maze) - 1  for y = 0 to sizeof(maze[0]) - 1
+    ' Clear the 5x5 room.
+    for xx = x*6 + 1 to x*6 + 5  for yy = y*6 + 1 to y*6 + 5  map[xx][yy] = false
+    ' A way left?
+    if maze[x][y].l
+        ' Either remove the entire wall or create a doorway.
+        if rnd(2 + removedWallsLeft) = 0
+            removedWallsLeft = removedWallsLeft + 1
+            for yy = y*6 + 1 to y*6 + 5  map[x*6][yy] = false
+        else
+            map[x*6][y*6 + 1 + rnd(5)] = false
+            removedWallsLeft = 0           
+        endif
+    else
+        removedWallsLeft = 0
+    endif
+    ' A way up?
+    if maze[x][y].u
+        ' Either remove the entire wall or create a doorway.
+        if rnd(2 + removedWallsUp) = 0
+            removedWallsUp = removedWallsUp + 1
+            for xx = x*6 + 1 to x*6 + 5  map[xx][y*6] = false
+        else
+            removedWallsUp = 0
+            map[x*6 + 1 + rnd(5)][y*6] = false
+        endif
+    else
+        removedWallsUp = 0
+    endif
+next
+' Display it.
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+side = 4
+for x = 0 to sizeof(map) - 1  for y = 0 to sizeof(map[0]) - 1
+    dx = x*side; dy = y*side
+    if map[x][y]  draw rect x*side, y*side, side, side, true
+next
+set caret width(primary)/2, height(primary) - fheight()*3
+center "Same maze but way more interesting"
+center "Click to continue ..."
+redraw
+while not mousebutton(0, true)  fwait 60
+
+' Create a wolf3d map and a map image.
+mapImage = createimage(sizeof(map)*3, sizeof(map[0])*3)
+set image mapImage
+w3d.InitMap(sizeof(map), sizeof(map[0]))
+w3d.SetFloorTexture(vFloorImage)
+w3d.SetCeilingTexture(vCeilingImage)
+set color 255, 255, 255
+for x = 0 to sizeof(map) - 1  for z = 0 to sizeof(map[0]) - 1
+    if map[x][z]
+        w3d.SetWall(x, z, vWallImage)
+        draw rect x*3, z*3, 3, 3, true
+    endif
+next
+set image primary
+w3d.SetFog(1.5, 6, 48, 48, 56)
+' Init view.
+w3d.SetView(0, 0, width(primary), height(primary), rad(60*min(width(primary)/height(primary), 2)))
+' Player position and angle.
+playerX = 1.5; playerZ = 1.5
+playerAngle = 0
+' Game loop.
+while not keydown(KEY_ESCAPE)
+    dx = 0
+    dz = 0
+    if keydown(KEY_CONTROL)
+        if keydown(KEY_LEFT)
+            dx = dx + cos(rad(playerAngle - 90))
+            dz = dz + sin(rad(playerAngle - 90))
+        endif
+        if keydown(KEY_RIGHT)
+            dx = dx + cos(rad(playerAngle + 90))
+            dz = dz + sin(rad(playerAngle + 90))
+        endif
+    else
+        if keydown(KEY_LEFT)  playerAngle = (playerAngle - 2)%360
+        if keydown(KEY_RIGHT) playerAngle = (playerAngle + 2)%360
+    endif
+    if keydown(KEY_UP)
+        dx = dx + cos(rad(playerAngle))
+        dz = dz + sin(rad(playerAngle))
+    endif
+    if keydown(KEY_DOWN)
+        dx = dx - cos(rad(playerAngle))
+        dz = dz - sin(rad(playerAngle))
+    endif
+    d = sqr(dx*dx + dz*dz)
+    if d > 0
+        dx = dx/d
+        dz = dz/d
+        dx = dx*0.05
+        dz = dz*0.05
+        result = w3d.Move(playerX, playerZ, dx, dz, 0.25)
+        playerX = result.x
+        playerZ = result.z
+    endif
+    w3d.Render(playerX, playerZ, rad(playerAngle))
+    set color 255, 255, 255
+    set caret width(primary)/2, 4
+    center "Move and turn with the arrow keys"
+    center "Hold Ctrl to strafe instead of turning"
+    center "Press Esc to quit"
+    set color 0, 192, 0, 64
+    x = 4
+    y = height(primary) - height(mapImage) - 4
+    draw image mapImage, x, y
+    set color 255, 255, 0, 128
+    draw ellipse x + playerX*3, y + playerZ*3, 2, 2, true
+    redraw
+    fwait 60
+wend
+
+' GenerateMaze
+' ------------
+' Return an array of the size w*h, where every element has four fields, l, r, u and d, telling if
+' there's a way left, right, up and down.
+function GenerateMaze(w, h)
+    maze = fill([vis: false, l: false, r: false, u: false, d: false], w, h)
+    GenerateMazeRec(maze, rnd(sizeof(maze)), rnd(sizeof(maze[0])), 0)
+    return maze
+
+    function GenerateMazeRec(maze, x, y, dir)
+        if x < 0 or x >= sizeof(maze) or y < 0 or y >= sizeof(maze[0])  return false
+        if maze[x][y].vis  return false
+        maze[x][y].vis = true
+        maze[x][y].wall = false
+        if dir = 1
+            maze[x][y].r = true
+            maze[x + 1][y].l = true
+        elseif dir = 2
+            maze[x][y].l = true
+            maze[x - 1][y].r = true
+        elseif dir = 3
+            maze[x][y].d = true
+            maze[x][y + 1].u = true
+        elseif dir = 4
+            maze[x][y].u = true
+            maze[x][y - 1].d = true
+        endif
+        visit = [1, 2, 3, 4]
+        while sizeof(visit)
+            index = rnd(sizeof(visit))
+            if visit[index] = 1  GenerateMazeRec(maze, x - 1, y, 1)
+            elseif visit[index] = 2  GenerateMazeRec(maze, x + 1, y, 2)
+            elseif visit[index] = 3  GenerateMazeRec(maze, x, y - 1, 3)
+            else  GenerateMazeRec(maze, x, y + 1, 4)
+            free key visit, index
+        wend
+        return true
+    endfunc
+endfunc
+
+' CreateAssets
+' ------------
+function CreateAssets()
+    ' Wall image.
+    vWallImage = createimage(64, 64)
+    set image vWallImage
+    for y = 0 to 63  for x = 0 to 63
+        if rnd(4) = 0  set color 96 - y, 96 - y/2, 64 + rnd(64)
+        else  set color 144 - rnd(64) - y, 64 - rnd(64) + y/2, 16 + rnd(32)
+        set pixel x, y
+    next
+    set image vWallImage
+    for y = 0 to 64/16 for x = 0 to 64/32+ y%2  Draw3DBorder(x*32 - y%2*16, y*16, 32, 16, 5, 192, 32, true)
+    BoxBlur(vWallImage, 2, 2)
+    set image vWallImage
+    for y = 0 to 64/16 for x = 0 to 64/32+ y%2  Draw3DBorder(x*32 - y%2*16 + 1, y*16 + 1, 30, 14, 4, 64 - y*16, 64 + y*16, false)
+
+    ' Floor image.
+    vFloorImage = createimage(64, 64)
+    set image vFloorImage
+    for y = 0 to 63  for x = 0 to 63
+        i = 32 + rnd(32)
+        if rnd(4) = 0  set color 16 + rnd(24), 48 + rnd(32), 16 + rnd(24)
+        else  set color i/2, i/2, i/2
+        set pixel x, y
+    next
+    set image vFloorImage
+    Draw3DBorder(0, 0, 64, 64, 16, 80, 32, true)
+    BoxBlur(vFloorImage, 2, 2)
+    set image vFloorImage
+    Draw3DBorder(4, 4, 56, 56, 3, 32, 64, false)
+
+    ' Ceiling image.
+    vCeilingImage = createimage(64, 64)
+    set image vCeilingImage
+    for y = 0 to 63  for x = 0 to 63
+        i = 24 + rnd(24)
+        set color i*1.5 + rnd(24), i + rnd(8), i
+        set pixel x, y
+    next
+    BoxBlur(vCeilingImage, 1, 4)
+    set image vCeilingImage
+    set color 0, 0, 0, 64
+    draw rect 32, 0, 32, 32, true
+    draw rect 0, 32, 32, 32, true
+    Draw3DBorder(0, 0, 32, 32, 2, 24, 64, false)
+    Draw3DBorder(32, 0, 32, 32, 2, 64, 24, true)
+    Draw3DBorder(0, 32, 32, 32, 2, 64, 24, true)
+    Draw3DBorder(32, 32, 32, 32, 2, 24, 64, false)
+
+    set image primary
+endfunc
+
+' BoxBlur
+' -------
+function BoxBlur(img, rx, ry)
+    rx = max(int(rx), 0); ry = max(int(ry), 0)
+    set image img
+    w = width(img); h = height(img)
+    data = dim(w, h)
+
+    ' Blur vertically
+    for y = 0 to h - 1  for x = 0 to w - 1  data[x][y] = pixeli(img, x, y)
+    count = ry*2 + 1
+    for x = 0 to w - 1
+        sr = 0; sg = 0; sb = 0; sa = 0
+        for y = -ry to ry
+            p = data[x][y%h];
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+        for y = 0 to h - 1
+            set color sr/count, sg/count, sb/count, sa/count
+            set pixel x, y
+            p = data[x][(y - ry)%h]
+            sr = sr - Red(p); sg = sg - Green(p); sb = sb - Blue(p); sa = sa - Alpha(p)
+            p = data[x][(y + ry + 1)%h]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+    next
+    ' Blur horizontally.
+    for y = 0 to h - 1  for x = 0 to w - 1  data[x][y] = pixeli(img, x, y)
+    count = rx*2 + 1
+    for y = 0 to h - 1
+        sr = 0; sg = 0; sb = 0; sa = 0
+        for x = -rx to rx
+            p = data[x%w][y]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+        for x = 0 to w - 1
+            set color sr/count, sg/count, sb/count, sa/count
+            set pixel x, y
+            p = data[(x - rx)%w][y]
+            sr = sr - Red(p); sg = sg - Green(p); sb = sb - Blue(p); sa = sa - Alpha(p)
+            p = data[(x + rx + 1)%w][y]
+            sr = sr + Red(p); sg = sg + Green(p); sb = sb + Blue(p); sa = sa + Alpha(p)
+        next
+    next
+    set image primary
+
+    ' Pixeli helpers.
+    function Alpha(c); return int(c/16777216); endfunc
+    function Red(c); return int((c/65536))%256; endfunc
+    function Green(c); return int((c/256))%256; endfunc
+    function Blue(c); return c%256; endfunc
+endfunc
+
+' Draw3DBorder
+' ------------
+function Draw3DBorder(x, y, w, h, thickness, lightAlpha, darkAlpha, invert)
+    if thickness <= 0  return
+    if invert
+        light = 0
+        dark = 255
+    else
+        light = 255
+        dark = 0
+    endif
+    dal = lightAlpha/thickness
+    dad = darkAlpha/thickness
+    for i = 0 to thickness - 1
+        set color light, light, light, lightAlpha
+        draw line x + i, y + i, x + w - i - 1, y + i
+        draw line x + i, y + i + 1, x + i, y + h - i - 1
+        set color dark, dark, dark, darkAlpha
+        draw line x + w - i - 1, y + i, x + w - i - 1, y + h - i - 1
+        draw line x + w - i - 2, y + h - i - 1, x + i, y + h - i - 1
+        lightAlpha = lightAlpha - dal
+        darkAlpha = darkAlpha - dad
+    next
+endfunc

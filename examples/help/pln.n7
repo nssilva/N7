@@ -1,0 +1,8 @@
+' pln
+' ---
+
+' 'pln s' writes string s to the console window and moves to a new line.
+pln "Hello World!"
+pln "I'm on another line"
+
+system "pause"

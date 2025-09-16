@@ -1,0 +1,56 @@
+' fireworks.n7
+' ------------
+
+#win32
+set window "2025", 640, 480
+set redraw off
+particles = []; t = 60
+while not keydown(KEY_ESCAPE, true)
+    t = t - 1
+    if t <= 0
+        particles[sizeof(particles)] = Firework(true, particles,
+                rnd(width(primary)), height(primary))
+        t = 30 + rnd(4)*30
+    endif
+    i = 0
+    while i < sizeof(particles)
+        if particles[i].Update()  i = i + 1
+        else  free key particles, i
+    wend
+    set color 0, 0, 0, 16; cls
+    foreach p in particles  p.Draw()
+    redraw
+    fwait 60
+wend
+
+function Firework(goingUp, list, x, y)
+    if goingUp  a = 225 + rnd(90)
+    else  a = rnd(360)
+    p = [
+        goingUp: goingUp, list: list,
+        x: x, y: y,
+        dx: cos(rad(a)), dy: sin(rad(a)),
+        r: 128 + rnd(128), g: 128 + rnd(128), b: 128 + rnd(128), a: 255, spd: 0.5 + rnd()*0.5,
+        Update: function()
+            if .goingUp
+                .x = .x + .dx*0.5; .y = .y + .dy*4; .dy = .dy + 0.005
+                if .dy >= 0.25
+                    for i = 1 to 100
+                        .list[sizeof(.list)] = Firework(false, .list, .x, .y)
+                    next
+                    return false
+                else
+                    return true
+                endif
+            else
+                .x = .x + .dx*.spd; .y = .y + .dy*.spd; .dy = .dy + 0.005
+                .a = .a - 1.5*.spd
+                return .a > 0
+            endif
+        endfunc,
+        Draw: function()
+            set color .r, .g, .b, .a
+            draw pixel .x, .y
+        endfunc]
+    return p
+endfunc

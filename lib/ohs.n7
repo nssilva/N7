@@ -1,0 +1,211 @@
+' ohs.n7
+' ------
+' Online High Score library.
+'
+' You may use this library in your games, but please note that I (Marcus) may at any given time:
+'
+'   * remove your game's high score data from the server
+'   * temporarily or permanently ban you or any of your players from accessing the high score data
+'   * shut down the entire high score system
+'
+' I use rate limiting that may cause temporary access bans. I need to do this to prevent intended or
+' unintended missuse of the system. Any function in the library that performs a request to the
+' server will return false if the limit has been reached. DO NOT WORRY if this happens while you're
+' experimenting with and testing the library and your game. The requests will start working again in
+' some seconds. The principle is that you (an IP address) can't make more than 10 requests per 60
+' seconds. Imagine it as if you EARN a new request every 60/10 seconds but can own no more than 10
+' requests at any give time.
+'
+' If you're looking for a high score system for a game with a hundreds of daily active players you
+' can either contact me about installing the necessarry script(s) on your own server or simply use
+' another system.
+'
+' By Marcus.
+
+include "json.n7"
+
+' Time periods for score lists.
+constant OHS_PERIOD_ALL = 0
+constant OHS_PERIOD_DAY = 1
+constant OHS_PERIOD_WEEK = 7
+
+' OHS
+' ---
+' Create a new client. 'gameId' should be a unique identifier string for your game with a max length
+' of 32 alphanumerical characters. 'positions' is the number of entries that your high-score list
+' should be able to display in the range [1..25].
+function OHS(gameId, positions)
+    ' Validate game id.
+    nameLen = len(gameId)
+    valid = nameLen > 0 and nameLen <= 32
+    if valid
+        for i = 0 to len(gameId) - 1  if not aod(asc(mid(gameId, i)))
+            valid = false
+            break
+        endif
+    endif
+    assert valid, "OHS: Invalid game id"
+    
+    ' Validate positions.
+    assert positions >= 1 and positions <= 25, "OHS: Invalid position count"
+    
+    ohs = []
+    ohs.game = gameId
+    ohs.count = positions
+    ohs.host = "https://naalaa.com/olb/"
+    ohs.list = []
+    ohs.period = OHS_PERIOD_ALL
+    ohs.defaultName = "Player"
+    FillListWithBlanks(ohs.list, positions, ohs.defaultName)
+   
+    ' DownloadList
+    ' ------------
+    ' Download list and return true on success.
+    ohs.DownloadList = function()
+        json = download(this.host + "olb_n7.php" +
+                "?game=" + this.game +
+                "&action=LIST" + 
+                "&count=" + this.count +
+                "&period=" + this.period,
+                TYPE_STRING)
+        if json
+            data = JSON_FromString(json)
+            if data and key(data, "success") and data.success
+                this.list = data.list
+                FillListWithBlanks(this.list, this.count, this.defaultName)
+                return true
+            endif
+        endif
+        return false
+    endfunc
+    
+    ' Submit
+    ' ------
+    ' Submit player name with score and return true on success. This function also updates the list,
+    ' so you don't need to call DownloadList afterwards. Disallowed characters are removed from the
+    ' name, only alphanumeric and space characters are allowed. If the resulting name is empty, it's
+    ' replaced by "Player". Also, only the first 16 characters of the name are submitted. If the
+    ' score is <= 0, nothing is submitted but the list is still updated.
+    ohs.Submit = function(name, score)
+        this.SubmitWithExtra(name, score, unset)
+    endfunc
+    
+    ' SubmitWithExtra
+    ' ---------------
+    ' Same as Submit, but includes a string of extra data, max 8 characters long with the same
+    ' limitations as name.
+    ohs.SubmitWithExtra = function(name, score, extra)
+        score = int(score)
+        if score <= 0  return this.DownloadList()
+        
+        name = ValidateString(str(name), 16)
+        if not typeof(name)  name = this.defaultName
+        extra = ValidateString(extra, 8)
+        params = "game=" + this.game +
+                "&action=INSERT" + 
+                "&count=" + this.count +
+                "&period=" + this.period +
+                "&name=" + name +
+                "&score=" + score
+        if extra  params = params + "&extra=" + extra
+        json = download(this.host + "olb_n7.php?" + params, TYPE_STRING)
+        if json
+            data = JSON_FromString(json)
+            if data and key(data, "success") and data.success
+                this.list = data.list
+                FillListWithBlanks(this.list, this.count, this.defaultName)
+                return true
+            endif
+        endif
+        return false
+    endfunc
+    
+    ' Clear
+    ' -----
+    ' Clear the list (on the server, yes) and return true on success. This function also updates the
+    ' list, so you don't need to call DownloadList afterwards.
+    ohs.Clear = function()
+        json = download(this.host + "olb_n7.php" +
+                "?game=" + this.game +
+                "&action=CLEAR" + 
+                "&count=" + this.count +
+                "&period=" + this.period,                
+                TYPE_STRING)
+        if json
+            data = JSON_FromString(json)
+            if data and key(data, "success") and data.success
+                this.list = data.list
+                FillListWithBlanks(this.list, this.count, this.defaultName)
+                return true
+            endif
+        endif
+        return false    
+    endfunc
+    
+    ' GetList
+    ' -------
+    ' Return the list of entrie as an array of tables with the fields 'name' and 'score'.
+    ohs.GetList = function()
+        return this.list
+    endfunc
+
+    ' SetPeriod
+    ' ---------
+    ' Set time period for all lists downloaded from here and on. You can use the following
+    ' constants:
+    '   OHS_PERIOD_ALL (default)  - return all scores
+    '   OHS_PERIOD_DAY            - only return scores from within the last 24 hours
+    '   OHS_PERIOD_WEEK           - only return scores from within the last 7 days
+    ' Note, that after changing this, you'll need to call DownloadList or Submit (or Clear) to
+    ' refresh the list.
+    ohs.SetPeriod = function(period)
+        this.period = period
+    endfunc
+    
+    ' SetDefaultName
+    ' --------------
+    ' Set default name, used when player name is invalid and as a filler when there aren't enough
+    ' scores on the server.
+    ohs.SetDefaultName = function(name)
+        name = ValidateString(name, 16)
+        if typeof(name)  this.defaultName = name
+    endfunc
+            
+    return ohs
+    
+    ' Private functions
+    ' -----------------
+    
+    ' FillListWithBlanks
+    ' ------------------
+    function FillListWithBlanks(list, count, name)
+        while sizeof(list) < count  list[sizeof(list)] = [
+                name: name, score: 0, extra: ""]
+    endfunc
+    
+    ' aod
+    ' ---
+    function aod(c)
+        return c >= 65 and c <= 90 or c >= 97 and c <= 122 or c >= 48 and c <= 57
+    endfunc
+
+    ' ValidateString
+    ' --------------    
+    function ValidateString(string, maxLen)
+        if not typeof(string)  return unset
+        newString = ""
+        stringLen = len(string)
+        allBlanks = true
+        if stringLen > 0  for i = 0 to min(stringLen, maxLen) - 1
+            a = asc(mid(string, i))
+            if aod(a)
+                allBlanks = false
+                newString = newString + mid(string, i)
+            elseif a = 32
+                newString = newString + "%20"
+            endif
+        next
+        if len(newString) = 0 or allBlanks  return unset
+        return newString
+    endfunc
+endfunc

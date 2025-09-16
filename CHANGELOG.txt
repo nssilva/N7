@@ -1,0 +1,214 @@
+2025-09-14
+* s3d: Fixed a graphical bug when rendering solid color faces
+* s3d: Added the functions S3D_Color3, S3D_Color4, S3D_Additive, S3D_Vertex3 and
+  S3D_Vertex5
+
+2025-09-06
+* Changed some compiler settings that caused errors with the % operator 
+
+2025-08-30
+* Added the command 'file seek' and the functions 'filetell' and 'fileseek'
+  (examples/help/file_seek_tell.n7)
+* ngui: Fixed a bug that could cause a crash in the enginea editor. A widget now
+  loses keyboard focus if you click anywhere outside it
+* s3d: 'S3D_Clear' and 'S3D_BeginMesh' now set the primitive color to white, an
+  implicit call to 'S3D_Color(255, 255, 255)'
+* Added the games Darned Dungeon and Blocks 3D to examples/games
+
+
+2025-07-13
+* Added joystick support through the functions 'joyx', 'joyy' and 'joybutton'
+  (examples/help/joystick.n7)
+
+2025-07-12
+* Added the 'sgn' function
+* enginea: lots of functions added, listed in EngineA.pdf
+* s3d: The color set with S3D_Color now blends with mesh colors
+* s3d: S3D_SetPerspectiveCorrection now accepts the parameter S3D_NICE for
+  better visuals
+* Added some new games and demos from the forum to the examples folder
+
+2025-02-19
+* Fixed a bug that affected 'draw image xform'
+* Added the game Neon Breath to examples/games
+
+2025-02-16
+* Added the 'draw poly xform' command (examples/help/draw_poly_xform.n7)
+* Added the 'draw poly image xform' command (examples/help/
+  draw_poly_image_xform.n7)
+* Added support for loading music and sound effects in mp3 format
+
+2025-02-15
+* wolf3d: Fixed a serious bug and added the function SetSkyTexture (examples/
+  wolf3d_library/example_7.n7)
+* s3d: Minor improvements, such as faster fog rendering
+
+2024-07-30
+* s3d: Fixed a bug in S3D_BlendMesh
+* s3d: Added the S3D_SetPerspectiveCorrection function
+* enginea: Fixed a bug that made the jump height of the EA_FpsPlayer object
+  dependant on the frame rate
+* Fixed a bug (crash) in the enginea editor
+
+2024-06-29
+* Added the enginea library and editor (enginea_editor.exe), for sector based
+  first person shooter games, plus a tutorial (EngineA_Tutorial.pdf) and
+  examples in examples/enginea_library
+
+2024-04-14
+* Added the 'pixeli' function and 'set colori' command to get and set colors as
+  single numbers
+
+2024-04-07
+* Added the s3d library
+* Hopefully fixed an issue with the tilemap editor when running through wine
+
+2024-03-10
+* Added an awesome pool game, by Kevin, to examples/games
+* Added the polyline library with some examples
+* Fixed a bug in 'draw image xform', 'draw poly image', 'draw hraster' and
+  'draw vraster' that could cause a program to crash
+* Fixed a bug where calling 'gc', for forcing garbage collecting, could make
+  some really bad stuff happen
+
+2024-03-05
+* 'this.' can now be written as just '.'
+* Added the commands 'draw image xform' and 'draw poly image'. You can find two
+  small examples under examples/help: draw_image_xform.n7 and draw_poly_image.n7
+
+2024-02-16
+* The compiler and the generated programs are from now and on 64 bit.
+  libgcc_s_dw2-1.dll is no longer required for the programs to run.
+  libwinpthread-1.dll and libportaudio.dll are still required but have been
+  replaced with 64 bit versions
+* Added the sfx library for creating sound effects with two examples in
+  examples/sfx_library
+* Added the ohs library for online high-score lists with two examples in
+  examples/ohs_library
+* Added some programs by members of the naalaa forum to examples/games and
+  examples/demos
+* Fixed an issue with 'draw pixel'
+
+2024-01-23
+* Added the 'download' function
+* Added the game Denaalaafender to examples/games
+
+2024-01-19
+* Added the 'createsound' function and 'create sound' command
+* Added the game Space Race (spacerace.n7) and Bomb Sweeper (bomb_sweeper.n7) to
+  the examples/games folder
+
+2023-10-21
+* Added 'Toggle target' in the file menu, to mark/umark the current file as
+  target. The target can be compiled and run using the Program menu or icons.
+  This can be useful if you have a program consisting of multiple files and want
+  to compile or run the target (main) file instead of the one you're currently
+  editing
+* Added support for reading and writing binary files
+
+2023-10-18
+* Fixed some issues with 'include'
+
+2023-04-22
+* Added buttons to hide the console and the function list in ned
+* Changed and added some functions in the wolf3d library and improved its
+  performance (a lot)
+
+2023-04-15
+* Added the wolf3d library with some examples in examples/wolf3d_library
+* Improved the performance of the commands 'draw hraster' and 'draw vraster'
+
+2022-10-27
+* Added optional formatting parameters to 'str'
+
+2022-10-13
+* Fixed an issue with 'draw poly' that occurred when running on Wine
+
+2022-10-08
+* Added the 'scroll' command
+* Added the 'draw to' command
+* Fixed a bug where 'draw image image_id, x, y, src_x, src_y, w, h' always used
+  additive draw mode
+* Fixed a bug with zones
+* Increased supported number of points for 'draw poly' from 64 to infinity and
+  beyond
+* Improved sound quality
+* Added examples, accessible through F1 in NED, for all built in commands and
+  functions 
+* Added some examples programs posted in the forum to examples/games and
+  examples/demos
+
+2022-07-08
+* Fixed a bug that affected the functions 'pixel', 'datetime' and 'split
+* Modified polygon rendering for a better visual result
+
+2022-06-05
+* Rewrote the entire memory manager and garbage collector
+* Added two 'set mouse' commands
+
+2022-05-12
+* Added syntax help to NED
+* Added function lists to NED
+* Fixed some bugs in the tilemap library
+
+2022-04-30
+* Added the tilemap library and Tilemap Editor.
+* Added some new themes by johnno1956 
+* Added some artwork by luigui and johnno1956 (assets/logos_and_icons/), feel
+  free to use the images in your games :)
+
+2022-03-31
+* Added support for additive drawing with the command 'set additive'
+* Added a theme editor for ngui
+
+2022-03-20
+* Added support for loading theme files in ngui
+* Added a version of the Dracula theme (https://draculatheme.com/) to ned
+* Fixed mouse button up events outside of window not being handled
+
+2022-03-12
+* Added a single argument version of 'set color' for setting the drawing color
+  with the values of an array: [r, g, b] or [r, g, b, a]
+* Added zones
+* Line breaks are now allowed after comma, mathematical and logical operators,
+  left parentheses and left bracket
+
+
+2022-03-05
+* Made some improvements to ned and ngui
+* Added the 'window' function to check for running (win32) n7 programs
+
+2022-02-25
+* Replaced ned with a new IDE using ngui
+* Added the ngui (wip) library
+* Added the 'draw ellipse" command
+* Added the 'exists' function
+
+2022-02-11
+* Rewrote most parts of asm.c
+* Added some bytecode optimizations
+* Added the 'draw vraster' and 'draw hraster' commands
+* Added the 'assert' command
+* Added the 'asm' and 'endasm' commands for inline bytecoding
+* Fixed a bug where 'copy' did absolutely nothing
+* Added support for dynamic window size
+
+2022-01-09
+* Added the 'save image' command
+* Added the 'save font' and 'load font' commands and the 'loadfont' function
+* Fixed some garbage collector issues
+
+2022-01-06
+* Added the command 'gc' to force garbage collecting
+* Fixed a memory issue during deep copying of tables
+* Fixed a bug in the 'fwait' function
+* % is now a modulo rather than remainder operator
+
+2021-12-31
+* Added support for scrolling with mousewheel in ned
+* Added support for mousewheel through mousebutton(2)
+* Added a pause (wait for key press) after runtime errors in console applications
+* Added a message box for runtime errors in win32 applications
+
+2021-12-27
+* First beta release

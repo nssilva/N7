@@ -1,0 +1,159 @@
+' widgets.n7
+' ----------
+' By Marcus.
+
+constant WDG_BUTTON     = 1
+constant WDG_CHECKBOX   = 2
+constant WDG_SLIDER     = 3
+
+visible vWidgets = []
+visible vOver = unset, vActive = unset, vDX = 0
+visible vWidgetStack = []
+
+
+' WDG_Clear
+' ---------
+function WDG_Clear()
+    clear vWidgets
+    vOver = unset
+    vActive = unset
+    vDX = 0
+endfunc
+
+' WDG_PushWidgets
+' ---------------
+function WDG_PushWidgets()
+    vWidgetStack[sizeof(vWidgetStack)] = vWidgets
+    vWidgets = []
+    vOver = unset
+    vActive = unset
+    vDX = 0
+endfunc
+
+' WDG_PopWidgets
+' --------------
+function WDG_PopWidgets()
+    assert sizeof(vWidgetStack), "WDG_PopWidgets: Stack is empty"
+    clear vWidgets
+    vWidgets = vWidgetStack[sizeof(vWidgetStack) - 1]
+    free val vWidgetStack, vWidgets
+    vOver = unset
+    vActive = unset
+    vDX = 0
+endfunc
+
+' WDG_AddButton
+' -------------
+function WDG_AddButton(img, cel, x, y)
+    wdg = [
+            t: WDG_BUTTON,
+            i: img, c: cel,
+            x: x, y: y, w: width(img), h: height(img),
+            s: 0]        
+    vWidgets[sizeof(vWidgets)] = wdg
+    return wdg
+endfunc 
+
+' WDG_AddCheckBox
+' ---------------
+function WDG_AddCheckbox(img, cel, x, y, checked)
+    wdg = [
+            t: WDG_CHECKBOX,
+            i: img, c: cel,
+            x: x , y: y, w: width(img), h: height(img),
+            s: checked,
+            Checked: function()
+                    return .s
+                endfunc,
+            SetChecked: function(value)
+                    .s = value
+                endfunc
+            ]
+    vWidgets[sizeof(vWidgets)] = wdg
+    return wdg
+endfunc 
+
+' WDG_AddSlider
+' -------------
+function WDG_AddSlider(img, cel, x, y, w, value)
+    wdg = [
+            t: WDG_SLIDER,
+            i: img, c: cel,
+            bx: x, bw: w,
+            x: x + int(value*w), y: y,
+            w: width(img), h: height(img),
+            Value: function()
+                    return (.x - .bx)/.bw
+                endfunc,
+            SetValue: function(value)
+                    .x = int(.bx + min(max(value, 0), 1)*.bw)
+                endfunc
+            ]
+    vWidgets[sizeof(vWidgets)] = wdg
+    return wdg
+endfunc 
+
+' WDG_Update
+' ----------
+function WDG_Update()
+    wdg = unset    
+    x = mousex() 
+    y = mousey() 
+    mb = mousebutton(0) 
+    vOver = Over(x, y) 
+    if vActive 
+        if mb = 0 
+            if vActive.t = WDG_BUTTON 
+                if vOver = vActive 
+                    wdg = vActive
+                endif 
+            elseif vActive.t = WDG_CHECKBOX 
+                if vOver = vActive 
+                    vActive.s = 1 - vActive.s
+                    wdg = vActive
+                endif 
+            endif 
+            vActive = unset
+        elseif vActive.t = WDG_SLIDER 
+            vOver = vActive 
+            vActive.x = min(max(x + vDX, vActive.bx), vActive.bx + vActive.bw)
+            wdg = vActive
+        endif 
+    elseif vOver and mb
+        vActive = vOver
+        vDX = vOver.x - x 
+    endif 
+
+    return wdg
+
+    ' Over
+    ' ----    
+    function Over(x, y)
+        if sizeof(vWidgets)  for i = 0 to sizeof(vWidgets) - 1
+            wdg = vWidgets[i]
+            if x >= wdg.x and y >= wdg.y and x < wdg.x + wdg.w and y < wdg.y + wdg.h  return wdg 
+        next 
+        return unset
+    endfunc 
+endfunc 
+
+' WDG_Draw
+' --------
+function WDG_Draw() 
+    if sizeof(vWidgets)  for i = 0 to sizeof(vWidgets) - 1
+        wdg = vWidgets[i]
+        if wdg.t = WDG_BUTTON or wdg.t = WDG_SLIDER 
+            if vOver = wdg
+                if vActive = wdg
+                    draw image wdg.i, wdg.x, wdg.y, wdg.c + 2 
+                else 
+                    draw image wdg.i, wdg.x, wdg.y, wdg.c + 1 
+                endif 
+            else 
+                draw image wdg.i, wdg.x, wdg.y, wdg.c 
+            endif 
+        elseif wdg.t = WDG_CHECKBOX 
+            draw image wdg.i, wdg.x, wdg.y, wdg.c + wdg.s 
+        endif 
+    next 
+endfunc

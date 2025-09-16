@@ -1,0 +1,33 @@
+' scroll
+' ------
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "scroll", 640, 480
+set redraw off
+
+' Draw some stars and print a message.
+for i = 1 to 1000
+    c = 100 + rnd(155)
+    set color c, c, c
+    set pixel rnd(640), rnd(480)
+next
+set caret 320, 208
+set color 255, 255, 255
+center "Scroll with the arrow keys"
+center "Press Esc to exit ..."
+
+while not keydown(KEY_ESCAPE)
+    ' Scroll with the arrow keys.
+    dx = 0
+    dy = 0
+    if keydown(KEY_LEFT)  dx = dx + 1
+    if keydown(KEY_RIGHT)  dx = dx - 1
+    if keydown(KEY_UP)  dy = dy + 1
+    if keydown(KEY_DOWN)  dy = dy - 1
+    ' 'scroll dx, dy' scrolls the current destination image (usually the window content) dx pixels
+    ' horizontally and dy pixels vertically.
+    scroll dx, dy
+
+    fwait 60
+    redraw
+wend

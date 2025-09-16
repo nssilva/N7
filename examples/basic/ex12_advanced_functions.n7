@@ -1,0 +1,31 @@
+' So far functions have been working pretty much like they did in n6. You
+' define a function, and there it is, very static. But any variable in n7 can be
+' assigned a function.
+
+' Here's a standard, static function.
+function MyFunc()
+    pln "Hello world!"
+endfunc
+' You can assign it to a variable and call the function through that variable:
+shitPickle = MyFunc
+shitPickle()
+
+' And you can assign an anonymous (non-static) function to a variable:
+shitPickle = 
+    function()
+        pln "I have no name :("
+    endfunc
+shitPickle()
+' You could also have written:
+' shitPickle = function(); pln "I have no name :("; endfunc
+
+' And a function can return a function, or ... a table that contains a function
+' that returns a value, and the function that does that can be anonymous:
+pln function(); return [5, "hello", function(x, y); return x*y; endfunc]; endfunc()[2](3, 9)
+
+' That's a dumb example, but the point is ... that I spent many hours to make
+' the parser consistent enough to handle this crap :)
+
+pln
+pln "Press enter to exit"
+tmp = rln() 

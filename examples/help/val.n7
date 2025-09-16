@@ -1,0 +1,13 @@
+' val
+' ---
+
+' 'val(t, v)' returns true if table 't' contains the value k.
+a = [100, 200, 300]
+if val(a, 200)  pln "a contains the value 200"
+if not key(a, 400)  pln "a does not contain the value 400"
+
+t = [foo: "hello", bar: "world"]
+if val(t, "hello")  pln "t contains the value hello"
+if not key(t, "universe")  pln "t does not contain the value universe"
+
+system "pause"

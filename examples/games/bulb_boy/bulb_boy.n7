@@ -1,0 +1,1508 @@
+' Bulb Boy
+' --------
+' Game code and music by Marcus, tiles and sprites by Kenney Vleugels (www.kenney.nl).
+
+
+#win32
+
+include "tilemap.n7"
+include "simpleparticle.n7"
+
+' Directions.
+constant LEFT = 1, RIGHT = 2, UP = 3, DOWN = 4
+' Sprite status flags.
+constant ON_GROUND = 0, IN_AIR = 1, CLIMBING = 2
+' Enemy constants.
+constant SLIME_SPEED = 0.5, FLY_SPEED = 1
+' Special tiles.
+constant COIN_CEL = 10, KEY_CEL = 11, HEART_CEL = 12, TURN_TILE = 13
+constant SPIKES_UP_CEL = 24, SPIKES_DOWN_CEL = 25, SPIKES_RIGHT_CEL = 26, SPIKES_LEFT_CEL = 27
+' Game loop fade messages.
+constant LEVEL_COMPLETED = 1, LEVEL_FAILED = 2, QUIT = 3
+
+' Colors.
+visible vOverWorldBgColor = [94, 129, 161], vCaveBgColor = [43, 32, 47]
+visible vBgColor
+
+' Images.
+visible vTitleImage
+visible vPlayerImage, vSlimeImage, vFlyImage, vFlyDotImage
+visible vSmallLiftImage, vNormalLiftImage, vLargeLiftImage, vLiftDotImage
+visible vCoinImage, vBrickParticlesImage, vBrickAnimImage
+visible vPlayerParticlesImage, vHelmetParticleImage, vSmokeParticlesImage
+visible vHeartIconImage, vCoinIconImage
+
+' Fonts.
+visible vFont, vLargeFont, vSmallFont
+
+' Sound effects.
+visible vJumpSound, vHurtSound, vDieSound, vHeadSound, vEnemySound
+visible vBrickSound, vCoinSound, vHeartSound, v1UpSound, vItemSound, vKeySound
+
+' Game variables.
+visible vLevel, vLives, vTopScore, vScore = 0, vCoins = 0
+visible vLevelCompleteTimer
+visible vPlayer, vEnemies, vLifts, vFlyingTexts = FlyingTexts(16)
+visible vSoundVolume = 0.5, vMusicVolume = 0.75
+
+' For transitions.
+visible vFade = Fade(0, 0, 0)
+
+' Create a window with the same aspect ratio as the screen.
+set window "Bulb Boy", 480*screenw()/screenh(), 480, true
+set redraw off
+
+' Load assets.
+LoadAssets()
+
+' Load top score.
+f = openfile("assets/topscore.txt")
+if typeof(f)
+    vTopScore = int(fread(f))
+    free file f
+else
+    vTopScore = 0
+endif
+
+randomize time()
+
+' Program loop.
+do
+    Title()
+    
+    vLevel = 1
+    vLives = 3
+    vScore = 0
+    vCoins = 0
+
+    ' Level loop.
+    do
+        ' Game is completed if level could not be loaded.
+        if not LoadLevel("assets/level_" + vLevel + ".txt")  break
+        
+        ' Display short message with level and lives info.    
+        wait 60
+        set color vFade.r, vFade.g, vFade.b
+        cls
+        set color 255, 255, 255
+        set caret width(primary)/2, height(primary)/2 - 48
+        set font vLargeFont
+        center "Level " + vLevel
+        set font vFont
+        center
+        if vLives > 0  center vLives + " lives left"
+        else  center "Last chance"    
+        redraw
+        wait 3000
+        set color 0, 0, 0
+        cls
+        redraw
+        wait 60 
+        vFade.FadeIn()
+        
+        SP_Init(64)
+        vFlyingTexts.Clear()
+        vLevelCompleteTimer = 0
+        removeList = []
+        
+        play music 0, true
+        
+        ' Game loop.
+        do
+            ' Fade.
+            vFade.Update()
+            
+            ' Playing?
+            if vFade.State() = vFade.FADE_IN_DONE
+                ' Level complete?
+                if vLevelCompleteTimer > 0
+                    vLevelCompleteTimer = vLevelCompleteTimer - 1
+                    if vLevelCompleteTimer <= 0
+                        vFade.FadeOut(LEVEL_COMPLETED)
+                    endif
+                ' Pause if escape or space is pressed or if the game loses focus.
+                elseif keydown(KEY_ESCAPE, true) or keydown(KEY_SPACE, true) or not active()
+                    ' Dim screen and write instructions.
+                    set color 0, 0, 0, 96
+                    cls
+                    set color 255, 255, 255
+                    set caret width(primary)/2, height(primary)/2 - 64
+                    set font vLargeFont
+                    center "Paused"
+                    set font vFont
+                    center
+                    center "Press spacebar to unpause"
+                    center "or Esc to quit ..."
+                    stop music 0
+                    ' Loop until esc or spacebar is pressed.
+                    do
+                        if keydown(KEY_ESCAPE, true)
+                            vFade.FadeOut(QUIT)
+                            break
+                        elseif keydown(KEY_SPACE, true)
+                            play music 0
+                            break
+                        endif
+                        redraw
+                        fwait 60
+                    loop
+                endif
+            endif
+
+            ' Update particles.    
+            SP_UpdateParticles()
+            
+            ' Update fling texts.
+            vFlyingTexts.Update()
+            
+            ' Update lifts and enemies.
+            ' The invisible cel TURN_TILE works as an obstacle for enemies and lifts, making them
+            ' turn around. 
+            TM_SetObstacle(TURN_TILE, true)
+            foreach l in vLifts  l.Update()
+            clear removeList
+            foreach e in vEnemies  if e.Update()  removeList[sizeof(removeList)] = e
+            foreach e in removeList  free val vEnemies, e
+            TM_SetObstacle(TURN_TILE, false)
+
+            ' Update player, fade out if player is dead.           
+            if not vPlayer.Update() and vFade.State() = vFade.FADE_IN_DONE
+                stop music 0
+                vFade.FadeOut(LEVEL_FAILED)
+            endif
+            TM_CenterCamera(vPlayer.x + vPlayer.w/2, vPlayer.y + vPlayer.h)
+                        
+            ' Draw map and sprites.
+            set color vBgColor
+            cls
+            TM_Render()
+            SP_DrawParticlesAt(-TM_CameraX(), -TM_CameraY())
+            vPlayer.Draw()
+            foreach l in vLifts  l.Draw()
+            foreach e in vEnemies  e.Draw()
+            vFlyingTexts.Draw()
+
+            ' Draw score, stamina and coins.
+            set font vFont
+            set color 127, 224, 193
+            set caret width(primary)/2, 4
+            center "SCORE"
+            set font vLargeFont
+            set color 255, 255, 255
+            center vScore
+            set caret width(primary) - 8, 4
+            draw image vCoinIconImage, width(primary) - width(vCoinIconImage) - 16, 25
+            set caret width(primary) - width(vCoinIconImage) - 24, 18
+            set justification right
+            wln vCoins
+            set justification left
+            w = width(vHeartIconImage) + 2
+            x = 16
+            for i = 0 to 2  draw image vHeartIconImage, x + i*w, 24, vPlayer.stamina > i
+        
+            vFade.Draw()
+        
+            redraw
+            fwait 60
+        until vFade.State() = vFade.FADE_OUT_DONE
+
+        ' Leave loop?
+        if vFade.Message() = QUIT
+            break
+        elseif vFade.Message() = LEVEL_COMPLETED
+            vLevel = vLevel + 1
+        elseif vFade.Message() = LEVEL_FAILED
+            vLives = vLives - 1
+            if vLives < 0  break
+        endif
+    loop
+    
+    ' Game completed?
+    if vFade.Message() = LEVEL_COMPLETED
+        DisplayEndMessage("Game Completed", "Congratulations, you did good!", 94, 161, 116)
+    ' Game over?
+    elseif vFade.Message() = LEVEL_FAILED
+        select rnd(5)
+            case 0  msg = "Your failure will be remembered!"
+            case 1  msg = "You have doomed us all!"
+            case 2  msg = "You're a huge disappointment!"
+            case 3  msg = "You're unworthy of that helmet!"
+            default  msg = "Maybe this isn't your cup of tea?"
+        endsel
+        DisplayEndMessage("Game Over", msg, 161, 94, 100)
+    endif
+loop
+
+' LoadAssets
+' ----------
+function LoadAssets()
+    ' Fonts.
+    'save font createfont("showcard gothic", 27, false, false, false, true), "assets/showcard_gothic_27"
+    'save font createfont("showcard gothic", 37, false, false, false, true), "assets/showcard_gothic_37"
+    'save font createfont("showcard gothic", 17, false, false, false, true), "assets/showcard_gothic_17"
+    vFont = loadfont("assets/showcard_gothic_27")
+    vLargeFont = loadfont("assets/showcard_gothic_37")
+    vSmallFont = loadfont("assets/showcard_gothic_17")
+    
+    ' Images.
+    vTitleImage = loadimage("assets/title.png")
+    vPlayerImage = loadimage("assets/player.png", 12, 3)
+    vSlimeImage = loadimage("assets/slime.png", 3, 2)
+    vFlyImage = loadimage("assets/fly.png", 3, 2)
+    vSmallLiftImage = loadimage("assets/small_lift.png")
+    vNormalLiftImage = loadimage("assets/normal_lift.png")
+    vLargeLiftImage = loadimage("assets/large_lift.png")
+    vLiftDotImage = loadimage("assets/lift_dot.png")
+    vFlyDotImage = loadimage("assets/fly_dot.png")
+    vCoinImage = loadimage("assets/coin.png")
+    vBrickParticlesImage = loadimage("assets/brick_particles.png", 4, 1)
+    vBrickAnimImage = loadimage("assets/brick_anim.png", 7, 1)
+    vPlayerParticlesImage = loadimage("assets/player_particles.png", 4, 1)
+    vHelmetParticleImage = loadimage("assets/helmet_particle.png")
+    vSmokeParticlesImage = loadimage("assets/smoke.png", 3, 1)
+    vHeartIconImage = loadimage("assets/heart_icon.png", 2, 0)
+    vCoinIconImage = loadimage("assets/coin_icon.png")
+    
+    ' Sound effects.
+    vJumpSound = loadsound("assets/jump.wav")
+    vHurtSound = loadsound("assets/hurt.wav")
+    vDieSound = loadsound("assets/die.wav")
+    vHeadSound = loadsound("assets/head.wav")
+    vEnemySound = loadsound("assets/enemy.wav")
+    vBrickSound = loadsound("assets/brick.wav")
+    vCoinSound = loadsound("assets/coin.wav")
+    vHeartSound = loadsound("assets/heart.wav")
+    v1UpSound = loadsound("assets/1up.wav")
+    vItemSound = loadsound("assets/item.wav")
+    vKeySound = loadsound("assets/key.wav")
+endfunc
+
+' Title
+' -----
+' Show title screen.
+function Title()
+    vFade.FadeIn()
+    flashTimer = 0
+    do
+        vFade.Update()
+        flashTimer = (flashTimer + 1)%90
+
+        if vFade.State() = vFade.FADE_IN_DONE
+            if keydown(KEY_ESCAPE, true)  vFade.FadeOut(0)
+            elseif keydown(KEY_SPACE, true)  vFade.FadeOut(1)
+        endif
+
+        set color vOverWorldBgColor
+        cls
+        set color 255, 255, 255
+        draw image vTitleImage, (width(primary) - width(vTitleImage))/2, 56
+        
+        set font vLargeFont
+        set caret width(primary)/2, 64 + height(vTitleImage) + 22
+        center "How to play"
+        set font vFont
+        center
+        center "Reach the key to complete a level"
+        center "Move and jump with the arrow keys"
+        center "Jump on enemies to kill them"
+        center
+        center
+        if flashTimer < 45  set color 255, 255, 255
+        else set color 255, 255, 255, 128
+        center "Press spacebar to start or Esc to quit ..."
+        
+        set color 255, 255, 255
+        set caret width(primary)/2, height(primary) - fheight(vFont)*1.5
+        center "Top score: " + vTopScore
+        
+        vFade.Draw()
+        
+        redraw
+        fwait 60
+    until vFade.State() = vFade.FADE_OUT_DONE
+    if not vFade.Message() end
+endfunc
+
+' DisplayEndMessage
+' -----------------
+' Used for game over and completed.
+function DisplayEndMessage(header, text, bgR, bgG, bgB)
+    vFade.FadeIn()
+    flashTimer = 0
+    
+    do
+        vFade.Update()
+        flashTimer = (flashTimer + 1)%90        
+        
+        if keydown(KEY_ESCAPE, true) or keydown(KEY_SPACE, true)  vFade.FadeOut(0)
+        
+        set color bgR, bgG, bgB
+        cls
+        set color 255, 255, 255
+        set font vLargeFont
+        set caret width(primary)/2, height(primary)/2 - 120
+        center header
+        set font vFont
+        center
+        center text
+        center
+        if vScore > vTopScore  center "You scored a new record: " + vScore
+        else  center "Your score: " + vScore
+        center
+        center
+        if flashTimer < 45  set color 255, 255, 255
+        else set color 255, 255, 255, 128
+        center "Press spacebar to continue ..."
+        
+        vFade.Draw()          
+    
+        redraw
+        fwait 60
+    until vFade.State() = vFade.FADE_OUT_DONE
+
+    ' Save new top score?
+    if vScore > vTopScore
+        vTopScore = vScore
+        f = createfile("assets/topscore.txt")
+        if typeof(f)
+            wln file f, vTopScore
+            free file f
+        endif
+    endif
+endfunc
+
+
+' LoadLevel
+' ---------
+function LoadLevel(filename)
+    ' Init player, enemies and lifts.
+    vPlayer = unset
+    vEnemies = []
+    vLifts = []
+
+    ' Load map.
+    if not TM_LoadMap(filename) return false
+        
+    TM_SetView(0, 0, width(primary), height(primary))
+
+    cave = false    
+    
+    ' Loop through loader flags.
+    foreach lf in TM_GetLoaderFlags()
+        ' Calculate top left, center and bottom world coordinates of tile.
+        x = lf.x*TM_TileWidth()
+        y = lf.y*TM_TileHeight()
+        centerX = x + TM_TileWidth()/2
+        centerY = y + TM_TileHeight()/2
+        bottomY = (lf.y + 1)*TM_TileHeight()
+        ' Game flag is used for some things.
+        gf = TM_GetFlag(lf.x, lf.y)
+        
+        select lf.flag
+            ' Just a flag for switching to the cave background color.
+            case "cave"
+                cave = true
+                
+            ' Player.
+            case "player"
+                vPlayer = Player(centerX, bottomY)
+                
+            ' Enemies.
+            case "slime left"
+                vEnemies[sizeof(vEnemies)] = Slime(centerX, bottomY, LEFT)
+            case "slime right"
+                vEnemies[sizeof(vEnemies)] = Slime(centerX, bottomY, RIGHT)
+            case "fly left"
+                vEnemies[sizeof(vEnemies)] = HorizontalFly(centerX, centerY, LEFT)
+            case "fly right"
+                vEnemies[sizeof(vEnemies)] = HorizontalFly(centerX, centerY, RIGHT)
+            case "fly up"
+                vEnemies[sizeof(vEnemies)] = VerticalFly(centerX, centerY, UP)
+            case "fly down"
+                vEnemies[sizeof(vEnemies)] = VerticalFly(centerX, centerY, DOWN)
+            case "fly circle cw"
+                vEnemies[sizeof(vEnemies)] = CircularFly(centerX, centerY, true, gf)
+            case "fly circle ccw"
+                vEnemies[sizeof(vEnemies)] = CircularFly(centerX, centerY, false, gf)
+                
+            ' Lifts.
+            case "lift left"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, LEFT, vNormalLiftImage)
+            case "lift right"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, RIGHT, vNormalLiftImage)
+            case "lift up"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, UP, vNormalLiftImage)
+            case "lift down"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, DOWN, vNormalLiftImage)
+            case "lift roll up"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, UP, vNormalLiftImage)
+            case "lift roll down"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, DOWN, vNormalLiftImage)
+            case "lift circle cw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, true, gf, vNormalLiftImage)
+            case "lift circle ccw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, false, gf, vNormalLiftImage)
+            case "small lift left"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, LEFT, vSmallLiftImage)
+            case "small lift right"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, RIGHT, vSmallLiftImage)
+            case "small lift up"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, UP, vSmallLiftImage)
+            case "small lift down"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, DOWN, vSmallLiftImage)
+            case "small lift roll up"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, UP, vSmallLiftImage)
+            case "small lift roll down"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, DOWN, vSmallLiftImage)
+            case "small lift circle cw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, true, gf, vSmallLiftImage)
+            case "small lift circle ccw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, false, gf, vSmallLiftImage)
+            case "large lift left"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, LEFT, vLargeLiftImage)
+            case "large lift right"
+                vLifts[sizeof(vLifts)] = HorizontalLift(centerX, centerY, RIGHT, vLargeLiftImage)
+            case "large lift up"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, UP, vLargeLiftImage)
+            case "large lift down"
+                vLifts[sizeof(vLifts)] = VerticalLift(centerX, centerY, DOWN, vLargeLiftImage)
+            case "large lift roll up"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, UP, vLargeLiftImage)
+            case "large lift roll down"
+                vLifts[sizeof(vLifts)] = RollingLift(centerX, centerY, DOWN, vLargeLiftImage)
+            case "large lift circle cw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, true, gf, vLargeLiftImage)
+            case "large lift circle ccw"
+                vLifts[sizeof(vLifts)] = CircularLift(centerX, centerY, false, gf, vLargeLiftImage)
+                
+        endsel
+    next
+
+    if cave
+        load music 0, "assets/kuno_cave.mp3"
+        TM_SetBorder(true, true, true, false)
+        vBgColor = vCaveBgColor
+    else
+        load music 0, "assets/kuno_forest.mp3"
+        TM_SetBorder(true, true, false, false)
+        vBgColor = vOverWorldBgColor
+    endif
+    set music volume 0, vMusicVolume
+
+    ' Create a runtime error if player has not been initialized.    
+    assert vPlayer, "No player flag found in map " + filename
+    TM_CenterCamera(vPlayer.x + vPlayer.w/2, vPlayer.y + vPlayer.h)
+    
+    return true
+endfunc
+
+' Player
+' ------
+' Return a new player sprite.
+function Player(centerX, bottomY)
+    p = []
+    p.state = ON_GROUND
+    p.dir = RIGHT
+    p.base = 0
+    p.cel = 0
+    p.w = 24
+    p.h = 40
+    p.x = centerX - p.w/2
+    p.y = bottomY - p.h
+    p.dx = 0
+    p.dy = 0
+    p.keyLeft = KEY_LEFT
+    p.keyRight = KEY_RIGHT
+    p.keyUp = KEY_UP
+    p.keyDown = KEY_DOWN
+    p.upReleased = false
+    p.lift = unset
+    p.stamina = 3
+    p.invisTimer = 0
+    p.multiplier = 1 ' Score multiplier, resets on ground
+
+    ' SetLift
+    ' -------
+    p.SetLift = function(lift)
+        this.lift = lift
+        this.y = lift.y - this.h + 2 - lift.deltaY
+    endfunc
+
+    ' Hit
+    ' ---
+    p.Hit = function(dx, dy)
+        if this.stamina > 0 and not this.invisTimer
+            this.stamina = max(this.stamina - 1, 0)
+            if this.stamina > 0
+                this.invisTimer = 60*4            
+                if dx  this.dx = dx
+                if dy  this.dy = dy
+                if dy < 0 or this.state = CLIMBING
+                    this.state = IN_AIR
+                    this.cel = 6
+                    this.lift = unset
+                endif
+                play sound vHurtSound, vSoundVolume
+            else
+                this.Explode(dx*0.5, dy*0.5)
+            endif
+        endif
+    endfunc
+    
+    ' Explode
+    ' -------
+    p.Explode = function(dx, dy)
+        this.stamina = 0
+        this.invisTimer = 60*2
+        SP_SetPoofEndVector(0, 4)
+        SP_AddRandomPoof(vPlayerParticlesImage, -2, this.x + this.w/2, this.y + this.h/2,
+                16, 16, 3, 0.01, false, true)
+        dx = dx + rnd() - 0.5
+        SP_AddParticle(vHelmetParticleImage, 0, false, this.x + this.w/2, this.y + 15,
+                dx, -3 + dy, dx, 2 + dy, 1, 0, 0.01, 0)
+        stop music 0
+        play sound vDieSound, vSoundVolume
+    endfunc
+
+    ' Update
+    ' ------    
+    p.Update = function()
+        ' If stamina is 0 the player is dead, a particle effect has been initiated and we're using
+        ' invisTimer for a delay. When this function returns false, the game screen fades out.
+        if this.stamina = 0
+            this.invisTimer = max(this.invisTimer - 1, 0)
+            return this.invisTimer > 0
+        endif
+    
+        if not keydown(this.keyUp)  this.upReleased = true
+        
+        this.invisTimer = max(this.invisTimer - 1, 0)
+        
+        ' Different controls for different states.
+        ' On ground?
+        if this.state = ON_GROUND
+            dx = 0
+            if keydown(this.keyLeft)
+                dx = dx - 2
+                this.dir = LEFT
+                this.base = 13
+            endif
+            if keydown(this.keyRight)
+                dx = dx + 2
+                this.dir = RIGHT
+                this.base = 1
+            endif
+            if dx
+                this.dx = 0.8*this.dx + 0.2*dx
+            else
+                this.dx = 0.9*this.dx
+                if |this.dx| <= 0.1 this.dx = 0
+            endif
+            if keydown(this.keyUp) and this.upReleased
+                this.dy = -6.5
+                this.state = IN_AIR
+                this.upReleased = false
+                this.cel = 6
+                this.lift = unset
+                SP_SetPoofEndVector(0, -1)
+                SP_AddRandomPoof(vSmokeParticlesImage, -2, this.x + this.w/2, this.y + this.h,
+                       5, 8, 0.5, 0.05, false, true)
+                play sound vJumpSound, vSoundVolume
+            else
+                if |this.dx| > 0.1
+                    this.cel = (this.cel + 0.5)%11
+                else
+                    this.cel = 0
+                endif
+                this.dy = 0.2
+            endif
+        ' In air?
+        elseif this.state = IN_AIR
+            ' Harder to turn in air.
+            dx = 0
+            if keydown(this.keyLeft)  dx = dx - 2
+            if keydown(this.keyRight)  dx = dx + 2
+            if dx
+                this.dx = 0.95*this.dx + 0.05*dx
+            else
+                this.dx = 0.98*this.dx
+                if |this.dx| <= 0.1 this.dx = 0
+            endif
+            if not keydown(this.keyUp) this.dy = max(this.dy, -2)
+            this.dy = min(this.dy + 0.15, 4)
+        ' Climbing?
+        elseif this.state = CLIMBING
+            this.dx = 0
+            if keydown(this.keyLeft)
+                this.dx = this.dx - 1
+                this.cel = (this.cel + 0.5)%12
+                this.wdir = LEFT
+            endif
+            if keydown(this.keyRight)
+                this.dx = this.dx + 1
+                this.cel = (this.cel + 0.5)%12
+                this.wdir = RIGHT
+            endif
+            if keydown(this.keyUp) and TM_GetCelAt(this.x + this.w/2, this.y + this.h/8) = 14
+                this.dy = -1
+                this.cel = (this.cel + 0.5)%12
+            elseif keydown(this.keyDown)
+                this.dy = 2
+            else
+                this.dy = 0
+            endif
+            if TM_GetCelAt(this.x + this.w/2, this.y + this.h/2) <> 14
+                this.state = IN_AIR
+                if this.wdir = RIGHT this.base = 1
+                elseif this.wdir = LEFT this.base = 13
+                if keydown(this.keyUp)
+                    this.dy = -3.25
+                    this.upReleased = false
+                    SP_SetPoofEndVector(0, -1)
+                    SP_AddRandomPoof(vSmokeParticlesImage, -2, this.x + this.w/2, this.y + this.h,
+                           5, 8, 0.5, 0.05, false, true)
+                    
+                    play sound vJumpSound, vSoundVolume
+                endif
+                this.cel = 0
+            endif
+        endif
+
+        ' Start climbing?
+        if this.state <> CLIMBING and keydown(this.keyUp) and
+                TM_GetCelAt(this.x + this.w/2, this.y + this.h/2) = 14
+            this.state = CLIMBING
+            this.wdir = this.dir
+            this.dy = 0
+            this.base = 24
+            this.cel = 0
+            this.lift = 0
+        endif
+        
+        ' Move.
+        if this.lift
+            dx = this.dx + this.lift.deltaX
+            dy = this.lift.deltaY
+        else
+            dx = this.dx
+            dy = this.dy
+        endif
+        TM_MoveSprite(this, dx, dy)
+        
+        ' Fell down a hole?
+        if this.y >= TM_WorldHeight()
+            this.Explode(0, -1)
+            return
+        endif
+
+        ' Check for special tiles.
+        this.CheckForSpecialTiles(this.x, this.y)
+        this.CheckForSpecialTiles(this.x + this.w - 1, this.y)
+        this.CheckForSpecialTiles(this.x + this.w - 1, this.y + this.h - 1)
+        this.CheckForSpecialTiles(this.x, this.y + this.h - 1)
+
+        if TM_CollisionDown() or this.lift
+            if this.state = IN_AIR
+                this.state = ON_GROUND
+                this.cel = 0
+                this.multiplier = 1
+            endif
+        elseif this.state = ON_GROUND
+            this.state = IN_AIR
+            this.cel = 6
+        endif
+
+        ' Drop from lift?
+        if this.lift and not TM_SpritesCollide(this, this.lift)  this.lift = unset
+        
+        if TM_CollisionUp()
+            this.dy = 0
+            if this.state = IN_AIR
+                ' Destroy brick?
+                brickX = unset
+                y = TM_ToMapY(this.y - 8)
+                x = TM_ToMapX(this.x + this.w/2)
+                cel = unset
+                ' Look at top center of player, then left and right.
+                cel = TM_GetCel(x, y)
+                ' 4 is a brick block that MAY contain something, while 5 is a block that always
+                ' contains something.
+                if cel = 3 or cel = 6
+                    brickX = x
+                else
+                    x = TM_ToMapX(this.x)
+                    cel = TM_GetCel(x, y)
+                    if cel = 3 or cel = 6
+                        brickX = x
+                    else
+                        x = TM_ToMapX(this.x + this.w - 1)
+                        cel = TM_GetCel(x, y)
+                        if cel = 3 or cel = 6
+                            brickX = x
+                        endif
+                    endif
+                endif
+                ' Anything hit?
+                if typeof(brickX)
+                    flag = TM_GetFlag(brickX, y)
+                    ' Always contains something.
+                    if cel = 6
+                        TM_SetCel(brickX, y, 7)
+                        if not flag  flag = "coin"
+                        SP_AddParticle(vBrickAnimImage, -1, false,
+                                (brickX + 0.5)*TM_TileWidth(), (y + 0.5)*TM_TileHeight(),
+                                0, 0, 0, 0, 1, 1, 0.075, 0)
+                    ' May contain something.
+                    elseif cel = 3
+                        if flag
+                            TM_SetCel(brickX, y, 7)
+                            SP_AddParticle(vBrickAnimImage, -1, false,
+                                    (brickX + 0.5)*TM_TileWidth(), (y + 0.5)*TM_TileHeight(),
+                                    0, 0, 0, 0, 1, 1, 0.075, 0)
+                        else
+                            TM_SetCel(brickX, y, -1)
+                            vScore = vScore + 50
+                            vFlyingTexts.Add(50, vSmallFont, (brickX + 0.5)*TM_TileWidth(), y*TM_TileHeight(), 1, 1.5)
+                            play sound vBrickSound, vSoundVolume
+                        endif
+                        ' Add brick particles.
+                        SP_SetPoofEndVector(0, 4)
+                        SP_AddRandomPoof(vBrickParticlesImage, -2,
+                                brickX*32 + 16, y*32 + 16, 
+                                8, 16, 3, 0.03, false, true) 
+                    endif
+                    ' Check item type.
+                    if flag = "coin"
+                        vScore = vScore + 100
+                        vCoins = vCoins + 1
+                        SP_AddParticle(vCoinImage, 0, false,
+                            brickX*32 + 16, y*32 - height(vCoinImage),
+                            0, -2.4, 0, 0,
+                            1, 1,
+                            0.04, 0)
+                        if vCoins >= 42
+                            vCoins = 0
+                            vLives = vLives + 1
+                            vFlyingTexts.Add("1UP", vFont, (brickX + 0.5)*TM_TileWidth(), y*TM_TileHeight(), 1, 1.5)
+                            play sound v1UpSound, vSoundVolume
+                        else
+                            vFlyingTexts.Add(100, vSmallFont, (brickX + 0.5)*TM_TileWidth(), y*TM_TileHeight(), 1, 1.5)
+                            play sound vCoinSound, vSoundVolume
+                        endif
+                    elseif flag = "heart"
+                        TM_SetCel(brickX, y - 1, HEART_CEL)
+                        play sound vItemSound, vSoundVolume
+                    endif
+                else
+                    play sound vHeadSound, vSoundVolume
+                endif
+            ' Eh ... yes!
+            elseif this.lift
+                this.Explode(0, 2)
+            endif
+        endif
+                    
+        return true
+    endfunc
+
+    ' CheckForSpecialTiles
+    ' --------------------
+    p.CheckForSpecialTiles = function(x, y)
+        mx = TM_ToMapX(x)
+        my = TM_ToMapY(y)
+        select TM_GetCel(mx, my)
+            case COIN_CEL
+                TM_SetCel(mx, my, -1)
+                vScore = vScore + 100
+                vCoins = vCoins + 1
+                cx = (mx + 0.5)*TM_TileWidth()
+                cy = (my + 0.5)*TM_TileHeight()
+                if vCoins >= 42
+                    vCoins = 0
+                    vLives = vLives + 1
+                    vFlyingTexts.Add("1UP", vFont, cx, cy, 1, 1.5)
+                    play sound v1UpSound, vSoundVolume
+                else
+                    vFlyingTexts.Add(100, vSmallFont, cx, cy, 1, 1.5)
+                    play sound vCoinSound, vSoundVolume
+                endif
+                
+            case KEY_CEL
+                TM_SetCel(mx, my, -1)
+                vScore = vScore + 1000
+                vLevelCompleteTimer = 60*2
+                vFlyingTexts.Add(1000, vFont,
+                        (mx + 0.5)*TM_TileWidth(), (my + 0.5)*TM_TileHeight(), 1, 1.5)
+                stop music 0
+                play sound vKeySound, vSoundVolume
+            case HEART_CEL
+                vScore = vScore + 500
+                this.stamina = min(this.stamina + 1, 3)
+                TM_SetCel(mx, my, -1)
+                vFlyingTexts.Add(500, vFont,
+                        (mx + 0.5)*TM_TileWidth(), (my + 0.5)*TM_TileHeight(), 1, 1.5)
+                play sound vHeartSound, vSoundVolume
+
+            case SPIKES_UP_CEL
+                if y%32 >= 16  this.Hit(0, -4)
+            case SPIKES_DOWN_CEL
+                if y%32 < 16  this.Hit(0, 4)
+            case SPIKES_LEFT_CEL
+                if x%32 >= 16  this.Hit(-4, 0)
+            case SPIKES_RIGHT_CEL
+                if x%32 < 16  this.Hit(4, 0)
+        endsel
+    endfunc
+    
+    ' Draw
+    ' ----    
+    p.Draw = function()
+        if this.stamina > 0 and this.invisTimer%8 < 4
+            set color 255, 255, 255
+            draw image vPlayerImage, TM_ToScreenX(this.x - 4), TM_ToScreenY(this.y),
+                    this.base + this.cel
+        endif
+    endfunc
+    
+    return p
+endfunc
+
+' EnemyPlayerCollision
+' --------------------
+function EnemyPlayerCollision(e)
+    if TM_SpritesCollide(e, vPlayer)
+        if vPlayer.dy > 0 and vPlayer.y + vPlayer.h < e.y + e.h
+            e.Die(vPlayer.dx, vPlayer.dy)
+            if keydown(vPlayer.keyUp) vPlayer.dy = -6.5
+            else vPlayer.dy = -3.25
+            vPlayer.state = IN_AIR
+            SP_SetPoofEndVector(0, -1)
+            SP_AddRandomPoof(vSmokeParticlesImage, -2, vPlayer.x + vPlayer.w/2,
+                    vPlayer.y + vPlayer.h, 5, 8, 0.5, 0.05, false, true)
+
+            vScore = vScore + 200*vPlayer.multiplier
+            if vPlayer.multiplier > 1 fnt = vFont
+            else fnt = vSmallFont
+            vFlyingTexts.Add(200*vPlayer.multiplier, fnt, e.x + e.w/2, e.y, 1, 1.5)
+            vPlayer.multiplier = vPlayer.multiplier + 1
+
+            play sound vEnemySound, vSoundVolume
+                        
+            return true
+        else
+            if e.x + e.w/2 < vPlayer.x + vPlayer.w/2  dx = 3
+            else  dx = -3
+            if e.y + e.h/2 < vPlayer.y + vPlayer.h/2  dy = 3
+            else  dy = -3
+            vPlayer.Hit(dx, dy)
+        endif
+    endif
+    return false
+endfunc
+
+' Slime
+' -----
+' Return a new enemy slime sprite.
+function Slime(centerX, bottomY, dir)
+    e = []
+    e.dir = dir
+    if dir = LEFT
+        e.base = 0
+        e.dx = -SLIME_SPEED
+    else
+        e.base = 3
+        e.dx = SLIME_SPEED
+    endif
+    e.cel = 0
+    e.dy = 0
+    e.w = 28
+    e.h = height(vSlimeImage)
+    e.x = centerX - e.w/2
+    e.y = bottomY - e.h
+    e.onGround = true
+
+    ' Update
+    ' ------
+    ' Move left and right, turn at obstacles and holes.
+    e.Update = function()
+        this.cel = (this.cel + 0.05)%2
+        dx = 0
+        if this.dir = LEFT  dx = -SLIME_SPEED
+        elseif this.dir = RIGHT  dx = SLIME_SPEED
+        this.dx = 0.8*this.dx + 0.2*dx
+        if this.onGround  this.dy = 0.2
+        else  this.dy = min(this.dy + 0.15, 4)
+        TM_MoveSprite(this, this.dx, this.dy)
+        this.onGround = TM_CollisionDown()        
+        if this.dir = LEFT and (TM_CollisionLeft() or this.onGround and
+                not TM_ObstacleAt(this.x, this.y + this.h + 4))
+            this.dir = RIGHT
+            this.base = 3
+            this.dx = 0
+        elseif this.dir = RIGHT and (TM_CollisionRight() or this.onGround and
+                not TM_ObstacleAt(this.x + this.w, this.y + this.h + 4))
+            this.dir = LEFT
+            this.base = 0
+            this.dx = 0
+        endif
+        return EnemyPlayerCollision(this)
+    endfunc
+    
+    ' Die
+    ' ---
+    e.Die = function(dx, dy)
+        if this.onGround
+            SP_AddParticle(vSlimeImage, this.base + 2, false, this.x + this.w/2, this.y + this.h/2,
+                    0, 0, 0, 0, 1, 0, 0.01, 0)
+        else
+            SP_AddParticle(vSlimeImage, this.base + 2, false, this.x + this.w/2, this.y + this.h/2,
+                    dx, dy, 0, 4, 1, 0, 0.01, 0)
+        endif
+    endfunc
+
+    ' Update
+    ' ------
+    e.Draw = function()
+        set color 255, 255, 255
+        draw image vSlimeImage, TM_ToScreenX(this.x - 6), TM_ToScreenY(this.y),
+                this.base + this.cel
+    endfunc    
+    
+    return e
+endfunc
+
+' FlyDie
+' ------
+function FlyDie(dx, dy)
+    SP_AddParticle(vFlyImage, this.base + 2, false, this.x + this.w/2, this.y + this.h/2,
+            dx, dy, 0, 4, 1, 0, 0.01, 0)
+endfunc
+
+' HorizontalFly
+' -------------
+' Return a new enemy fly sprite that moves left and right.
+function HorizontalFly(centerX, centerY, dir)
+    e = []
+    e.dir = dir
+    if dir = LEFT
+        e.base = 0
+        e.dx = -FLY_SPEED
+    else
+        e.base = 3
+        e.dx = FLY_SPEED
+    endif
+    e.cel = 0
+    e.dy = 0
+    e.w = 22
+    e.h = height(vFlyImage)
+    e.x = centerX - e.w/2
+    e.cy = centerY - e.h/2
+    e.a = rnd(360)
+    e.y = e.cy + sin(rad(e.a))*8
+
+    e.Die = FlyDie
+
+    ' Update
+    ' ------
+    ' Move left and right, turn at obstacles.
+    e.Update = function()
+        this.cel = (this.cel + 0.25)%2
+        this.a = (this.a + 4)%360
+        dx = 0
+        if this.dir = LEFT  dx = -FLY_SPEED
+        elseif this.dir = RIGHT  dx = FLY_SPEED
+        this.dx = 0.8*this.dx + 0.2*dx
+        this.y = this.cy + sin(rad(this.a))*8
+        TM_MoveSprite(this, this.dx, 0)
+        if this.dir = LEFT and TM_CollisionLeft()
+            this.dir = RIGHT
+            this.base = 3
+            this.dx = 0
+        elseif this.dir = RIGHT and TM_CollisionRight()
+            this.dir = LEFT
+            this.base = 0
+            this.dx = 0
+        endif
+        return EnemyPlayerCollision(this)
+    endfunc
+
+    ' Draw
+    ' ----
+    e.Draw = function()
+        set color 255, 255, 255
+        draw image vFlyImage, TM_ToScreenX(this.x - 5), TM_ToScreenY(this.y),
+                this.base + this.cel
+    endfunc    
+    
+    return e
+endfunc
+
+' VerticalFly
+' -----------
+' Return a new enemy fly sprite that moves up and down.
+function VerticalFly(centerX, centerY, dir)
+    e = []
+    e.dir = dir
+    e.base = 0
+    e.cel = 0
+    e.dx = 0
+    if dir = UP  e.dy = -FLY_SPEED
+    else  e.dy = FLY_SPEED
+    e.w = 22
+    e.h = height(vFlyImage)
+    e.cx = centerX - e.w/2
+    e.a = rnd(360)
+    e.x = e.cx + cos(rad(e.a))*8
+    e.y = centerY - e.w/2
+
+    e.Die = FlyDie
+    
+    ' Update
+    ' ------
+    ' Move left and right, turn at obstacles.
+    e.Update = function()
+        if this.a >= 90 and this.a < 270  this.base = 0
+        else  this.base = 3
+        this.cel = (this.cel + 0.25)%2
+        this.a = (this.a + 4)%360
+        dy = 0
+        if this.dir = UP  dy = -FLY_SPEED
+        elseif this.dir = DOWN  dy = FLY_SPEED
+        this.dy = 0.8*this.dy + 0.2*dy
+        this.x = this.cx + sin(rad(this.a))*8
+        TM_MoveSprite(this, 0, this.dy)
+        if this.dir = UP and TM_CollisionUp()
+            this.dir = DOWN
+            this.dy = 0
+        elseif this.dir = DOWN and TM_CollisionDown()
+            this.dir = UP
+            this.d = 0
+        endif
+        return EnemyPlayerCollision(this)        
+    endfunc
+
+    ' Draw
+    ' ------
+    e.Draw = function()
+        set color 255, 255, 255
+        draw image vFlyImage, TM_ToScreenX(this.x - 5), TM_ToScreenY(this.y),
+                this.base + this.cel
+    endfunc    
+    
+    return e
+endfunc
+
+' CircularFly
+' -----------
+' Return a new enemy fly sprite that moves in a circle.
+function CircularFly(centerX, centerY, clockwise, angle)
+    e = []
+    e.cx = centerX
+    e.cy = centerY
+    e.w = 22
+    e.h = height(vFlyImage)
+    e.d = 36
+    e.cw = clockwise
+    if e.cw  e.da = 1.25
+    else  e.da = -1.25
+    e.a = int(angle)
+    e.x = e.cx + cos(rad(e.a))*e.d - e.w*0.5
+    e.y = e.cy + sin(rad(e.a))*e.d - e.h*0.5
+    e.base = 0
+    e.cel = 0
+    e.t = 0
+    
+    e.Die = FlyDie    
+    
+    ' Update
+    ' ------
+    e.Update = function()
+        if this.cw  this.base = (this.a >= 180 and this.a < 360.0)*3
+        else  this.base = (this.a >= 0 and this.a < 180.0)*3
+        this.cel = (this.cel + 0.25)%2
+        this.a = (this.a + this.da)%360
+        this.x = this.cx + cos(rad(this.a))*this.d - this.w*0.5
+        this.y = this.cy + sin(rad(this.a))*this.d - this.h*0.5
+        ' Leave a trail of dots, for some reason ...
+        this.t = (this.t + 1)%30
+        if this.t = 0  SP_AddParticle(vFlyDotImage, 0, false,
+                this.x + this.w*0.5, this.y + this.h*0.5,
+                0, 0, 0, 0, 1, 0, 0.005, 0)
+        return EnemyPlayerCollision(this)        
+    endfunc
+    
+    ' Draw
+    ' ------
+    e.Draw = function()
+        set color 255, 255, 255
+        draw image vFlyImage, TM_ToScreenX(this.x - 5), TM_ToScreenY(this.y),
+                this.base + this.cel
+    endfunc    
+    
+    return e
+endfunc
+
+' HorizontalLift
+' --------------
+' Return a new lift that moves left and right.
+function HorizontalLift(centerX, centerY, dir, img)
+    l = []
+    l.img = img
+    l.w = width(img)
+    l.h = height(img)
+    l.x = centerX - l.w/2
+    l.y = centerY - l.h/2
+    l.dy = 0
+    if dir = LEFT
+        l.dir = LEFT
+        l.dx = -1
+    else
+        l.dir = RIGHT
+        l.dx = 1
+    endif
+    l.deltaX = 0
+    l.deltaY = 0
+
+    ' Update.
+    l.Update = function()
+        dx = 0
+        if this.dir = LEFT  dx = -1
+        elseif this.dir = RIGHT  dx = 1
+        this.dx = 0.975*this.dx + 0.025*dx
+        this.deltaX = this.x
+        this.deltaY = this.y
+        TM_MoveSprite(this, this.dx, 0)
+        this.deltaX = this.x - this.deltaX
+        this.deltaY = this.y - this.deltaY
+        if this.dir = LEFT and TM_CollisionLeft()
+            this.dir = RIGHT
+            this.dx = 0
+        elseif this.dir = RIGHT and TM_CollisionRight()
+            this.dir = LEFT
+            this.dx = 0
+        endif
+
+        if vPlayer.lift = unset and vPlayer.state = IN_AIR and vPlayer.dy > 0 and
+                vPlayer.y + vPlayer.h <= this.y + this.h and TM_SpritesCollide(this, vPlayer)
+            vPlayer.SetLift(this)
+        endif
+
+    endfunc
+
+    ' Draw
+    ' ------
+    l.Draw = function()
+        set color 255, 255, 255
+        draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+    endfunc    
+    
+    return l
+endfunc
+
+' VerticalLift
+' ------------
+' Return a new lift that moves up or down.
+function VerticalLift(centerX, centerY, dir, img)
+    l = []
+    l.img = img
+    l.w = width(img)
+    l.h = height(img)
+    l.x = centerX - l.w/2
+    l.y = centerY - l.h/2
+    l.dx = 0
+    if dir = UP
+        l.dir = UP
+        l.dy = -1
+    else
+        l.dir = DOWN
+        l.dy = 1
+    endif
+    l.deltaX = 0
+    l.deltaY = 0
+
+    ' Update.
+    l.Update = function()
+        dy = 0
+        if this.dir = UP  dy = -1
+        elseif this.dir = DOWN  dy = 1
+        this.dy = 0.975*this.dy + 0.025*dy
+        this.deltaX = this.x
+        this.deltaY = this.y
+        TM_MoveSprite(this, 0, this.dy)
+        this.deltaX = this.x - this.deltaX
+        this.deltaY = this.y - this.deltaY
+        if this.dir = UP and TM_CollisionUp()
+            this.dir = DOWN
+            this.dy = 0
+        elseif this.dir = DOWN and TM_CollisionDown()
+            this.dir = UP
+            this.dy = 0
+        endif
+
+        if vPlayer.lift = unset and vPlayer.state = IN_AIR and vPlayer.dy > 0 and
+                vPlayer.y + vPlayer.h <= this.y + this.h and TM_SpritesCollide(this, vPlayer)
+            vPlayer.SetLift(this)
+        endif
+
+    endfunc
+
+    ' Draw
+    ' ------
+    l.Draw = function()
+        set color 255, 255, 255
+        draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+    endfunc    
+    
+    return l
+endfunc
+
+' RollingLift
+' -----------
+' Return a new lift that moves up or down.
+function RollingLift(centerX, centerY, dir, img)
+    l = []
+    l.img = img
+    l.w = width(img)
+    l.h = height(img)
+    l.x = centerX - l.w/2
+    l.y = centerY - l.h/2
+    l.dx = 0
+    if dir = UP
+        l.dir = UP
+        l.dy = -1
+    else
+        l.dir = DOWN
+        l.dy = 1
+    endif
+    l.deltaX = 0
+    l.deltaY = l.dy
+
+    ' Update.
+    l.Update = function()
+        this.y = this.y + this.dy
+        if this.dir = UP
+            if this.y < -this.h
+                if vPlayer.lift = this then vPlayer.lift = unset
+                this.y = this.y + TM_WorldHeight() + this.h
+            endif
+        else
+            if this.y >= TM_WorldHeight()
+                if vPlayer.lift = this then vPlayer.lift = unset
+                this.y = this.y - TM_WorldHeight() - this.h
+            endif
+        endif
+        
+        if vPlayer.lift = unset and vPlayer.state = IN_AIR and vPlayer.dy > 0 and
+                vPlayer.y + vPlayer.h <= this.y + this.h and TM_SpritesCollide(this, vPlayer)
+            vPlayer.SetLift(this)
+        endif
+    endfunc
+
+    ' Draw
+    ' ------
+    l.Draw = function()
+        set color 255, 255, 255
+        draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+    endfunc    
+    
+    return l
+endfunc
+
+' CircularLift
+' ------------
+' Return a new lift that moves in a circle.
+function CircularLift(centerX, centerY, clockwise, angle, img)
+    l = []
+    l.img = img
+    l.w = width(img)
+    l.h = height(img)
+    l.cx = centerX - l.w/2
+    l.cy = centerY - l.h/2
+    l.rcx = centerX
+    l.rcy = centerY
+    l.cw = clockwise
+    if l.cw  l.da = 1.25
+    else  l.da = -1.25
+    l.d = width(img)
+    l.a = int(angle)
+    l.x = l.cx + cos(rad(l.a))*l.d
+    l.y = l.cy + sin(rad(l.a))*l.d
+    
+    l.deltaX = 0
+    l.deltaY = 0
+
+    ' Update.
+    l.Update = function()
+        this.deltaX = this.x
+        this.deltaY = this.y
+        this.a = (this.a + this.da)%360
+        this.x = this.cx + cos(rad(this.a))*this.d
+        this.y = this.cy + sin(rad(this.a))*this.d
+        this.deltaX = this.x - this.deltaX
+        this.deltaY = this.y - this.deltaY
+        if vPlayer.lift = unset and vPlayer.state = IN_AIR and vPlayer.dy > 0 and
+                vPlayer.y + vPlayer.h <= this.y + this.h and TM_SpritesCollide(this, vPlayer)
+            vPlayer.SetLift(this)
+        endif
+    endfunc
+
+    ' Draw
+    ' ------
+    l.Draw = function()
+        set color 255, 255, 255
+        d = 0
+        dx = cos(rad(this.a))
+        dy = sin(rad(this.a))
+        x = this.rcx - 3
+        y = this.rcy - 3
+        while d < this.d
+            draw image vLiftDotImage, TM_ToScreenX(x + dx*d), TM_ToScreenY(y + dy*d)
+            d = d + 16
+        wend
+        draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y)
+    endfunc    
+    
+    return l
+endfunc
+
+' FlyingTexts
+' -----------
+' Encapsulate flying texts.
+function FlyingTexts(maxTexts)
+    ft = []
+    ft.texts = fill(
+        [txt: unset,
+        fnt: unset,
+        x: 0,
+        y: 0,
+        spd: 0],
+        maxTexts)
+    
+    ' Clear
+    ' -----
+    ft.Clear = function()
+        foreach t in this.texts  t.txt = unset
+    endfunc
+    
+    ' Add
+    ' ---
+    ft.Add = function(txt, fnt, x, y, spd, duration)
+        foreach t in this.texts  if not t.txt
+            t.txt = txt
+            t.fnt = fnt
+            t.x = x
+            t.y = y - fheight(fnt)/2
+            t.spd = spd
+            t.t = 60*duration
+            break
+        endif
+    endfunc
+    
+    ' Update
+    ' ------
+    ft.Update = function()
+        foreach t in this.texts  if t.txt
+            t.t = t.t - 1
+            if t.t > 0
+                t.y = t.y - t.spd
+            else
+                t.txt = unset
+            endif
+        endif
+    endfunc
+    
+    ' Draw
+    ' ----
+    ft.Draw = function()
+        foreach t in this.texts  if t.txt
+            set font t.fnt
+            set caret TM_ToScreenX(t.x), TM_ToScreenY(t.y)
+            center t.txt
+        endif
+    endfunc
+    
+    return ft
+endfunc
+
+' Fade
+' ----
+' Encapsulate fade transition.
+function Fade(r, g, b)
+    f = []
+    f.FADE_IN = 1
+    f.FADE_IN_DONE = 2
+    f.FADE_OUT = 3
+    f.FADE_OUT_DONE = 4
+    f.state = f.FADE_IN
+    f.msg = 0
+    f.param = 0
+    f.r = r
+    f.g = g
+    f.b = b
+    
+    ' SetColor
+    ' --------
+    f.SetColor = function(r, g, b)
+        this.r = r
+        this.g = g
+        this.b = b
+    endfunc
+
+    ' FadeIn
+    ' ------
+    f.FadeIn = function()
+        this.state = this.FADE_IN
+        this.msg = 0
+        this.param = 1
+    endfunc
+    
+    ' FadeOut
+    ' -------
+    f.FadeOut = function(msg)
+        if this.state <> this.FADE_OUT
+            this.state = this.FADE_OUT
+            this.msg = msg
+            this.param = 0
+        endif
+    endfunc
+    
+    ' State
+    ' -----
+    f.State = function()
+        return this.state
+    endfunc
+    
+    ' Message
+    ' -------
+    f.Message = function()
+        return this.msg
+    endfunc
+    
+    ' Update
+    ' ------
+    f.Update = function()
+        if this.state = this.FADE_IN
+            this.param = this.param - 0.04
+            if this.param <= 0
+                this.param = 0
+                this.state = this.FADE_IN_DONE
+            endif
+        elseif this.state = this.FADE_OUT
+            this.param = this.param + 0.04
+            if this.param >= 1
+                this.param = 1
+                this.state = this.FADE_OUT_DONE
+            endif
+        endif
+    endfunc
+    
+    ' Draw
+    ' ----
+    f.Draw = function()
+        if this.param <= 0  return
+        set color this.r, this.g, this.b, this.param*255
+        cls
+    endfunc    
+        
+    return f
+endfunc

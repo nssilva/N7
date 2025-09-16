@@ -1,0 +1,46 @@
+' set pixel
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set pixel", 640, 480
+
+' Create an empty (black) image and make it the destination image for all drawing.
+img = createimage(128, 128)
+set image img
+' Generate a circular gradient.
+for y = 0 to 127
+    ' Distance from y to the vertical center of the image.
+    dy = y - 64
+    for x = 0 to 127
+        ' Distance from x to the horizontal center of the image.
+        dx = x - 64
+        ' Distance from x, y to the center of the image.
+        d = sqr(dx*dx + dy*dy)
+        ' Calculate an alpha value for a circular gradient with full opacity at the center. 'set
+        ' color' crops the arguments.
+        set color 255, 255, 255, 255 - 255*d/64
+        ' 'set pixel' sets the pixel at position x, y. The difference between 'set pixel' and 'draw
+        ' pixel' is that set pixel SETS the alpha component of the pixel, while 'draw pixel' uses
+        ' the alpha for blending. Usually you use 'set pixel' when constructing images.
+        set pixel x, y
+    next
+next
+' Set destination image back to primary, which is the window.
+set image primary
+
+' Clear screen with a blue color.
+set color 128, 128, 200
+cls
+
+' Draw the image we constructed.
+set color 255, 255, 255
+draw image img, 256, 176
+
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

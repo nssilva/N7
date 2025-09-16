@@ -1,0 +1,8 @@
+' chr
+' ---
+
+' 'chr(c)' returns the character represented by the ASCII code c.
+pln "chr(65) = " + chr(65)
+pln "chr(63) = " + chr(63)
+
+system "pause"

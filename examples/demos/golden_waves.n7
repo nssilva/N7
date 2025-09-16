@@ -1,0 +1,50 @@
+' golden_waves
+' ------------
+' Posted by johnno1956 on the naalaa forum.
+'
+' "Here is a short graphical demo that started with Basic256, sdlBasic and RCBasic... Why not N7?"
+
+set window "Golden Waves", 600, 470
+set redraw off
+
+visible red = [64, 0, 0]
+visible green = [0, 64, 0]
+
+visible x, y, x1, y1, d, h, t
+
+visible xx = []
+visible yy = []
+visible gold = []
+
+for t = 1 to 60 step 0.3
+    set color red
+    cls
+    for y1 = 0 to 24
+        for x1 = 0 to 24
+            x = (12 * (24 - x1)) + (12 * y1)
+            y = (-6 * (24 - x1)) + (6 * y1) + 300
+            d = ((10 - x1) ^ 2 + (10 - y1) ^ 2) ^ 0.5
+            h = 60 * sin(x1 / 4 + t) + 65
+            if t > 10 and t < 20  h = 60 * sin(y1 / 4 + t) + 65
+            if t > 20 and t < 30  h = 60 * sin((x1 - y1) / 4 + t) + 65
+            if t > 30 and t < 40  h = 30 * sin(x1 / 2 + t) + 30 * sin(y1 / 2 + t) + 65
+            if t > 40 and t < 50  h = 60 * sin((x1 + y1) / 4 + t) + 65
+            if t > 50 and t < 60  h = 60 * sin(d * 0.3 + t) + 65
+
+            set color [100 + h, 100 + h, h]
+            gold = [x, y - h, x + 10, y + 5 -h, x + 20, y - h, x + 10, y - 5 - h]
+            draw poly gold, 1
+            set color [60, 60, 0]
+            gold = [x, y - h, x + 10, y + 5 - h, x + 10, y, x, y - 5]
+            draw poly gold, 1
+            set color [150, 150, 0]
+            gold = [x + 10, y + 5 - h, x + 10, y, x + 20, y - 5, x + 20, y - h]
+            draw poly gold, 1
+            
+            if keydown(KEY_ESCAPE) end
+        next
+    next
+    redraw
+    fwait 15
+next
+end

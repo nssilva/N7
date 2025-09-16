@@ -1,0 +1,69 @@
+' create zone, zone, zonex, zoney, zonew, zoneh, free zone
+' --------------------------------------------------------
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "zones", 640, 480
+set redraw off
+
+' 'create zone zone_id, x, y, w, h' creates zone zone_id and set its position to x, y and its width
+' and height to w and h. 'createzone(x, y, w, h)' does the same thing as the command 'create zone'
+' but auto-generates and returns an unused identifier. The 'create zone' command is for backward
+' compability with n6, the preferred way of creating a zone is through the 'createzone' function.
+' Here we create two buttons using zones.
+button1 = createzone(256, 120, 128, 40)
+button2 = createzone(256, 220, 128, 40)
+
+' Create an array with colors (sub-arrays) that matches the three different states of a zone.
+buttonColors = [[128, 128, 128], [192, 192, 192], [64, 64, 64]]
+
+' A message that will change when the user clicks a button (zone).
+message = "You haven't clicked any button yet"
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' 'zone()' returns the id of the last zone that had a valid click. Each click is returned only
+    ' once.
+    buttonPressed = zone()
+    if buttonPressed = button1  message = "You clicked button 1"
+    elseif buttonPressed = button2  message = "You clicked button 2"
+    
+    ' Clear screen.
+    set color 0, 0, 0
+    cls
+    
+    ' 'zone(zone_id)' returns the status of zone zone_id. 0 means that the mouse cursor is not over
+    ' the zone, 1 that the mouse cursor is over the zone but the left mouse button is not being
+    ' pressed, and 2 means that the mouse cursor is over the zone and the left mouse button is
+    ' pressed. Here we use the status to select colors for the two buttons.
+    set color buttonColors[zone(button1)]
+    ' 'zonex(zone_id)', 'zoney(zone_id)', 'zonew(zone_id)' and 'zoneh(zone_id)' returns the x
+    ' coordinate, y coordinate, width and height of zone zone_id.
+    draw rect zonex(button1), zoney(button1), zonew(button1), zoneh(button1), true
+    set color buttonColors[zone(button2)]
+    draw rect zonex(button2), zoney(button2), zonew(button2), zoneh(button2), true
+
+    ' Write button labels.
+    set color 255, 255, 255
+    set caret zonex(button1) + zonew(button1)/2, zoney(button1) + 14
+    center "Button 1"
+    set caret zonex(button2) + zonew(button2)/2, zoney(button2) + 14
+    center "Button 2"
+
+    ' Write message.
+    set caret 320, 320
+    center message
+    
+    ' 'zone(x, y)' returns the id of the zone at the position x, y, if any. Here we check if there's
+    ' a zone under the mouse cursor.
+    overZone = zone(mousex(), mousey())
+    if overZone  center "You're hovering over zone " + overZone
+    else  center "You're not hovering over any zone"
+
+    ' Write some text.
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

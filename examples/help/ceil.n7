@@ -1,0 +1,10 @@
+' ceil
+' ----
+
+' 'ceil(x)' returns the lowest integer value that is higher than or equal to x. Simply put, it
+' rounds up.
+pln "ceil(5.37) = " + ceil(5.37)
+pln "ceil(2) = " + ceil(2)
+pln "ceil(-3.12) = " + ceil(-3.12)
+
+system "pause"

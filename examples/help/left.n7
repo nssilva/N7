@@ -1,0 +1,7 @@
+' left
+' ----
+
+' 'left(s, n)' returns the n leftmost characters of the string s.
+pln "left(" + chr(34) + "Marcus" + chr(34) + ", 3) = " + left("Marcus", 3)
+
+system "pause"

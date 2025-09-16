@@ -1,0 +1,2664 @@
+' darned_dungeon.n7
+' -----------------
+' By Marcus 2025.
+
+include "tilemap.n7"
+include "s3d.n7"
+include "file.n7"
+
+#win32
+
+' Settings.
+constant FULLSCREEN = 1
+constant DISPLAY_FPS = 0
+
+' Window.
+constant TITLE = "Darned Dungeon"
+constant RES = 480
+
+' Directions.
+constant LEFT = 1, RIGHT = 2, UP = 3, DOWN = 4
+
+' Message box size.
+constant MSG_WIDTH = 320, MSG_HEIGHT = 224
+
+' Tile size.
+constant TILE_S = 16
+
+' Item identifiers.
+constant JEWEL_ID = 1
+constant HEART_ID = 2
+constant BLUE_KEY_ID = 3
+constant ORANGE_KEY_ID = 4
+constant GREEN_KEY_ID = 5
+constant BLUE_DOOR_ID = 6
+constant ORANGE_DOOR_ID = 7
+constant GREEN_DOOR_ID = 8
+constant BUTTON_ID = 9
+constant BARS_ID = 10
+constant STAIRS_ID = 11
+
+' Tutorials.
+constant TUT_INTRO = 0
+constant TUT_JEWELS = 1
+constant TUT_BOOMERANG = 2
+constant TUT_BOSS = 3
+
+' Images.
+visible vLogoImage, vGameOverImage, vTheEndImage
+visible vPlayerImage, vPlayerHitImage, vPlayerDeathImage
+visible vBlueJewelImage, vOrangeJewelImage, vGreenJewelImage
+visible vBlueKeyImage, vOrangeKeyImage, vGreenKeyImage
+visible vHeartImage
+visible vFlamesBlueImage, vFlamesOrangeImage, vFlamesGreenImage
+visible vBoomerangImage, vBoomerangShadowImage
+visible vSlimeImage, vSlimeHitImage
+visible vBatImage, vBatShadowImage, vBatHitImage
+visible vChaserImage, vChaserHitImage
+visible vShooterImage, vShooterHitImage
+visible vSkullImage, vJawImage, vSkullHitImage, vJawHitImage
+visible vBossStaminaImage
+visible vFireballLeftImage, vFireballShadowLeftImage
+visible vFireballRightImage, vFireballShadowRightImage
+visible vFireballUpImage, vFireballShadowUpImage
+visible vFireballDownImage, vFireballShadowDownImage
+visible vExplosionImage, vSmallExplosionImage
+visible vGameIconsImage, vPlayerIconImage
+visible vWallTextures = [], vCeilingTextures = [], vFloorTextures = []
+
+' Animations.
+visible vPlayerLeftAnim = [5, 4, 6, 4], vPlayerRightAnim = [1, 0, 2, 0]
+visible vPlayerUpAnim = [13, 12, 14, 12], vPlayerDownAnim = [9, 8, 10, 8]
+visible vBoomerangAnim = [0, 1, 2, 3]
+visible vSlimeAnim = [0, 1, 2, 1], vBatAnim = [0, 1, 2, 1]
+visible vChaserDownAnim = [0, 1, 0, 2], vChaserDownAttackAnim = [3, 4, 3, 5]
+visible vChaserUpAnim = [6, 7, 6, 8], vChaserUpAttackAnim = [9, 10, 9, 11]
+visible vChaserRightAnim = [12, 13, 12, 14], vChaserRightAttackAnim = [15, 16, 15, 17]
+visible vChaserLeftAnim = [18, 19, 18, 20], vChaserLeftAttackAnim = [21, 22, 21, 23]
+visible vShooterDownAnim = [0, 1, 0, 2], vShooterDownAttackAnim = [0, 3]
+visible vShooterUpAnim = [4, 5, 4, 6], vShooterUpAttackAnim = [4, 7]
+visible vShooterRightAnim = [8, 9, 8, 10], vShooterRightAttackAnim = [8, 11]
+visible vShooterLeftAnim = [12, 13, 12, 14], vShooterLeftAttackAnim = [12, 15]
+visible vFireballAnim = [0, 1]
+
+' Fonts.
+visible vFont
+visible vTextColor = [188, 188, 188]
+
+' Meshes.
+visible vLevelMesh, vXDoorMesh, vYDoorMesh, vButtonMesh, vBarsMesh, vStairsMesh
+
+' Sound effects.
+visible vEnemyExplodeSound, vEnemyHitSound, vWallHitSound, vChaserSound, vFireballSound
+visible vFireballsSound, vSkullSound
+visible vThrowSound, vJewelSound, vKeySound, vHeartSound, vDoorSound, vGateSound, vButtonSound
+visible vHurtSound, vDeathSound
+
+' Music.
+visible vGameMusic, vBossMusic
+
+' Game.
+visible vLevel, vScore, vLives
+visible vTopScore = 0, vTopScoreFilename
+visible vScoreDisp = 0
+visible vQuickMsg = unset, vQuickMsgTimer = 0, vMessageImage, vTutorials = []
+
+' Level data.
+visible vPlayer, vCam, vItems, vUnboundItems = [], vEnemies = [], vAnimations = [], vBoss
+visible vJewels, vJewelsTotal, vLevelComplete
+
+' File path (because of Wine issue).
+visible vPath = GetPath(args[0]) + "/"
+
+' Fps.
+visible vFpsCap = 60, vFps = 0, vPrevTime
+
+' Top score file.
+folder = GetPathCombined(GetAppDataDirectory(), "naalaa7")
+CreateDirectory(folder)
+vTopScoreFilename = GetPathCombined(folder, "darned_dungeon.bin")
+f = openfile(vTopScoreFilename, true)
+if typeof(f)
+    vTopScore = fread(f, 32)
+    free file f
+endif
+
+' Init window and 3d stuff.
+aspect = screenw()/screenh()
+if aspect >= 2 or not FULLSCREEN
+    set window TITLE, RES*min(aspect, 2), RES, false, int((screenh() - 160)/RES)
+else
+    set window TITLE, RES*min(aspect, 2), RES, true
+endif
+set redraw off
+S3D_SetView(primary, rad(30), 0.1, 16)
+S3D_SetPerspectiveCorrection(S3D_NORMAL)
+
+' Load assets.
+LoadAssets()
+
+newTopScore = false
+
+do
+    ' Title screen.
+    if newTopScore  topScoreText = "New top score: " + str(vTopScore, 6)
+    else  topScoreText = "Top score: " + str(vTopScore, 6)
+    if not ImageScreen(vLogoImage, ["", "", "Move   - arrow keys or joystick ",
+            "Action - space bar or any button", "", topScoreText], "Press action button to start!")
+        end
+    endif
+    ' Start from the beginning.
+    vLevel = 1
+    vScore = 0
+    vLives = 3
+    clear vTutorials
+
+    do
+        ' Load level or leave loop - game completed.
+        if not LoadLevel(vPath + "assets/level_" + vLevel + ".txt")  break
+        
+        ' Camera, idk, quick crap ...
+        vCam = [x: 0, y: 0, z: 8, tilt: 45, dx: 0, dy: 0]
+        vCam.SetPos = function(x, y)
+            this.x = x;  this.y = y
+        endfunc
+        vCam.SetOffset = function(dx, dy, filter)
+            this.dx = this.dx*(1 - filter) + dx*filter
+            this.dy = this.dy*(1 - filter) + dy*filter
+        endfunc
+        vCam.X = function();  return this.x + this.dx;  endfunc
+        vCam.Y = function();  return this.y + this.dy;  endfunc
+        vCam.Apply = function()
+            S3D_RotateX(-rad(this.tilt))
+            S3D_Translate(-(this.x + this.dx), -(this.y + this.dy), this.z)
+        endfunc
+        vCam.SetPos(vPlayer.X(), vPlayer.Y() + 8)
+        
+        vLevelComplete = false    
+        vQuickMsg = unset;  vQuickMsgTimer = 0
+        
+        ' Intro.
+        set color 0, 0, 0
+        cls
+        set font vFont
+        set color vTextColor
+        set caret width(primary)/2, 192
+        center "FLOOR " + vLevel
+        set color 255, 255, 255
+        w = 48 + fwidth(vLives)
+        x = (width(primary) - w)/2
+        draw image vPlayerIconImage, x + 4, 232
+        x = x + 48
+        set color vTextColor
+        set caret x, 240
+        write vLives
+        redraw
+        wait 4000
+        
+        ' Game loop.
+        vPrevTime = clock()
+        vFps = 0
+        scoret = 0
+        if vLevel = 9  play music vBossMusic, true
+        else  play music vGameMusic, true
+        if vLevel = 9 and not val(vTutorials, TUT_BOSS)
+            vTutorials[sizeof(vTutorials)] = TUT_BOSS
+            ShowMessage(["The music changed!", "  That's probably", "a bad sign ..."], 1)
+        elseif not val(vTutorials, TUT_INTRO)
+            vTutorials[sizeof(vTutorials)] = TUT_INTRO
+            ShowMessage(["I have no idea of", "where I am!", "  Better find a", "way out!"], 1)
+        elseif not val(vTutorials, TUT_BOOMERANG)
+            vTutorials[sizeof(vTutorials)] = TUT_BOOMERANG
+            ShowMessage(["I smell evil!", "  Press the action", "button and I'll",
+                    "throw a boomerang!"], 1)
+        endif
+        quit = false
+        do
+            ' Fps, deltatime.
+            t = clock()
+            dt = (min(t - vPrevTime, 66))/1000
+            vPrevTime = t
+            if dt  vFps = vFps*0.95 + 0.05/dt
+                        
+            ' Score update.
+            scoret = scoret + dt
+            while scoret >= 0.05
+                vScoreDisp = CountUp(vScoreDisp, vScore)
+                scoret = scoret - 0.05
+            wend
+            
+            ' Jewels tutorial.
+            if vJewels > 0 and not val(vTutorials, TUT_JEWELS)
+                vTutorials[sizeof(vTutorials)] = TUT_JEWELS
+                ShowMessage(["Whoa, I'm rich!", "  I'm NOT leaving", "without these",
+                        "jewels!"], 0)
+            endif
+            
+            ' Quit?
+            if keydown(KEY_ESCAPE, true)
+                quit = true
+                break
+            endif
+           
+            ' Quick message.   
+            vQuickMsgTimer = max(vQuickMsgTimer - dt, 0)
+
+            ' Player.
+            if not vPlayer.Update(dt)  break  ' Life lost.
+            vCam.SetPos(vPlayer.X(), vPlayer.Y() + 8)
+            vCam.SetOffset(vPlayer.dx*2, vPlayer.dy*2, 0.5*dt)
+        
+            ' Update enemies. Ye, I'm only updating them if they're visible or level is 9.        
+            i = 0
+            if vLevel = 9
+                while i < sizeof(vEnemies)
+                    if vEnemies[i].Update(dt)  i = i + 1
+                    else  free key vEnemies, i
+                wend
+            else
+                miny = floor(vCam.Y()) - 14;  maxy = floor(vCam.Y()) - 2
+                minx = floor(vCam.X()) - 8;  maxx = floor(vCam.X()) + 8
+                while i < sizeof(vEnemies)
+                    e = vEnemies[i];  x = e.X();  y = e.Y()
+                    if y >= miny and y <= maxy and x >= minx and x <= maxx
+                        if e.Update(dt)  i = i + 1
+                        else  free key vEnemies, i
+                    else
+                        i = i + 1
+                    endif
+                wend
+            endif
+            ' Animations.
+            i = 0
+            while i < sizeof(vAnimations)
+                if vAnimations[i].Update(dt)  i = i + 1
+                else  free key vAnimations, i
+            wend
+        
+            DrawGame(dt)
+            
+            redraw
+            if vFpsCap  fwait vFpsCap
+            else  wait 1
+        until vLevelComplete
+        if vLevel = 9  stop music vBossMusic
+        else  stop music vGameMusic
+        ' Level complete or life lost?
+        if vLevelComplete
+            vLevel = vLevel + 1
+        elseif quit
+            vScore = 0
+            break
+        else
+            vLives = vLives - 1
+            ' Game over?
+            if vLives < 0  break
+        endif
+    loop
+    ' New top score?
+    if vScore > vTopScore
+        vTopScore = vScore
+        newTopScore = true
+        f = createfile(vTopScoreFilename, true)
+        if typeof(f)
+            write file f, vTopScore, 32
+            free file f
+        endif
+    else
+        newTopScore = false
+    endif
+    ' Game complete?
+    if vLevel > 9
+        ImageScreen(vTheEndImage, ["Well done!", "", "You escaped the dungeon!"],
+                "Press action button!")
+    ' Game over?
+    elseif vLives < 0
+        ImageScreen(vGameOverImage, ["You are stuck in the dungeon ...", "", "FOREVER!!!"],
+                "Press action button!")
+    endif
+loop
+
+' DrawGame
+' --------
+function DrawGame(dt)
+    set color 0, 0, 0
+    cls
+    S3D_Clear()
+    vCam.Apply()
+    S3D_Color(255, 255, 255)
+    ' Render bounds.
+    miny = floor(vCam.Y()) - 14;  maxy = floor(vCam.Y()) - 2
+    minx = floor(vCam.X()) - 8;  maxx = floor(vCam.X()) + 8
+    cx = vCam.X()
+    ' Render visible enemies.
+    foreach e in vEnemies
+        x = e.X();  y = e.Y()
+        if y >= miny and y <= maxy and x >= minx and x <= maxx  e.Draw()
+    next
+    ' Render level.
+    S3D_Mesh(vLevelMesh, 0)
+    ' Only render visible things from the items array.
+    for y = max(0, miny) to min(sizeof(vItems[0]) - 1, maxy)
+        for x = max(0, minx) to min(sizeof(vItems) - 1, maxx)
+            i = vItems[x][y]
+            if i
+                if not i.Update(dt)  vItems[x][y] = unset
+                else  i.Draw()
+            endif
+        next
+    next
+    vPlayer.Draw()
+    ' Unbound items.
+    j = 0
+    while j < sizeof(vUnboundItems)
+        i = vUnboundItems[j]
+        x = i.X();  y = i.Y()
+        if y >= miny and y <= maxy and x >= minx and x <= maxx
+            if i.Update(dt)
+                i.Draw()
+                j = j + 1
+            else
+                free key vUnboundItems, j
+            endif
+        else
+            j = j + 1
+        endif
+    wend
+    ' Animations.
+    foreach a in vAnimations  a.Draw()
+
+    ' Interface.
+    set font vFont
+
+    ' Quick message.
+    if vQuickMsgTimer > 0
+        w = fwidth(vQuickMsg);  h = fheight()
+        x = (width(primary) - w)/2;  y = height(primary)/4 - h/2
+        set color 0, 0, 0
+        draw rect x, y, w, h, true
+        set color vTextColor
+        set caret x, y
+        write vQuickMsg    
+    endif
+    
+    ' Jewels.
+    set color 255, 255, 255
+    draw image vGameIconsImage, 2, 4, 2
+    set caret 2 + 32, 6
+    set color vTextColor
+    write str(vJewels, 2) + "/" + str(vJewelsTotal, 2)
+    
+    ' Health.
+    stm = vPlayer.Stamina()
+    set color 255, 255, 255
+    for i = 0 to 2  draw image vGameIconsImage, 4 + i*32, 4 + 32, stm > i
+    
+    ' Other items (... keys).
+    set color 255, 255, 255
+    if sizeof(vPlayer.items)
+        x = width(primary) + 1
+        for i = 0 to sizeof(vPlayer.items) - 1
+            x = x - 24
+            draw image vGameIconsImage, x, 2, 3 + vPlayer.items[i] - BLUE_KEY_ID
+        next
+    endif
+
+    ' Score.    
+    set caret width(primary)/2, 6
+    set color vTextColor
+    center str(vScoreDisp, 6)
+    
+    ' Boss stamina.
+    if vBoss and val(vEnemies, vBoss)
+        set color 255, 255, 255
+        w = width(vBossStaminaImage)
+        x = (width(primary) - vBoss.FullStamina()*w)/2
+        y = height(primary) - height(vBossStaminaImage) - 16
+        stm = vBoss.Stamina()
+        for i = 1 to vBoss.FullStamina()
+            draw image vBossStaminaImage, x, y, stm >= i
+            x = x + w
+        next
+    endif
+
+    if DISPLAY_FPS   
+        set caret 2, height(primary) - fheight() - 2
+        write "FPS: " + str(vFps, 3)
+    endif
+    
+    ' Check window focus.
+    CheckFocus()
+endfunc
+
+' LoadAssets
+' ----------
+function LoadAssets()
+    ' Images.
+    vLogoImage = loadimage(vPath + "assets/logo.png")
+    vGameOverImage = loadimage(vPath + "assets/game_over.png")
+    vTheEndImage = loadimage(vPath + "assets/the_end.png")
+    vPlayerImage = loadimage(vPath + "assets/player.png", 4, 4)
+    vPlayerHitImage = loadimage(vPath + "assets/player_hit.png", 4, 4)
+    vPlayerDeathImage = loadimage(vPath + "assets/player_death.png", 5, 2)
+    vBoomerangImage = loadimage(vPath + "assets/boomerang.png", 4, 1)
+    vBoomerangShadowImage = loadimage(vPath + "assets/boomerang_shadow.png", 4, 1)
+    vBlueJewelImage = loadimage(vPath + "assets/jewel_blue.png")
+    vOrangeJewelImage = loadimage(vPath + "assets/jewel_orange.png")
+    vGreenJewelImage = loadimage(vPath + "assets/jewel_green.png")
+    vBlueKeyImage = loadimage(vPath + "assets/key_blue.png")
+    vOrangeKeyImage = loadimage(vPath + "assets/key_orange.png")
+    vGreenKeyImage = loadimage(vPath + "assets/key_green.png")
+    vHeartImage = loadimage(vPath + "assets/heart.png")
+    vFlamesBlueImage = loadimage(vPath + "assets/flames_blue.png", 4, 1)
+    vFlamesOrangeImage = loadimage(vPath + "assets/flames_orange.png", 4, 1)
+    vFlamesGreenImage = loadimage(vPath + "assets/flames_green.png", 4, 1)
+    vSlimeImage = loadimage(vPath + "assets/slime.png", 3, 1)
+    vSlimeHitImage = loadimage(vPath + "assets/slime_hit.png", 3, 1)
+    vBatImage = loadimage(vPath + "assets/bat.png", 3, 1)
+    vBatShadowImage = loadimage(vPath + "assets/bat_shadow.png", 3, 1)
+    vBatHitImage = loadimage(vPath + "assets/bat_hit.png", 3, 1)
+    vChaserImage = loadimage(vPath + "assets/blue.png", 6, 4)
+    vChaserHitImage = loadimage(vPath + "assets/blue_hit.png", 6, 4)
+    vShooterImage = loadimage(vPath + "assets/shooter.png", 4, 4)
+    vShooterHitImage = loadimage(vPath + "assets/shooter_hit.png", 4, 4)
+    vSkullImage = loadimage(vPath + "assets/skull.png")
+    vJawImage = loadimage(vPath + "assets/jaw.png")
+    vSkullHitImage = loadimage(vPath + "assets/skull_hit.png")
+    vJawHitImage = loadimage(vPath + "assets/jaw_hit.png")
+    vFireballLeftImage = loadimage(vPath + "assets/fireball_left.png", 2, 1)
+    vFireballShadowLeftImage = loadimage(vPath + "assets/fireball_shadow_left.png", 2, 1)
+    vFireballRightImage = loadimage(vPath + "assets/fireball_right.png", 2, 1)
+    vFireballShadowRightImage = loadimage(vPath + "assets/fireball_shadow_right.png", 2, 1)
+    vFireballUpImage = loadimage(vPath + "assets/fireball_up.png", 1, 2)
+    vFireballShadowUpImage = loadimage(vPath + "assets/fireball_shadow_up.png", 1, 2)
+    vFireballDownImage = loadimage(vPath + "assets/fireball_down.png", 1, 2)
+    vFireballShadowDownImage = loadimage(vPath + "assets/fireball_shadow_down.png", 1, 2)
+    vBossStaminaImage = loadimage(vPath + "assets/boss_stamina.png", 2, 1)
+    vExplosionImage = loadimage(vPath + "assets/explosion.png", 8, 1)
+    vSmallExplosionImage = loadimage(vPath + "assets/explosion_small.png", 8, 1)
+    vGameIconsImage = loadimage(vPath + "assets/game_icons.png", 6, 1)
+    vPlayerIconImage = loadimage(vPath + "assets/player_icon.png")
+    vMessageImage = createimage(MSG_WIDTH, MSG_HEIGHT)
+    ' Fonts.
+    vFont = loadfont(vPath + "assets/font8b_2x")
+    ' Music.
+    vGameMusic = loadmusic(vPath + "assets/game_3631993.mp3")
+    set music volume vGameMusic, 0.60
+    vBossMusic = loadmusic(vPath + "assets/boss_3929309.mp3")
+    set music volume vBossMusic, 0.60
+    ' Sound.
+    vEnemyExplodeSound = loadsound(vPath + "assets/sfx/enemy_explode.wav")
+    vThrowSound = loadsound(vPath + "assets/sfx/boomerang.wav")
+    vWallHitSound = loadsound(vPath + "assets/sfx/wall.wav")
+    vJewelSound = loadsound(vPath + "assets/sfx/jewel.wav")
+    vKeySound = loadsound(vPath + "assets/sfx/key.wav")
+    vHeartSound = loadsound(vPath + "assets/sfx/heart.wav")
+    vEnemyHitSound = loadsound(vPath + "assets/sfx/enemy_hit.wav")
+    vButtonSound = loadsound(vPath + "assets/sfx/button.wav")
+    vGateSound = loadsound(vPath + "assets/sfx/gate.wav")
+    vDoorSound = loadsound(vPath + "assets/sfx/door.wav")
+    vChaserSound = loadsound(vPath + "assets/sfx/chaser.wav")
+    vFireballSound = loadsound(vPath + "assets/sfx/fireball.wav")
+    vFireballsSound = loadsound(vPath + "assets/sfx/fireballs.wav")
+    vSkullSound = loadsound(vPath + "assets/sfx/skull_hit.wav")
+    vHurtSound = loadsound(vPath + "assets/sfx/hurt.wav")
+    vDeathSound = loadsound(vPath + "assets/sfx/death.wav")
+endfunc
+
+' ImageScreen
+' -----------
+' Display an image and some text.
+function ImageScreen(img, lines, blinkText)
+    blinkTimer = 0
+    esc = false
+    do
+        blinkTimer = (blinkTimer + 1)%100
+        if keydown(KEY_ESCAPE, true)
+            esc = true
+            break
+        endif
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        draw image img, (width(primary) - width(img))/2, height(primary)/4 - height(img)/2
+        set font vFont
+        set color vTextColor
+        set caret width(primary)/2, (height(primary) - fheight()*sizeof(lines))/2
+        for i = 0 to sizeof(lines) - 1  center lines[i]
+        if blinkTimer > 50
+            set caret width(primary)/2, 3*height(primary)/4
+            center blinkText
+        endif
+        redraw
+        fwait 60
+    until keydown(KEY_SPACE, true) or joybutton(0, true)
+    set color 0, 0, 0
+    cls
+    redraw
+    wait 500
+    return not esc
+endfunc
+
+' LoadLevel
+' ---------
+' Why I'm regenerating the meshes and textures on every level load? To support different tile sets,
+' something that I never took advantage of.
+function LoadLevel(filename)
+    ' Free meshes.
+    S3D_FreeMesh(vLevelMesh)
+    S3D_FreeMesh(vXDoorMesh)
+    S3D_FreeMesh(vYDoorMesh)
+    S3D_FreeMesh(vButtonMesh)
+    S3D_FreeMesh(vBarsMesh)
+    S3D_FreeMesh(vStairsMesh)
+    ' Free images.
+    foreach t in vWallTextures  free image t
+    foreach t in vCeilingTextures  free image t
+    foreach t in vFloorTextures  free image t
+    clear vWallTextures
+    clear vCeilingTextures
+    clear vFloorTextures
+    clear vEnemies
+    clear vAnimations
+    clear vUnboundItems
+
+    if not TM_LoadMap(filename)  return false
+    
+    set color 0, 0, 0
+    cls
+    redraw
+    wait 250
+    
+    img = TM_GetImage();  numCols = cols(img);  w = width(img);  h = height(img)
+    mapW = TM_MapWidth();  mapH = TM_MapHeight()
+    vItems = dim(mapW, mapH)
+    vJewels = 0
+    vJewelsTotal = 0
+    vBoss = unset
+    
+    ' Generate textures from tilemap image.
+    set color 255, 255, 255
+    for i = 0 to numCols - 1
+        vWallTextures[i] = createimage(w, h)
+        set image vWallTextures[i]
+        draw image img, 0, 0, i
+        vCeilingTextures[i] = createimage(w, h)
+        set image vCeilingTextures[i]
+        draw image img, 0, 0, numCols + i
+        vFloorTextures[i] = createimage(w, h)
+        set image vFloorTextures[i]
+        draw image img, 0, 0, numCols*2 + i
+    next
+    set image primary
+    
+    ' Door along x axis mesh.
+    vXDoorMesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+            S3D_Texture(vCeilingTextures[numCols - 1])
+            S3D_Vertex(0, 0.25, -1, 0, 0)
+            S3D_Vertex(1, 0.25, -1, 1, 0)
+            S3D_Vertex(1, 0.75, -1, 1, 0.49)
+            S3D_Vertex(0, 0.75, -1, 0, 0.49)
+            S3D_Texture(vWallTextures[numCols - 1])
+            S3D_Vertex(0, 0.75, -1, 0, 0)
+            S3D_Vertex(1, 0.75, -1, 1, 0)
+            S3D_Vertex(1, 0.75, 0,  1, 1)
+            S3D_Vertex(0, 0.75, 0,  0, 1)
+        S3D_End()
+    S3D_EndMesh()
+    
+    ' Door along y axis mesh.
+    vYDoorMesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+            S3D_Texture(vCeilingTextures[numCols - 1])
+            S3D_Vertex(0.25, 0, -1, 0, 0)
+            S3D_Vertex(0.75, 0, -1, 0, 0.49)
+            S3D_Vertex(0.75, 1, -1, 1, 0.49)
+            S3D_Vertex(0.25, 1, -1, 1, 0)
+            S3D_Texture(vWallTextures[numCols - 1])
+            S3D_Vertex(0.25, 0, -1, 0, 0)
+            S3D_Vertex(0.25, 1, -1, 1, 0)
+            S3D_Vertex(0.25, 1,  0, 1, 1)
+            S3D_Vertex(0.25, 0,  0, 0, 1)
+            S3D_Vertex(0.75, 0, -1, 0, 0)
+            S3D_Vertex(0.75, 0,  0, 0, 1)
+            S3D_Vertex(0.75, 1,  0, 1, 1)
+            S3D_Vertex(0.75, 1, -1, 1, 0)
+        S3D_End()
+    S3D_EndMesh()
+    
+    ' Button mesh.
+    vButtonMesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+            S3D_Translate(0.5, 0.5, 0)
+            S3D_Texture(vCeilingTextures[numCols - 2])
+            S3D_Vertex(-0.375, -0.375, -0.25, 0,    0)
+            S3D_Vertex( 0.375, -0.375, -0.25, 0.75, 0)
+            S3D_Vertex( 0.375,  0.375, -0.25, 0.75, 0.75)
+            S3D_Vertex(-0.375,  0.375, -0.25, 0,    0.75)            
+            S3D_Vertex(-0.375, 0.375, -0.25, 0,    0.75)
+            S3D_Vertex( 0.375, 0.375, -0.25, 0.75, 0.75)
+            S3D_Vertex( 0.375, 0.375,  0,    0.75, 1)
+            S3D_Vertex(-0.375, 0.375,  0,    0,    1)            
+            S3D_Vertex(-0.375, -0.375, -0.25, 1,    0)
+            S3D_Vertex(-0.375,  0.375, -0.25, 1,    0.75)
+            S3D_Vertex(-0.375,  0.375,  0,    0.75, 0.75)
+            S3D_Vertex(-0.375, -0.375,  0,    0.75, 0)
+            S3D_Vertex(0.375, -0.375, -0.25, 1, 0)
+            S3D_Vertex(0.375, -0.375,  0,    0.75, 0)
+            S3D_Vertex(0.375,  0.375,  0,    0.75, 0.75)
+            S3D_Vertex(0.375,  0.375, -0.25, 1, 0.75)
+        S3D_End()
+    S3D_EndMesh()
+    
+    ' Bars mesh.
+    vBarsMesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+            hs = 0.0625
+            S3D_Texture(vCeilingTextures[numCols - 3])
+            S3D_Translate(-0.5 + hs*2, 0, 0)
+            for x = 0 to 3
+                S3D_Vertex(-hs, -hs, -1, 0.26, 0)
+                S3D_Vertex(-hs,  hs, -1, 0.26, 0)
+                S3D_Vertex(-hs,  hs,  0, 0.26, 1)
+                S3D_Vertex(-hs, -hs,  0, 0.26, 1)
+                S3D_Vertex(-hs, hs, -1, 0, 0)
+                S3D_Vertex( hs, hs, -1, 0, 0)
+                S3D_Vertex( hs, hs,  0, 0, 1)
+                S3D_Vertex(-hs, hs,  0, 0, 1)
+                S3D_Vertex(hs,  hs, -1, 0.26, 0)
+                S3D_Vertex(hs, -hs, -1, 0.26, 0)
+                S3D_Vertex(hs, -hs,  0, 0.26, 1)
+                S3D_Vertex(hs,  hs,  0, 0.26, 1)
+                S3D_Vertex( hs, -hs, -1, 0, 0)
+                S3D_Vertex(-hs, -hs, -1, 0, 0)
+                S3D_Vertex(-hs, -hs,  0, 0, 1)
+                S3D_Vertex( hs, -hs,  0, 0, 1)
+                S3D_Vertex(-hs, -hs, -1, 0.75, 0.75)
+                S3D_Vertex( hs, -hs, -1, 0.75, 0.75)
+                S3D_Vertex( hs,  hs, -1, 0.75, 0.75)
+                S3D_Vertex(-hs,  hs, -1, 0.75, 0.75)
+                S3D_Translate(hs*4, 0, 0)
+            next
+        S3D_End()
+    S3D_EndMesh()
+    
+    ' Stairs mesh
+    vStairsMesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+            S3D_Texture(vWallTextures[numCols - 4])
+            ' top.
+            S3D_Vertex(0,    0, -0.25, 0,    0)
+            S3D_Vertex(0.25, 0, -0.25, 0.25, 0)
+            S3D_Vertex(0.25, 1, -0.25, 0.25, 1)
+            S3D_Vertex(0,    1, -0.25, 0,    1)
+            S3D_Vertex(0.25, 0, -0.5, 0,    0)
+            S3D_Vertex(0.5,  0, -0.5, 0.25, 0)
+            S3D_Vertex(0.5,  1, -0.5, 0.25, 1)
+            S3D_Vertex(0.25, 1, -0.5, 0,    1)
+            S3D_Vertex(0.5,  0, -0.75, 0,    0)
+            S3D_Vertex(0.75, 0, -0.75, 0.25, 0)
+            S3D_Vertex(0.75, 1, -0.75, 0.25, 1)
+            S3D_Vertex(0.5,  1, -0.75, 0,    1)
+            S3D_Vertex(0.75, 0, -1, 0,    0)
+            S3D_Vertex(1,    0, -1, 0.25, 0)
+            S3D_Vertex(1,    1, -1, 0.25, 1)
+            S3D_Vertex(0.75, 1, -1, 0,    1)
+            ' left side.
+            S3D_Vertex(0, 0, -0.25,  0.5,  0)
+            S3D_Vertex(0, 1, -0.25,  0.5,  1)
+            S3D_Vertex(0, 1,  0,     0.25, 1)
+            S3D_Vertex(0, 0,  0,     0.25, 0)
+            S3D_Vertex(0.25, 0, -0.5,  0.5,  0)
+            S3D_Vertex(0.25, 1, -0.5,  0.5,  1)
+            S3D_Vertex(0.25, 1, -0.25,     0.25, 1)
+            S3D_Vertex(0.25, 0, -0.25,     0.25, 0)
+            S3D_Vertex(0.5, 0, -0.75,  0.5,  0)
+            S3D_Vertex(0.5, 1, -0.75,  0.5,  1)
+            S3D_Vertex(0.5, 1, -0.5,     0.25, 1)
+            S3D_Vertex(0.5, 0, -0.5,     0.25, 0)
+            S3D_Vertex(0.75, 0, -1,  0.5,  0)
+            S3D_Vertex(0.75, 1, -1,  0.5,  1)
+            S3D_Vertex(0.75, 1, -0.75,     0.25, 1)
+            S3D_Vertex(0.75, 0, -0.75,     0.25, 0)
+            ' right side.
+            S3D_Texture(vCeilingTextures[numCols - 4])
+            S3D_Vertex(1, 0, -1, 0, 0)
+            S3D_Vertex(1, 0, 0,  0, 1)
+            S3D_Vertex(1, 1, 0,  1, 1)
+            S3D_Vertex(1, 1, -1, 1, 0)
+            ' front.
+            S3D_Vertex(0.75, 1, -1, 0.75, 0)
+            S3D_Vertex(1, 1, -1, 1, 0)
+            S3D_Vertex(1, 1, -0.75, 1, 0.25)
+            S3D_Vertex(0.75, 1, -0.75, 0.75, 0.25)
+            S3D_Vertex(0.5, 1, -0.75, 0.5, 0.25)
+            S3D_Vertex(1, 1, -0.75, 1, 0.25)
+            S3D_Vertex(1, 1, -0.5, 1, 0.5)
+            S3D_Vertex(0.5, 1, -0.5, 0.5, 0.5)
+            S3D_Vertex(0.25, 1, -0.5, 0.25, 0.5)
+            S3D_Vertex(1, 1, -0.5, 1, 0.5)
+            S3D_Vertex(1, 1, -0.25, 1, 0.75)
+            S3D_Vertex(0.25, 1, -0.25, 0.25, 0.75)
+            S3D_Vertex(0, 1, -0.25, 0, 0.75)
+            S3D_Vertex(1, 1, -0.25, 1, 0.75)
+            S3D_Vertex(1, 1, 0, 1, 1)
+            S3D_Vertex(0, 1, 0, 0, 1)
+        S3D_End()
+    S3D_EndMesh()
+        
+    ' Create level mesh.
+    vLevelMesh = S3D_BeginMesh()
+    S3D_Begin(S3D_QUADS)
+    S3D_Color(255, 255, 255)
+    
+    for y = 0 to mapH - 1  for x = 0 to mapW - 1
+        c = TM_GetCel(x, y)
+        if c >= 0
+            cc = c%numCols
+            if c < numCols
+                ' Door?
+                if c = numCols - 1
+                    if TM_GetFlag(x, y) = "blue"
+                        id = BLUE_DOOR_ID
+                        img = vFlamesBlueImage
+                    elseif TM_GetFlag(x, y) = "orange"
+                        id = ORANGE_DOOR_ID
+                        img = vFlamesOrangeImage
+                    else
+                        id = GREEN_DOOR_ID
+                        img = vFlamesGreenImage
+                    endif
+                    ' If there's no wall above, it's a horizontal door.
+                    ftop = TM_GetCel(x, y - 1) - numCols*2
+                    if ftop >= 0
+                        fbottom = TM_GetCel(x, y + 1) - numCols*2
+                        if ftop = fbottom  f = ftop
+                        elseif ftop = 0  f = 4
+                        else  f = 5
+                        vItems[x][y] = Door(id, true, x, y)
+                        vItems[x - 1][y] = Pickup(0, img, x - 1 + 0.5, y + 0.5)
+                        vItems[x + 1][y] = Pickup(0, img, x + 1 + 0.5, y + 0.5)
+                        vItems[x - 1][y].SetZ(1)
+                        vItems[x + 1][y].SetZ(1)
+                    else
+                        fleft = TM_GetCel(x - 1, y) - numCols*2
+                        fright = TM_GetCel(x + 1, y) - numCols*2
+                        if fleft = fright  f = fleft
+                        elseif fleft = 0  f = 2
+                        else  f = 3
+                        vItems[x][y] = Door(id, false, x, y)
+                        vItems[x][y - 1] = Pickup(0, img, x + 0.5, y - 1 + 0.5)
+                        vItems[x][y + 1] = Pickup(0, img, x + 0.5, y + 1 + 0.5)
+                        vItems[x][y - 1].SetZ(1)
+                        vItems[x][y + 1].SetZ(1)
+                    endif
+                    S3D_Texture(vFloorTextures[f])
+                    S3D_Vertex(x, y, 0,         0, 0)
+                    S3D_Vertex(x + 1, y, 0,     1, 0)
+                    S3D_Vertex(x + 1, y + 1, 0, 1, 1)
+                    S3D_Vertex(x, y + 1, 0,     0, 1)
+                ' Button.
+                elseif c = numCols - 2
+                    for yy = y - 1 to y + 1  for xx = x - 1 to x + 1
+                        if TM_GetCel(xx, yy) >= numCols  f = TM_GetCel(xx, yy)
+                    next
+                    S3D_Texture(vFloorTextures[f - numCols*2])
+                    S3D_Vertex(x, y, 0,         0, 0)
+                    S3D_Vertex(x + 1, y, 0,     1, 0)
+                    S3D_Vertex(x + 1, y + 1, 0, 1, 1)
+                    S3D_Vertex(x, y + 1, 0,     0, 1)
+                    vItems[x][y] = Button(TM_GetFlag(x, y), x, y)
+                ' Bars.
+                elseif c = numCols - 3
+                    ' If there's no wall above, it's a horizontal door.
+                    ftop = TM_GetCel(x, y - 1) - numCols*2
+                    if ftop >= 0
+                        fbottom = TM_GetCel(x, y + 1) - numCols*2
+                        if ftop = fbottom  f = ftop
+                        elseif ftop = 0  f = 4
+                        else  f = 5
+                        vItems[x][y] = Bars(TM_GetFlag(x, y), true, x, y)
+                    else
+                        fleft = TM_GetCel(x - 1, y) - numCols*2
+                        fright = TM_GetCel(x + 1, y) - numCols*2
+                        if fleft = fright  f = fleft
+                        elseif fleft = 0  f = 2
+                        else  f = 3
+                        vItems[x][y] = Bars(TM_GetFlag(x, y), false, x, y)
+                    endif
+                    S3D_Texture(vFloorTextures[f])
+                    S3D_Vertex(x,     y,     0, 0, 0)
+                    S3D_Vertex(x + 1, y,     0, 1, 0)
+                    S3D_Vertex(x + 1, y + 1, 0, 1, 1)
+                    S3D_Vertex(x,     y + 1, 0, 0, 1)
+                ' Stairs.
+                elseif c = numCols - 4
+                    vItems[x][y] = Stairs(x, y)
+                else
+                    ' "Ceiling".
+                    S3D_Texture(vCeilingTextures[cc])
+                    S3D_Vertex(x,     y,     -1, 0, 0)
+                    S3D_Vertex(x + 1, y,     -1, 1, 0)
+                    S3D_Vertex(x + 1, y + 1, -1, 1, 1)
+                    S3D_Vertex(x,     y + 1, -1, 0, 1)
+                    ' Walls.
+                    S3D_Texture(vWallTextures[cc])
+                    if TM_GetCel(x - 1, y) >= 4 or TM_GetCel(x - 1, y) < 0
+                        S3D_Vertex(x, y,     -1, 0, 0)
+                        S3D_Vertex(x, y + 1, -1, 1, 0)
+                        S3D_Vertex(x, y + 1,  0, 1, 1)
+                        S3D_Vertex(x, y,      0, 0, 1)
+                    endif
+                    if TM_GetCel(x + 1, y) >= 4 or TM_GetCel(x + 1, y) < 0
+                        S3D_Vertex(x + 1, y,     -1, 0, 0)
+                        S3D_Vertex(x + 1, y,      0, 0, 1)
+                        S3D_Vertex(x + 1, y + 1,  0, 1, 1)
+                        S3D_Vertex(x + 1, y + 1, -1, 1, 0)
+                    endif
+                    if TM_GetCel(x, y + 1) >= 4 or TM_GetCel(x, y + 1) < 0
+                        S3D_Vertex(x,     y + 1, -1, 0, 0)
+                        S3D_Vertex(x + 1, y + 1, -1, 1, 0)
+                        S3D_Vertex(x + 1, y + 1,  0, 1, 1)
+                        S3D_Vertex(x,     y + 1,  0, 0, 1)
+                    endif
+                endif
+            else
+                ' Floor.
+                S3D_Texture(vFloorTextures[c - numCols*2])
+                S3D_Vertex(x,     y,     0, 0, 0)
+                S3D_Vertex(x + 1, y,     0, 1, 0)
+                S3D_Vertex(x + 1, y + 1, 0, 1, 1)
+                S3D_Vertex(x,     y + 1, 0, 0, 1)
+            endif
+        endif
+    next
+    S3D_End()
+    S3D_EndMesh()
+    
+    ' Create players, enemies, pickups ...
+    foreach f in TM_GetLoaderFlags()
+        cx = f.x + 0.5;  cy = f.y + 0.5
+        select f.flag
+            case "player"  vPlayer = Player(cx, cy)
+            case "blue jewel"
+                vItems[f.x][f.y] = Pickup(JEWEL_ID, vBlueJewelImage, cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "orange jewel"
+                vItems[f.x][f.y] = Pickup(JEWEL_ID, vOrangeJewelImage, cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "green jewel"
+                vItems[f.x][f.y] = Pickup(JEWEL_ID, vGreenJewelImage, cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "jewel"
+                vJewelsTotal = vJewelsTotal + 1
+                select rnd(3)
+                    case 0  vItems[f.x][f.y] = Pickup(JEWEL_ID, vBlueJewelImage, cx, cy)
+                    case 1  vItems[f.x][f.y] = Pickup(JEWEL_ID, vOrangeJewelImage, cx, cy)
+                    case 2  vItems[f.x][f.y] = Pickup(JEWEL_ID, vGreenJewelImage, cx, cy)
+                endsel
+            case "heart"  vItems[f.x][f.y] = Pickup(HEART_ID, vHeartImage, cx, cy)
+            case "blue key"  vItems[f.x][f.y] = Pickup(BLUE_KEY_ID, vBlueKeyImage, cx, cy)
+            case "orange key"  vItems[f.x][f.y] = Pickup(ORANGE_KEY_ID, vOrangeKeyImage, cx, cy)
+            case "green key"  vItems[f.x][f.y] = Pickup(GREEN_KEY_ID, vGreenKeyImage, cx, cy)
+            case "slime"
+                vEnemies[sizeof(vEnemies)] = Slime(cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "bat"
+                vEnemies[sizeof(vEnemies)] = Bat(cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "chaser"
+                vEnemies[sizeof(vEnemies)] = Chaser(cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "shooter"
+                vEnemies[sizeof(vEnemies)] = Shooter(cx, cy)
+                vJewelsTotal = vJewelsTotal + 1
+            case "boss"
+                vBoss = Skull(cx, cy)
+                vEnemies[sizeof(vEnemies)] = vBoss
+                vJewelsTotal = vJewelsTotal + 10
+        endsel
+    next
+    return true
+endfunc
+
+' Player
+' ------
+function Player(x, y)
+    s = Sprite()
+    s.SetImage(vPlayerImage)
+    s.SetPos(x, y)
+    s.SetZ(0)
+    s.SetColSize(0.625, 0.5)
+    s.SetCel(8)
+    s.dir = DOWN
+    s.spd = 2.5
+    s.dx = 0
+    s.dy = 0
+    s.bom = Boomerang(s)
+    s.bom.SetImage(vBoomerangImage)
+    s.atk = 0
+    s.htim = 0
+    s.items = []
+    s.stm = 3
+    s.deathAnm = unset
+    
+    ' Stamina
+    ' -------
+    s.Stamina = function();  return this.stm;  endfunc
+    ' Boomerang
+    ' ---------
+    s.Boomerang = function();  return this.bom;  endfunc
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        ' Death animation?
+        if this.deathAnm  return this.deathAnm.Update(dt)
+        
+        ' Hit timer.
+        this.htim = max(this.htim - dt, 0)
+        'if this.htim > 0
+        '    this.htim = this.htim - dt
+        '    if this.htim <= 0
+        '        this.SetImage(vPlayerImage)
+        '    endif
+        'endif
+        ' Move with arrow keys.
+        moving = false
+        this.dx = 0;  this.dy = 0
+        this.atk = max(this.atk - dt, 0)
+        if not this.atk
+            if keydown(KEY_LEFT) or joyx() < 0
+                this.PlayAnim(vPlayerLeftAnim, 10, true)
+                this.dir = LEFT
+                this.dx = -1
+                moving = true
+            elseif keydown(KEY_RIGHT) or joyx() > 0
+                this.PlayAnim(vPlayerRightAnim, 10, true)
+                this.dir = RIGHT
+                this.dx = 1
+                moving = true
+            endif
+            if keydown(KEY_UP) or joyy() < 0
+                if not moving
+                    this.PlayAnim(vPlayerUpAnim, 10, true)
+                    this.dir = UP
+                endif
+                this.dy = -1
+                moving = true
+            elseif keydown(KEY_DOWN) or joyy() > 0
+                if not moving
+                    this.PlayAnim(vPlayerDownAnim, 10, true)
+                    this.dir = DOWN
+                endif
+                this.dy = 1
+                moving = true
+            endif
+        endif
+        ' Moving?
+        if moving
+            k = 1/sqr(this.dx*this.dx + this.dy*this.dy)
+            this.dx = this.dx*k;  this.dy = this.dy*k
+            ' Player, and only player, should be able to walk on button.
+            TM_SetObstacle(6, false)
+            this.Move(this.dx*this.spd*dt, this.dy*this.spd*dt)
+            TM_SetObstacle(6, true)
+        else
+            this.StopAnim(true)
+            if this.atk  offs = 3
+            else  offs = 0
+            select this.dir
+                case LEFT  this.SetCel(4 + offs)
+                case RIGHT  this.SetCel(0 + offs)
+                case UP  this.SetCel(12 + offs)
+                default  this.SetCel(8 + offs)
+            endsel
+        endif
+        ' Item in front of player.
+        item = unset
+        x = this.X();  y = this.Y()
+        dx = x - floor(x);  dy = y - floor(y)
+        select this.dir
+            case LEFT   if dx < 0.5  item = vItems[x - 1 ][y]
+            case RIGHT  if dx > 0.5  item = vItems[x + 1][y]
+            case UP     if dy < 0.5  item = vItems[x][y - 1]
+            case DOWN   if dy > 0.5  item = vItems[x][y + 1]
+        endsel
+
+        if keydown(KEY_SPACE, true) or joybutton(0, true)
+            used = false
+            if item  select item.id
+                case BLUE_DOOR_ID
+                    if val(this.items, BLUE_KEY_ID) and item.Open()  used = true
+                case ORANGE_DOOR_ID
+                    if val(this.items, ORANGE_KEY_ID) and item.Open()  used = true
+                case GREEN_DOOR_ID
+                    if val(this.items, GREEN_KEY_ID) and item.Open()  used = true
+                case STAIRS_ID
+                    if vJewels = vJewelsTotal
+                        vLevelComplete = true
+                        used = true
+                    endif
+            endsel
+            if not used
+                if not this.bom.Active()
+                    if moving
+                        this.bom.Throw(this.dx*4, this.dy*4)
+                    else
+                        select this.dir  
+                        case LEFT  this.bom.Throw(-4, 0)
+                        case RIGHT  this.bom.Throw(4, 0)
+                        case UP  this.bom.Throw(0, -4)
+                        case DOWN  this.bom.Throw(0, 4)
+                        endsel
+                    endif
+                    this.atk = 0.2
+                    play sound vThrowSound
+
+                endif
+            endif
+        else
+            ' Display info.
+            if item  select item.id
+                case BLUE_DOOR_ID
+                    if val(this.items, BLUE_KEY_ID)
+                        ShowQuickMessage("Press action button to use key!")
+                    else
+                        ShowQuickMessage("Need a blue key!")
+                    endif
+                case ORANGE_DOOR_ID
+                    if val(this.items, ORANGE_KEY_ID)
+                        ShowQuickMessage("Press action button to use key!")
+                    else
+                        ShowQuickMessage("Need an orange key!")
+                    endif
+                case GREEN_DOOR_ID
+                    if val(this.items, GREEN_KEY_ID)
+                        ShowQuickMessage("Press action button to use key!")
+                    else
+                        ShowQuickMessage("Need a green key!")
+                    endif
+                case BARS_ID
+                    ShowQuickMessage("This opens elsewhere!")
+                case BUTTON_ID
+                    if not item.Used()  ShowQuickMessage("Stand on it!")
+                case STAIRS_ID
+                    if vJewels >= vJewelsTotal
+                        ShowQuickMessage("Press action button to leave!")
+                    else
+                        ShowQuickMessage("Not leaving without the jewels!")
+                    endif
+            endsel
+        endif
+        ' Step on and off itms with height, only used for buttons.
+        i = vItems[this.x_][this.y_]
+        if i and i.h > 0  this.SetZ(min(i.h, this.z_ + 4*dt))
+        else  this.SetZ(max(0, this.z_ - 4*dt))
+        
+        this.UpdateAnim(dt)        
+        this.bom.Update(dt)
+        
+        return true
+    endfunc
+    ' Hit
+    ' ---
+    s.Hit = function(dmg)
+        if this.htim = 0 and not this.deathAnm
+            this.htim = 1.5
+            'this.SetImage(vPlayerHitImage)
+            this.stm = max(this.stm - dmg, 0)
+            if this.stm = 0
+                this.deathAnm = Animation(vPlayerDeathImage, this.X(), this.Y(), 0, 10)
+                play sound vDeathSound
+            else
+                play sound vHurtSound, 0.8
+            endif
+        endif
+    endfunc
+    ' AddItem
+    ' -------
+    s.AddItem = function(id)
+        select id
+        case JEWEL_ID
+            vJewels = vJewels + 1
+            vScore = vScore + 25
+            play sound vJewelSound, 0.75
+            return true
+        case HEART_ID
+            if this.stm < 3
+                this.stm = this.stm + 1
+                play sound vHeartSound
+                return true
+            endif
+        case BLUE_KEY_ID, ORANGE_KEY_ID, GREEN_KEY_ID
+            if not this.HasItem(id)
+                this.items[sizeof(this.items)] = id
+                play sound vKeySound, 0.8
+                return true
+            endif
+        endsel
+        return false
+    endfunc
+    ' HasItem
+    ' -------
+    s.HasItem = function(id)
+        return val(this.items, id)
+    endfunc
+    ' Draw
+    ' ----
+    s.Draw = function()
+        if this.deathAnm
+            this.deathAnm.Draw()
+        else
+            if this.htim%0.2 < 0.1  this.SpriteDraw()
+            if this.bom.Active()  this.bom.Draw()
+        endif
+    endfunc
+        
+    return s
+endfunc
+
+' Boomerang
+' ---------
+function Boomerang(sprite)
+    s = Sprite()
+    s.SetZ(0.5)
+    s.SetFlat(true)
+    s.SetShadowImage(vBoomerangShadowImage)
+    s.spr = sprite
+    s.p = unset
+    s.hit = false
+    s.spd = 1.5
+    s.pts = fill([x: 0, y: 0], 4)
+    ' SetSpeed
+    ' --------
+    s.SetSpeed = function(spd)
+        this.spd = spd
+    endfunc
+    ' Throw
+    ' -----
+    s.Throw = function(dx, dy)
+        if typeof(this.p)  return false
+        x = this.spr.X();  y = this.spr.Y()
+        this.pts[0].x = x;  this.pts[0].y = y
+        this.pts[1].x = x + dx;  this.pts[1].y = y + dy
+        this.pts[2].x = x + dx;  this.pts[2].y = y + dy
+        this.pts[3].x = x;  this.pts[3].y = y
+        this.p = 0
+        this.hit = false
+        this.SetPos(this.pts[0].x, this.pts[0].y)
+        this.StopAnim(true)
+        this.PlayAnim(vBoomerangAnim, 15, true)
+        return true
+    endfunc
+    ' Active
+    ' ------
+    s.Active = function()
+        return this.p <> unset
+    endfunc
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        if this.p = unset  return false
+        this.UpdateAnim(dt)
+        this.pts[3].x = this.spr.X();  this.pts[3].y = this.spr.Y()
+        this.p = this.p + (this.spd + this.hit*this.spd)*dt
+        EvalCBC(this, this.pts, min(this.p, 1))
+        if this.hit
+            this.SetPos(this.x, this.y)
+        else
+            dx = this.x - this.X();  dy = this.y - this.Y()
+            this.SetColSize(0, 0)
+            this.Move(dx, dy)
+            this.SetColSize(0.75, 0.75)
+            if TM_CollisionLeft() or TM_CollisionRight() or TM_CollisionUp() or TM_CollisionDown()
+                play sound vWallHitSound, 0.25
+                this.Return()
+            endif
+        endif        
+        if this.p >= 1
+            this.SetPos(-1, -1)  ' For collision tests to work without checking Active().
+            this.p = unset
+        endif
+        return this.p <> unset
+    endfunc
+    ' Return
+    ' ------
+    s.Return = function()
+        this.hit = true
+        if this.p < 0.5
+            this.p = 0.5
+            this.pts[0].x = this.X();  this.pts[0].y = this.Y()
+            this.pts[1].x = this.pts[0].x;  this.pts[1].y = this.pts[0].y
+            this.pts[2].x = this.pts[0].x;  this.pts[2].y = this.pts[0].y
+        endif
+    endfunc    
+    return s
+endfunc
+
+' Enemy
+' -----
+' Common base for all enemies.
+function Enemy()
+    s = Sprite()
+    s.dimg_ = unset
+    s.himg_ = unset
+    s.hit_ = 0
+    s.stm_ = 1
+    s.dmg_ = 1
+    s.scr_ = 0
+    ' SetImage
+    ' --------
+    s.SpriteSetImage = s.SetImage
+    s.SetImage = function(img)
+        this.dimg_ = img
+        this.SpriteSetImage(img)
+    endfunc
+    ' SetHitImage
+    ' -----------
+    s.SetHitImage = function(img)
+        this.himg_ = img
+    endfunc
+    ' SetStamina
+    ' ----------
+    s.SetStamina = function(stamina)
+        this.stm_ = stamina
+    endfunc
+    ' SetDamage
+    ' ---------
+    s.SetDamage = function(damage)
+        this.dmg_ = damage
+    endfunc
+    ' SetScore
+    ' --------
+    s.SetScore = function(score)
+        this.scr_ = score
+    endfunc
+    ' Hit
+    ' ---
+    s.Hit = function();  endfunc
+    s.Bump = function(dx, dy);  endfunc
+    ' EnemyUpdate
+    ' -----------
+    ' Enemies should return the result of this function in their Update.
+    s.EnemyUpdate = function(dt)
+        ' Invincible?
+        if this.hit_ > 0
+            this.hit_ = this.hit_ - dt
+            if this.hit_ <= 0
+                this.SpriteSetImage(this.dimg_)
+            endif
+        else
+            ' Collision with player's boomerang?
+            if this.himg_ and this.Overlaps(vPlayer.Boomerang())
+                vPlayer.Boomerang().Return()
+                this.stm_ = this.stm_ - 1
+                if this.stm_ <= 0
+                    vAnimations[sizeof(vAnimations)] = Animation(vExplosionImage,
+                            this.X(), this.Y() + 0.025, this.Z() + 0.5*this.Height(), 15)
+                    vScore = vScore + this.scr_
+                    select rnd(3)
+                        case 0  img = vBlueJewelImage
+                        case 1  img = vOrangeJewelImage
+                        default  img = vGreenJewelImage
+                    endsel
+                    item = Pickup(JEWEL_ID, img, this.X(), this.Y())
+                    item.SetZ(this.Z())
+                    vUnboundItems[sizeof(vUnboundItems)] = item
+                    
+                    play sound vEnemyExplodeSound
+                    return false
+                else
+                    this.hit_ = 0.25
+                    this.SpriteSetImage(this.himg_)
+                    this.Hit()
+                    play sound vEnemyHitSound, 0.5
+                endif
+            endif
+        endif 
+        ' Collision with player?
+        if this.Overlaps(vPlayer)
+            vPlayer.Hit(this.dmg_)
+            dx = this.X() - vPlayer.X();  dy = this.Y() - vPlayer.Y()
+            if dx or dy
+                k = 1/sqr(dx*dx + dy*dy)
+                dx = dx*k;  dy = dy*k
+            endif
+            this.Bump(dx, dy)
+        endif
+        return true
+    endfunc
+    return s
+endfunc
+
+' Slime
+' -----
+function Slime(x, y)
+    s = Enemy()
+    s.SetStamina(2)
+    s.SetScore(50)
+    s.SetImage(vSlimeImage)
+    s.SetHitImage(vSlimeHitImage)
+    s.SetPos(x, y)
+    s.SetColSize(0.75, 0.5)
+    s.PlayAnim(vSlimeAnim, 10, true)
+    s.tim = 1 + rnd(4)*0.25
+    s.dx = 0;  s.dy = 0;  s.mov = unset;  s.ply = false
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        if typeof(this.mov)
+            m = this.mov
+            this.mov = this.mov - dt
+            if this.mov <= 0
+                ' Don't move too much.
+                k = m/(m - this.mov)
+                ndt = dt
+                this.mov = unset
+                this.tim = 1
+            else
+                k = 1
+            endif
+            this.Move(this.dx*dt*k, this.dy*dt*k)
+            if TM_CollisionLeft() or TM_CollisionRight()
+                this.dx = -this.dx
+            endif
+            if TM_CollisionUp() or TM_CollisionDown()
+                this.dy = -this.dy
+            endif
+        else
+            this.tim = this.tim - dt
+            if this.tim < 0
+                if this.CanSee(vPlayer, 4)
+                    dx = vPlayer.X() - this.X()
+                    dy = vPlayer.Y() - this.Y()
+                    if dx or dy
+                        k = 3.0/sqr(dx*dx + dy*dy)
+                        dx = dx*k;  dy = dy*k
+                    endif
+                    this.dx = dx;  this.dy = dy
+                    this.mov = 0.75
+                    this.ply = true
+                else
+                    select rnd(4)
+                        case 0
+                            this.dx = -1;  this.dy = 0
+                        case 1
+                            this.dx = 1;  this.dy = 0
+                        case 2
+                            this.dx = 0;  this.dy = -1
+                        default
+                            this.dx = 0;  this.dy = 1
+                    endsel
+                    this.ply = false
+                    this.mov = 0.5
+                endif
+                this.PlayAnim(vSlimeAnim, 10, true)
+            elseif this.tim < 0.5
+                this.StopAnim(false)
+            endif
+        endif
+        this.UpdateAnim(dt)
+        return this.EnemyUpdate(dt)
+    endfunc
+    return s
+endfunc
+
+' Bat
+' ---
+function Bat(x, y)
+    s = Enemy()
+    s.SetStamina(3)
+    s.SetScore(100)
+    s.SetImage(vBatImage)
+    s.SetShadowImage(vBatShadowImage)
+    s.SetHitImage(vBatHitImage)
+    s.SetPos(x, y)
+    s.SetZ(1)
+    s.SetColSize(0.75, 0.5)
+    's.SetColSize(0.75, 0.25)
+    s.PlayAnim(vBatAnim, 10, true)
+    s.tim = 1 + rnd(4)*0.25
+    s.spd = 1;  s.paus = 0; s.atk = false
+    a = rnd()*2*PI;  s.dx = cos(a);  s.dy = sin(a);  s.dz = 0
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        if this.paus > 0
+            this.paus = this.paus - dt
+            this.z_ = min(this.z_ + 2*dt, 1.1)
+            if this.paus <= 0
+                this.paus = 0
+                this.PlayAnim(vBatAnim, 10, true)
+            endif
+        else
+            if not this.atk
+                this.tim = this.tim - dt
+                if this.tim < 0 
+                    this.tim = 1.5
+                    if this.CanSee(vPlayer, 4) and not this.atk ' or did attack last time ...
+                        this.paus = 0.5
+                        dx = vPlayer.X() - this.X();  dy = vPlayer.Y() - this.Y();  dz = 0.1 - this.Z()
+                        k = 1/sqr(dx*dx + dy*dy + dz*dz)
+                        this.dx = dx*k;  this.dy = dy*k;  this.dz = dz*k
+                        this.PlayAnim(vBatAnim, 20, true)
+                        this.spd = 3
+                        this.atk = true
+                    else
+                        this.PlayAnim(vBatAnim, 10, true)
+                        a = rnd(8)*0.25*PI;  this.dx = cos(a);  this.dy = sin(a);  this.dz = 1
+                        this.atk = false
+                        this.spd = 1
+                    endif
+                endif
+            endif
+            this.Move(this.dx*this.spd*dt, this.dy*this.spd*dt)
+            if this.atk
+                this.z_ = this.z_ + this.dz*this.spd*dt
+                if this.z_ <= 0.1
+                    this.z_ = 0.1
+                    this.paus = 0.5
+                    this.atk = false
+                    this.tim = 1
+                    this.dx = 0
+                    this.dy = 0
+                    this.PlayAnim(vBatAnim, 20, true)
+                endif
+            endif
+            if TM_CollisionLeft() or TM_CollisionRight()
+                this.dx = -this.dx
+            endif
+            if TM_CollisionUp() or TM_CollisionDown()
+                this.dy = - this.dy
+            endif
+        endif
+        this.UpdateAnim(dt)
+        return this.EnemyUpdate(dt)
+    endfunc
+    return s
+endfunc
+
+' Chaser
+' ------
+function Chaser(x, y)
+    s = Enemy()
+    s.SetStamina(3)
+    s.SetScore(150)
+    s.SetImage(vChaserImage)
+    s.SetHitImage(vChaserHitImage)
+    s.SetPos(x, y)
+    s.SetColSize(0.75, 0.5)
+    s.tim = 0;  s.run = false;  s.spd = 0.5
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        ' Time to change direction?
+        this.tim = this.tim - dt
+        if this.tim <= 0
+            if this.CanSee(vPlayer, 4 + this.run)
+                if not this.run  play sound vChaserSound
+                this.Chase()
+            else
+                this.run = false;  this.spd = 1;  this.tim = 1 + rnd(2)
+                select rnd(4)
+                    case 0
+                        this.dx = -1;  this.dy = 0
+                    case 1
+                        this.dx = 1;  this.dy = 0
+                    case 2
+                        this.dx = 0;  this.dy = -1
+                    case 3
+                        this.dx = 0;  this.dy = 1
+                endsel
+                this.StartWalkAnim()
+            endif
+        endif
+        ' Move.
+        spd = this.spd*0.5
+        if this.run  this.spd = max(this.spd - 2*dt, 2.25)
+        spd = spd + this.spd*0.5
+        this.Move(this.dx*spd*dt, this.dy*spd*dt)
+        ' Any wall collision?
+        if TM_CollisionLeft() or TM_CollisionRight() or
+                TM_CollisionUp() or TM_CollisionDown()
+            if this.run
+                this.tim = 0
+            else
+                tmp = this.dx
+                if rnd(2)
+                    this.dx = -this.dy;  this.dy = tmp
+                else
+                    this.dx = this.dy;  this.dy = -tmp
+                endif
+                this.StartWalkAnim()
+            endif
+        endif
+        this.UpdateAnim(dt)
+        return this.EnemyUpdate(dt)
+    endfunc
+    ' Chase
+    ' -----
+    s.Chase = function()
+        if not this.run
+            this.run = true
+            this.spd = 3.5
+        else
+            this.spd = 2.25
+        endif
+        this.tim = 1
+        dx = vPlayer.X() - this.X(); dy = vPlayer.Y() - this.Y()
+        k = 1/sqr(dx*dx + dy*dy)
+        this.dx = dx*k;  this.dy = dy*k
+        this.StartWalkAnim()
+    endfunc
+    ' StartWalkAnim
+    ' -------------
+    s.StartWalkAnim = function()
+        if this.run
+            if |this.dx| > |this.dy|
+                if this.dx < 0  this.PlayAnim(vChaserLeftAttackAnim, 15, true)
+                else  this.PlayAnim(vChaserRightAttackAnim, 15, true)
+            else
+                if this.dy < 0  this.PlayAnim(vChaserUpAttackAnim, 15, true)
+                else  this.PlayAnim(vChaserDownAttackAnim, 15, true)
+            endif
+        else
+            if |this.dx| > |this.dy|
+                if this.dx < 0  this.PlayAnim(vChaserLeftAnim, 10, true)
+                else  this.PlayAnim(vChaserRightAnim, 10, true)
+            else
+                if this.dy < 0  this.PlayAnim(vChaserUpAnim, 10, true)
+                else  this.PlayAnim(vChaserDownAnim, 10, true)
+            endif
+        endif
+    endfunc
+    ' Hit
+    ' ---
+    s.Hit = function()
+        if not this.run  this.Chase()
+    endfunc
+    ' Bump
+    ' ----
+    s.Bump = function(dx, dy)
+        this.dx = dx;  this.dy = dy
+        this.tim = 0.5
+        this.StartWalkAnim()
+    endfunc
+    return s
+endfunc
+
+' Shooter
+' -------
+function Shooter(x, y)
+    s = Enemy()
+    s.SetStamina(3)
+    s.SetScore(200)
+    s.SetImage(vShooterImage)
+    s.SetHitImage(vShooterHitImage)
+    s.SetPos(x, y)
+    s.SetColSize(0.75, 0.5)
+    s.state = 0;  s.tim = 0;  s.spd = 1;  s.dir = DOWN
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        ' Walking?
+        if this.state = 0 or this.state = 2
+            ' Time to change direction or shoot?
+            this.tim = this.tim - dt
+            if this.tim <= 0
+                if this.CanSee(vPlayer, 5)
+                    this.state = 1
+                    dx = vPlayer.X() - this.X();  dy = vPlayer.Y() - this.Y()
+                    d = sqr(dx*dx + dy*dy)
+                    if d > 0
+                        this.dx = dx/d
+                        this.dy = dy/d
+                    endif
+                    this.StartAnim()
+                else
+                    this.state = 0
+                    this.spd = 1
+                    this.tim = 1 + rnd(2)
+                    select rnd(4)
+                        case 0
+                            this.dx = -1;  this.dy = 0
+                        case 1
+                            this.dx = 1;  this.dy = 0
+                        case 2
+                            this.dx = 0;  this.dy = -1
+                        case 3
+                            this.dx = 0;  this.dy = 1
+                    endsel
+                    this.StartAnim()
+                endif
+            else
+                ' Move.
+                this.Move(this.dx*this.spd*dt, this.dy*this.spd*dt)
+                ' Any wall collision?
+                if TM_CollisionLeft() or TM_CollisionRight() or
+                    TM_CollisionUp() or TM_CollisionDown()
+                    tmp = this.dx
+                    if rnd(2)
+                        this.dx = -this.dy;  this.dy = tmp
+                    else
+                        this.dx = this.dy;  this.dy = -tmp
+                    endif
+                    this.StartAnim()
+                endif
+            endif
+            this.UpdateAnim(dt)
+        ' Shooting?
+        elseif this.state = 1
+            if not this.UpdateAnim(dt)
+                vEnemies[sizeof(vEnemies)] = Fireball(this.X(), this.Y(), this.dir)
+                this.state = 2
+                this.tim = 1
+                this.spd = 2.5
+                this.StartAnim()
+                play sound vFireballSound
+            endif
+        endif
+        return this.EnemyUpdate(dt)
+    endfunc
+    ' StartAnim
+    ' ---------
+    s.StartAnim = function()
+        if |this.dx| > |this.dy|
+            if this.dx < 0
+                this.dir = LEFT
+                if this.state = 0
+                    this.PlayAnim(vShooterLeftAnim, 10, true)
+                elseif this.state = 1
+                    this.PlayAnim(vShooterLeftAttackAnim, 5, false)
+                else
+                    this.PlayAnim(vShooterLeftAnim, 15, true)
+                endif
+            else
+                this.dir = RIGHT
+                if this.state = 0
+                    this.PlayAnim(vShooterRightAnim, 10, true)
+                elseif this.state = 1
+                    this.PlayAnim(vShooterRightAttackAnim, 5, false)
+                else
+                    this.PlayAnim(vShooterRightAnim, 15, true)
+                endif
+            endif
+        else
+            if this.dy < 0
+                this.dir = UP
+                if this.state = 0
+                    this.PlayAnim(vShooterUpAnim, 10, true)
+                elseif this.state = 1
+                    this.PlayAnim(vShooterUpAttackAnim, 5, false)
+                else
+                    this.PlayAnim(vShooterUpAnim, 15, true)
+                endif
+            else
+                this.dir = DOWN
+                if this.state = 0
+                    this.PlayAnim(vShooterDownAnim, 10, true)
+                elseif this.state = 1
+                    this.PlayAnim(vShooterDownAttackAnim, 5, false)
+                else
+                    this.PlayAnim(vShooterDownAnim, 15, true)
+                endif
+            endif
+        endif
+    endfunc
+    ' Hit
+    ' ---
+    s.Hit = function()
+        if this.state <> 1  this.tim = min(this.tim, 0.5)
+    endfunc
+    ' Bump
+    ' ----
+    s.Bump = function(dx, dy)
+        if this.state <> 1
+            this.dx = dx;  this.dy = dy
+            this.state = 2
+            this.tim = 0.5
+            this.StartAnim()
+        endif
+    endfunc
+    return s
+endfunc
+
+' Skull
+' -----
+function Skull(x, y)
+    ' Not basing the final boss on Enemy, constructing something new. Dirty code, in a rush!
+    s = []
+    ' Position.
+    s.baseX = x
+    s.baseY = y
+    s.x = x
+    s.y = y
+    s.z = 0.5
+    ' Jaw animation.
+    s.jawa1 = 0
+    s.jawa2 = 0
+    ' Skull sprite.
+    s.skull = Sprite()
+    s.skull.SetImage(vSkullImage)
+    s.skull.SetPos(s.x, s.y)
+    s.skull.SetZ(s.z)
+    s.skull.SetColSize(width(vSkullImage)/TILE_S, 0.5)
+    ' Jaw sprite.
+    s.jaw = Sprite()
+    s.jaw.SetImage(vJawImage)
+    s.jaw.SetPos(s.x, s.y)
+    s.jaw.SetZ(s.z - 0.5)
+    ' State.
+    s.fstm = 20
+    s.stm = s.fstm
+    s.immortal = false
+    s.state = 0
+    s.spd = 1
+    s.acc = 0
+    s.spda = 0
+    s.shootSpd = 0.75
+    s.tim = 0
+    s.hit = 0
+    s.hits = 0
+    s.dx = -1
+    s.dy = 0
+    s.shake = unset
+    s.shakeDX = 0
+    s.shakeDZ = 0
+    s.shakeWDX = 0
+    s.shakeWDZ = 0
+    ' X, Y, Z
+    ' -------
+    s.X = function();  return this.x;  endfunc
+    s.Y = function();  return this.y;  endfunc
+    s.Z = function();  return this.z;  endfunc
+    ' Stamina
+    ' -------
+    s.FullStamina = function();  return this.fstm;  endfunc
+    s.Stamina = function();  return this.stm;  endfunc
+    ' Update
+    ' ------
+    ' Don't start shooting and attacking until player has hit one shot.
+    s.Update = function(dt)
+        select this.state
+            case 0  ' Move left and right and shoot until hit 3 times.
+                ' Change state.
+                if this.hits >= 3 or this.stm <= 0
+                    this.state = 1
+                    this.spda = 0
+                    this.shootSpd = this.shootSpd + 0.75
+                    this.spd = this.spd + 0.5
+                    this.shake = 0
+                    this.shakeWDX = -0.25
+                    this.tim = 0
+                    this.immortal = true
+                else
+                    oldspda = this.spda
+                    this.spda = (this.spda + this.shootSpd*PI*dt)%(PI*2)
+                    if this.spda < oldspda
+                        fb = Fireball(this.x, this.y - 0.5, DOWN)
+                        fb.SetZ(0.8)
+                        vEnemies[sizeof(vEnemies)] = fb
+                        play sound vFireballSound
+                    endif
+                    this.skull.Move((sin(this.spda) + 1)*this.dx*this.spd*dt, this.dy*dt)
+                    this.x = this.skull.X()
+                    this.y = this.skull.Y()
+                    if TM_CollisionLeft()
+                        this.dx = 1
+                    elseif TM_CollisionRight()
+                        this.dx = -1
+                    endif
+                endif
+            case 1  ' Stand still and shake.
+                this.tim = this.tim - dt
+                if this.tim <= 0
+                    this.shakeWDX = -this.shakeWDX
+                    this.shakeWDZ = sin(rnd()*PI)*0.2
+                    this.tim = 0.05
+                    if this.stm <= 0
+                        if rnd(2) = 0
+                            vAnimations[sizeof(vAnimations)] = Animation(vExplosionImage,
+                                    this.X() + (rnd() - 0.5)*2.5, this.Y() + 0.025, this.Z() + rnd()*2, 15)
+                            play sound vEnemyExplodeSound
+                        endif
+                    endif
+                endif
+                k = 16*dt
+                this.shakeDX = this.shakeDX*(1 - k) + this.shakeWDX*k
+                this.shakeDZ = this.shakeDZ*(1 - k) + this.shakeWDZ*k
+                this.shake = this.shake + 0.5*dt
+                if this.shake >= 1
+                    if this.stm <= 0
+                        for i = 0 to 9
+                            a = i*2*PI/10 + rnd()*0.1 - 0.05
+                            spd = 3 + rnd()*2;  spdz = 1 + rnd()
+                            select rnd(3)
+                                case 0  img = vBlueJewelImage
+                                case 1  img = vOrangeJewelImage
+                                default  img = vGreenJewelImage
+                            endsel
+                            vUnboundItems[sizeof(vUnboundItems)] = MovingPickup(JEWEL_ID, img,
+                                    this.X(), this.Y(), 0.1 + rnd(2), cos(a)*spd, sin(a)*spd, spdz)
+                        next
+                        vUnboundItems[sizeof(vUnboundItems)] = MovingPickup(ORANGE_KEY_ID,
+                                vOrangeKeyImage, this.X(), this.Y(), 1, 0, 0, 4)
+                        vScore = vScore + 1000
+                        return false
+                    else
+                        this.state = 2
+                        this.shake = unset
+                        this.immortal = false
+                        this.acc = 0
+                        dx = vPlayer.X() - this.x;  dy = vPlayer.Y() - this.y
+                        d = sqr(dx*dx + dy*dy)
+                        if dy > 0
+                            this.dx = dx/d;  this.dy = dy/d
+                        else
+                            this.dx = 0;  this.dy = 1
+                        endif
+                        ' Shoot in all directions.
+                        for i = 0 to 11
+                            vEnemies[sizeof(vEnemies)] = BossFireball(this.x, this.y, i*2*PI/12)
+                        next
+                        play sound vFireballsSound
+                    endif
+                endif
+            case 2 ' Move down.
+                spd = this.spd*this.acc*0.5
+                this.acc = min(this.acc + dt, 1)
+                spd = spd + this.spd*this.acc*0.5
+                this.skull.Move(this.dx*spd*3*dt, this.dy*spd*3*dt)
+                this.x = this.skull.X();  this.y = this.skull.Y()
+                if TM_CollisionLeft() or TM_CollisionRight()  this.dx = -this.dx
+                if TM_CollisionDown()
+                    this.state = 3
+                    dx = this.baseX - this.X();  dy = this.baseY - this.Y()
+                    d = sqr(dx*dx + dy*dy)
+                    this.dx = dx/d;  this.dy = dy/d
+                    this.acc = 0
+                endif
+            case 3 ' Return.
+                spd = this.spd*this.acc*0.5
+                this.acc = min(this.acc + dt, 1)
+                spd = spd + this.spd*this.acc*0.5
+                this.skull.Move(this.dx*spd*4*dt, this.dy*spd*4*dt)
+                this.x = this.skull.X();  this.y = this.skull.Y()
+                if this.y < this.baseY
+                    this.state = 0
+                    this.hits = 0
+                    this.y = this.baseY
+                    this.skull.SetPos(this.skull.X(), this.y)
+                    this.z = 0
+                    if rnd(2) = 0  this.dx = -1
+                    else  this.dx = 1
+                    this.dy = 0
+                endif
+        endsel
+        ' Jaw.
+        this.jawa1 = (this.jawa1 + dt*PI)%(PI*2)
+        this.jawa2 = (this.jawa2 + 1.3*dt*PI)%(PI*2)
+        offs = sin(this.jawa1)*sin(this.jawa2)*0.1
+        this.z = 0.65 + offs*0.5
+        this.skull.SetZ(this.z)
+        this.jaw.SetPos(this.x + cos(this.jawa1)*0.05, this.y)
+        this.jaw.SetZ(this.z - 0.6 + offs)
+        
+        if this.hit > 0
+            if not this.immortal
+                this.hit = this.hit - dt
+                if this.hit <= 0
+                    this.hit = 0
+                    this.skull.SetImage(vSkullImage)
+                    this.jaw.SetImage(vJawImage)
+                endif
+            endif
+        endif
+        if this.skull.Overlaps(vPlayer.Boomerang())
+            vPlayer.Boomerang().Return()
+            ' Can't shoot from behind, ehehehehe.
+            if this.hit = 0 and vPlayer.Y() > this.Y()
+                this.stm = this.stm - 1
+                this.hits = this.hits + 1
+                this.hit = 0.25
+                this.skull.SetImage(vSkullHitImage)
+                this.jaw.SetImage(vJawHitImage)
+                play sound vSkullSound
+            endif
+        endif
+        if this.skull.Overlaps(vPlayer)  vPlayer.Hit(1)
+        
+        return true
+    endfunc
+    ' Draw
+    ' ----
+    s.Draw = function()
+        S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+        if typeof(this.shake)
+            s = sin(this.shake*PI)
+            x = this.jaw.X();  y = this.jaw.Y();  z = this.jaw.Z()
+            this.jaw.SetPos(x + s*this.shakeDX, y)
+            this.jaw.SetZ(z + s*this.shakeDZ)
+            this.jaw.Draw()
+            this.jaw.SetPos(x, y)
+            this.jaw.SetZ(z)
+            x = this.skull.X();  y = this.skull.Y();  z = this.skull.Z()
+            this.skull.SetPos(x + s*this.shakeDX, y)
+            this.skull.SetZ(z + s*this.shakeDZ)
+            this.skull.Draw()
+            this.skull.SetPos(x, y)
+            this.skull.SetZ(z)
+
+        else
+            this.jaw.Draw()
+            this.skull.Draw()
+        endif
+        S3D_SetDepthBuffer(S3D_Z_BUFFER)
+    endfunc
+    
+    return s
+endfunc
+
+' Fireball
+' --------
+function Fireball(x, y, dir)
+    s = Enemy()
+    s.SetZ(0.4)
+    s.dx = 0;  s.dy = 0
+    select dir
+        case LEFT
+            s.SetImage(vFireballLeftImage)
+            s.SetShadowImage(vFireballShadowLeftImage)
+            s.SetColSize(0.75, 0.5)
+            s.SetPos(x - 0.5, y)
+            s.dx = -4
+        case RIGHT
+            s.SetImage(vFireballRightImage)
+            s.SetShadowImage(vFireballShadowRightImage)
+            s.SetColSize(0.75, 0.5)
+            s.SetPos(x + 0.5, y)
+            s.dx = 4
+        case UP
+            s.SetImage(vFireballUpImage)
+            s.SetShadowImage(vFireballShadowUpImage)
+            s.SetColSize(0.5, 0.75)
+            s.SetPos(x, y - 0.5)
+            s.SetFlat(true)
+            s.dy = -4
+        default
+            s.SetImage(vFireballDownImage)
+            s.SetShadowImage(vFireballShadowDownImage)
+            s.SetColSize(0.5, 0.75)
+            s.SetPos(x, y + 0.5)
+            s.SetFlat(true)
+            s.dy = 4
+    endsel
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        this.UpdateAnim(dt)
+        this.SetPos(this.X() + this.dx*dt, this.Y() + this.dy*dt)
+        this.EnemyUpdate(dt)
+        return not TM_ObstacleAt(this.X()*TILE_S, this.Y()*TILE_S)
+    endfunc
+    s.PlayAnim(vFireballAnim, 15, true)
+    
+    return s
+endfunc
+
+' BossFireball
+' ------------
+function BossFireball(x, y, a)
+    s = Enemy()
+    s.SetZ(0.75)
+    s.SetImage(vFireballRightImage)
+    s.SetShadowImage(vFireballShadowRightImage)
+    s.SetColSize(0.5, 0.5)
+    s.SetPos(x, y)
+    s.SetFlat(true)
+    s.SetFlatAngle(a)
+    s.dx = cos(a)*4
+    s.dy = sin(a)*4
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        this.UpdateAnim(dt)
+        this.SetPos(this.X() + this.dx*dt, this.Y() + this.dy*dt)
+        this.EnemyUpdate(dt)
+        return not TM_ObstacleAt(this.X()*TILE_S, this.Y()*TILE_S)
+    endfunc
+    s.PlayAnim(vFireballAnim, 15, true)
+    return s
+endfunc
+
+' Pickup
+' ------
+function Pickup(id, img, x, y)
+    pu = Sprite()
+    pu.id = id
+    pu.SetImage(img)
+    pu.SetPos(x, y)
+    pu.h = 0
+    if cels(img) > 1
+        frames = []
+        for i = 0 to cels(img) - 1  frames[i] = i
+        pu.PlayAnim(frames, 10, true)
+    endif
+    ' Update
+    ' ------
+    pu.Update = function(dt)
+        z = this.Z()
+        if this.id
+            if z > 0  this.SetZ(max(z - 5*dt, 0))
+            dx = this.x_ - vPlayer.x_;  dy = this.y_ - vPlayer.y_
+            d = dx*dx + dy*dy
+            if d < 0.5625 and vPlayer.AddItem(this.id)
+                return false
+            endif
+        endif
+        this.UpdateAnim(dt)
+        return true
+    endfunc
+    return pu
+endfunc
+
+function MovingPickup(id, img, x, y, z, dx, dy, dz)
+    pu = Pickup(id, img, x, y)
+    pu.SetZ(z)
+    pu.dx = dx
+    pu.dy = dy
+    pu.dz = dz
+    ' Update
+    ' ------
+    pu.Update = function(dt)
+        x = this.X();  y = this.Y();  z = this.Z()
+        dx = this.x_ - vPlayer.x_;  dy = this.y_ - vPlayer.y_
+        d = dx*dx + dy*dy
+        if d < 0.5625 and vPlayer.AddItem(this.id)  return false
+        dx = this.dx*0.5;  dy = this.dy*0.5;  dz = this.dz*0.5
+        this.dz = max(this.dz - 8*dt, -8)
+        if this.dx > 0  this.dx = max(this.dx - 3*dt, 0)
+        elseif this.dx < 0  this.dx = min(this.dx + 3*dt, 0)
+        if this.dy > 0  this.dy = max(this.dy - 3*dt, 0)
+        elseif this.dy < 0  this.dy = min(this.dy + 3*dt, 0)
+        dx = dx + this.dx*0.5;  dy = dy + this.dy*0.5;  dz = dz + this.dz*0.5
+        this.SetZ(max(z + dz*dt, 0))
+        this.Move(dx*dt, dy*dt)
+        if TM_CollisionLeft() or TM_CollisionRight()  this.dx = -this.dx
+        if TM_CollisionUp() or TM_CollisionDown()  this.dy = -this.dy
+        return true
+    endfunc
+    return pu
+endfunc
+
+' Door
+' ----
+function Door(id, horizontal, x, y)
+    if horizontal  mesh = vXDoorMesh
+    else  mesh = vYDoorMesh
+    return [id: id, m: mesh, x: x, y: y, offsZ: 0, h: 0, state: on,
+            ' Update
+            ' ------
+            Update: function(dt)
+                if this.state = off
+                    this.offsZ = this.offsZ + dt*2.5
+                    if this.offsZ >= 1
+                        TM_SetCel(this.x, this.y, -1)
+                        return false
+                    endif
+                endif
+                return true
+            endfunc,
+            Open: function()
+                if this.state = on
+                    this.state = off
+                    play sound vDoorSound
+                    return true
+                endif
+                return false
+            endfunc,
+            ' Draw
+            ' ----
+            Draw: function()
+                S3D_Push()
+                    S3D_Translate(this.x, this.y, this.offsZ)
+                    S3D_Mesh(this.m, 0)
+                S3D_Pop()
+            endfunc]
+endfunc
+
+' Button
+' ------
+function Button(tag, x, y)
+    return [id: BUTTON_ID, tag: tag, x: x, y: y, offsZ: 0, h: 0.25, state: 2,
+            ' Update
+            ' ------
+            Update: function(dt)
+                    if this.state = 2
+                        if int(vPlayer.X()) = this.x and int(vPlayer.Y()) = this.y
+                            this.tim = this.tim - dt
+                            if this.tim <= 0
+                                this.state = 1
+                                play sound vButtonSound, 0.4
+                            endif
+                        else
+                            this.tim = 0.5
+                        endif
+                    elseif this.state = 1
+                        this.offsZ = this.offsZ + 0.5*dt
+                        this.h = this.h - 0.5*dt
+                        if this.offsZ >= 0.25 - 0.0625*0.5
+                            this.h = 0.0625*0.5
+                            this.offsZ = 0.25 -0.0625*0.5
+                            TM_SetCel(this.x, this.y, -1)
+                            this.state = 0
+                            for y = 0 to sizeof(vItems[0]) - 1  for x = 0 to sizeof(vItems) - 1
+                                i = vItems[x][y]
+                                if typeof(i) and i.id = BARS_ID and i.tag = this.tag
+                                    CameraReveal(x, y, i, "Open", 1)
+                                    return true
+                                endif
+                            next
+                        endif
+                    endif
+                    return true
+                endfunc,
+            ' Used.
+            Used: function();  return this.state < 2;  endfunc,
+            ' Draw
+            ' ----
+            Draw: function()
+                S3D_Push()
+                    S3D_Translate(this.x, this.y, this.offsZ)
+                    S3D_Mesh(vButtonMesh, 0)
+                S3D_Pop()
+            endfunc]    
+endfunc
+
+' Bars
+' ----
+function Bars(tag, horizontal, x, y)
+    if horizontal  a = 0
+    else  a = 0.5*PI
+    return [id: BARS_ID, tag: tag, m: vBarsMesh, a: a,
+            x: x + 0.5, y: y + 0.5, offsZ: 0, h: 0,
+            state: on,
+            ' Update
+            ' ------
+            Update: function(dt)
+                if this.state = off
+                    this.offsZ = this.offsZ + dt*2.5
+                    if this.offsZ >= 1
+                        TM_SetCel(this.x, this.y, -1)
+                        return false
+                    endif
+                endif
+                return true
+            endfunc,
+            ' Open
+            ' ----
+            Open: function()
+                if this.state = on
+                    this.state = off
+                    play sound vGateSound, 0.5
+                endif
+            endfunc,
+            ' Draw
+            ' ----
+            Draw: function()
+                S3D_Push()
+                    S3D_Translate(this.x, this.y, this.offsZ)
+                    S3D_RotateZ(this.a)
+                    S3D_Mesh(this.m, 0)
+                S3D_Pop()
+            endfunc]
+endfunc
+
+' Stairs
+' ------
+function Stairs(x, y)
+    return [id: STAIRS_ID, m: vStairsMesh, x: x, y: y, h: 0,
+            ' Update
+            ' ------
+            Update: function(dt)
+                return true
+            endfunc,
+            ' Draw
+            ' ----
+            Draw: function()
+                S3D_Push()
+                    S3D_Translate(this.x, this.y, 0)
+                    S3D_Mesh(this.m, 0)
+                S3D_Pop()
+            endfunc]
+endfunc
+
+' Animation
+' ---------
+function Animation(img, x, y, z, speed)
+    s = Sprite()
+    s.SetImage(img)
+    s.SetPos(x, y)
+    s.SetZ(max(z - 0.5*s.Height(), 0))
+    s.spd = speed
+    s.frm = 0
+    s.frms = cels(img)
+    ' Update
+    ' ------
+    s.Update = function(dt)
+        this.frm = this.frm + this.spd*dt
+        if this.frm < this.frms
+            this.SetCel(int(this.frm))
+            return true
+        endif
+        return false
+    endfunc
+    return s
+endfunc
+
+' Sprite
+' ------
+' Common data and function for all sprites.
+function Sprite()
+    s = []
+    s.img_ = unset
+    s.shd_ = unset
+    s.flt_ = false
+    s.flta_ = 0
+    s.cel_ = 0
+    s.cols_ = 0
+    s.rows_ = 0
+    s.w_ = 0
+    s.h_ = 0
+    s.fw_ = 0
+    s.fh_ = 0
+    s.sw_ = 0
+    s.sh_ = 0
+    s.x_ = 0
+    s.y_ = 0
+    s.z_ = 0
+    s.cw_ = 0
+    s.cd_ = 0
+    s.spr_ = []
+    s.anm_ = unset
+    s.aspd_ = 0
+    s.lop_ = unset
+    s.frm_ = 0
+    ' SetPos
+    ' ------
+    s.SetPos = function(x, y)
+        this.x_ = x
+        this.y_ = y
+    endfunc
+    ' SetZ
+    ' ----
+    s.SetZ = function(z)
+        this.z_ = z
+    endfunc
+    ' SetFlat
+    ' -------
+    s.SetFlat = function(value)
+        this.flt_ = value
+    endfunc
+    ' SetFlatAngle
+    ' ------------
+    s.SetFlatAngle = function(value)
+        this.flta_ = value
+        if this.shd_  this.shd_.flta_ = value
+    endfunc
+    ' X, Y, Z
+    ' -------
+    s.X = function();  return this.x_;  endfunc
+    s.Y = function();  return this.y_;  endfunc
+    s.Z = function();  return this.z_;  endfunc
+    ' Height
+    ' ------
+    s.Height = function();  return this.sh_;  endfunc
+    ' SetImage
+    ' --------
+    s.SetImage = function(img)
+        this.img_ = img
+        this.cols_ = cols(img)
+        this.rows_ = rows(img)
+        this.w_ = width(img)
+        this.h_ = height(img)
+        this.fw_ = width(img)*this.cols_
+        this.fh_ = height(img)*this.rows_
+        this.sh_ = this.h_/TILE_S
+        this.sw_ = this.w_/TILE_S
+        this.SetCel(this.cel_)
+    endfunc
+    ' Image
+    ' -----
+    s.Image = function();  return this.img_;  endfunc
+    ' SetShadowImage
+    ' --------------
+    ' Hack, using an extra sprite.
+    s.SetShadowImage = function(img)
+        this.shd_ = Sprite()
+        this.shd_.SetImage(img)
+        this.shd_.SetFlat(true)
+        this.shd_.flta_ = this.flta_
+        this.shd_.z_ = 0.01
+    endfunc
+    ' SetCel
+    ' ------
+    s.SetCel = function(cel)
+        this.cel_ = cel
+        col = cel%this.cols_; row = int(cel/this.cols_)
+        this.u0 = (col*this.w_ + 0.1)/this.fw_
+        this.u1 = (col*this.w_ + this.w_ - 0.1)/this.fw_
+        this.v0 = (row*this.h_ + 0.1)/this.fh_
+        this.v1 = (row*this.h_ + this.h_ - 0.1)/this.fh_
+        if this.shd_  this.shd_.SetCel(cel)
+    endfunc
+    ' SetColSize
+    ' ----------
+    s.SetColSize = function(w, d)
+        this.cw_ = w
+        this.cd_ = d
+    endfunc
+    ' PlayAnim
+    ' --------
+    s.PlayAnim = function(frames, speed, looped)
+        if this.anm_ = frames and this.lop_ = looped
+            this.aspd_ = speed
+            return
+        endif
+        this.anm_ = frames
+        this.aspd_ = speed
+        this.lop_ = looped
+        if this.anm_
+            this.SetCel(this.anm_[0])
+            this.frm_ = 0
+        endif
+    endfunc
+    ' StopAnim
+    ' --------
+    s.StopAnim = function(onlyLooped)
+        if this.anm_ and (this.lop_ or not onlyLooped)  this.anm_ = unset
+    endfunc
+    ' UpdateAnim
+    ' ----------
+    ' Return false if no animation is playing.
+    s.UpdateAnim = function(dt)
+        if this.anm_
+            this.frm_ = this.frm_ + dt*this.aspd_
+            if this.frm_ >= sizeof(this.anm_)
+                if this.lop_
+                    while this.frm_ >= sizeof(this.anm_) this.frm_ = this.frm_ - sizeof(this.anm_)
+                    this.SetCel(this.anm_[min(floor(this.frm_), sizeof(this.anm_))])                
+                else
+                    this.anm = unset
+                    return false
+                endif
+            else
+                this.SetCel(this.anm_[min(floor(this.frm_), sizeof(this.anm_))])
+            endif
+            return true
+        else
+            return false
+        endif
+    endfunc
+    ' SpriteDraw
+    ' ----------
+    s.SpriteDraw = function()
+        if not typeof(this.img_)  return
+        if this.shd_
+            this.shd_.x_ = this.x_;  this.shd_.y_ = this.y_
+            this.shd_.Draw()
+        endif
+        x = 0.5*this.sw_
+        S3D_Color(255, 255, 255)
+        S3D_Push()
+            S3D_Translate(this.x_, this.y_, 0)
+            if this.flta_ <> 0  S3D_RotateZ(this.flta_)
+            S3D_Begin(S3D_QUADS)
+                S3D_Texture(this.img_)
+                if this.flt_
+                    y = 0.5*this.sh_;  z = -this.z_
+                    S3D_Vertex(-x, -y, z, this.u0, this.v0)
+                    S3D_Vertex(x, -y, z, this.u1, this.v0)
+                    S3D_Vertex(x, y, z, this.u1, this.v1)
+                    S3D_Vertex(-x, y, z, this.u0, this.v1)
+                else
+                    z = -this.z_
+                    S3D_Vertex(-x, 0, -this.sh_ + z, this.u0, this.v0)
+                    S3D_Vertex(x, 0, -this.sh_ + z, this.u1, this.v0)
+                    S3D_Vertex(x, 0, z, this.u1, this.v1)
+                    S3D_Vertex(-x, 0, z, this.u0, this.v1)
+                endif
+            S3D_End()
+        S3D_Pop()
+    endfunc
+    ' Draw
+    ' ----
+    s.Draw = s.SpriteDraw
+    ' Move
+    ' ----
+    s.Move = function(dx, dy)
+        ' Set up temporary sprite in pixel (tilemap) space and let the tilemap library handle collision.
+        this.spr_.x = (this.x_ - 0.5*this.cw_)*TILE_S
+        this.spr_.y = (this.y_ - 0.5*this.cd_)*TILE_S
+        this.spr_.w = (this.cw_)*TILE_S
+        this.spr_.h = (this.cd_)*TILE_S
+        TM_MoveSprite(this.spr_, dx*TILE_S, dy*TILE_S)
+        ' Convert the resulting coordinates back to 3d space.
+        this.x_ = this.spr_.x/TILE_S + 0.5*this.cw_
+        this.y_ = this.spr_.y/TILE_S + 0.5*this.cd_
+    endfunc
+    ' CanSee
+    ' ------
+    s.CanSeeOld = function(s, maxD)
+        x = this.x_;  y = this.y_;
+        dx = s.x_ - x;  dy = s.y_ - y;
+        d = dx*dx + dy*dy
+        if d > maxD*maxD  return false
+        d = sqr(d);  dx = dx/d;  dy = dy/d
+        t = 0
+        do
+            t = t + 1;
+            if t >= d  break
+            x = x + dx;  y = y + dy
+            if TM_ObstacleAt(x*TILE_S, y*TILE_S)  return false
+        loop
+        return true
+    endfunc
+    s.CanSee = function(s, maxD)
+        x = floor(this.x_) + 0.5;  y = floor(this.y_) + 0.5;
+        dx = floor(s.x_) + 0.5 - x;  dy = floor(s.y_) + 0.5 - y;
+        d = dx*dx + dy*dy
+        if d > maxD*maxD  return false
+        d = sqr(d);  dx = 0.5*dx/d;  dy = 0.5*dy/d
+        t = 0
+        do
+            t = t + 0.5;
+            if t >= d  break
+            x = x + dx;  y = y + dy
+            if TM_ObstacleAt(x*TILE_S, y*TILE_S)  return false
+        loop
+        return true
+    endfunc
+    ' Overlaps
+    ' --------
+    s.Overlaps = function(s)
+        return |this.x_ - s.x_| < (this.cw_ + s.cw_)*0.5 and
+                |this.y_ - s.y_| < (this.cd_ + s.cd_)*0.5 and
+                this.z_ + this.sh_ > s.z_ and this.z_ < s.z_ + s.sh_
+    endfunc
+    return s
+endfunc
+
+' CameraReveal
+' ------------
+function CameraReveal(targetX, targetY, item, action, delay)
+    srcX = vPlayer.X();  srcY = vPlayer.Y() + 8
+    dx = targetX + 0.5 - srcX;  dy = targetY + 0.5 + 8 - srcY
+    d = sqr(dx*dx + dy*dy)
+    dx = dx/d;  dy = dy/d
+    vPrevTime = clock()
+    p = 0; forward = true
+    vQuickMsgTimer = 0
+    do
+        t = clock()
+        dt = (min(t - vPrevTime, 66))/1000
+        vPrevTime = t
+        if forward
+            if p < d
+                p = p + 8*dt
+                if p >= d
+                    p = d
+                    if item and action  item[action]()
+                endif
+            elseif delay > 0
+                delay = delay - dt
+                if delay <= 0  forward = false
+            endif
+        else
+            p = p - 12*dt
+            if p <= 0  return
+        endif
+        vCam.SetPos(srcX + p*dx, srcY + p*dy)
+        vCam.SetOffset(0, 0, 2*dt)
+        DrawGame(dt)
+        redraw
+        if vFpsCap  fwait vFpsCap
+        else  wait 1
+    loop
+endfunc
+
+' ShowQuickMessage
+' ----------------
+function ShowQuickMessage(msg)
+    vQuickMsg = msg
+    vQuickMsgTimer = 2
+endfunc
+
+' ShowMessage
+' -----------
+function ShowMessage(lines, delay)
+    set image vMessageImage, false
+    set color 0, 0, 0
+    cls
+    set color 124, 124, 124
+    draw rect 4, 4, MSG_WIDTH - 8, 4, true
+    draw rect 4, 4, 4, MSG_HEIGHT - 8, true
+    draw rect 4, MSG_HEIGHT - 8, MSG_WIDTH - 8, 4, true
+    draw rect MSG_WIDTH - 8, 4, 4, MSG_HEIGHT - 8, true
+    set color vTextColor
+    set font vFont
+    for i = 0 to sizeof(lines) - 1
+        set caret 16, 32 + i*2*16
+        write lines[i]
+    next
+    set image primary 
+    pw = width(primary);  ph = height(primary); cy = ph/3
+    state = 0;  param = 0;  blinkTimer = 0
+    vQuickMsgTimer = 0
+    vPrevTime = clock()
+    do
+        t = clock()
+        dt = (min(t - vPrevTime, 66))/1000
+        vPrevTime = t
+        
+        if state = 0
+            delay = delay - dt
+            if delay <= 0
+                state = 1
+            endif
+        elseif state = 1
+            param = param + dt*2
+            if param >= 1
+                state = 2
+            endif
+        elseif state = 2
+            blinkTimer = (blinkTimer + dt)%1
+            if joybutton(0, true) or inkey()
+                state = 3
+                param = 1
+            endif
+        else
+            param = param - dt*2
+            if param <= 0  break
+        endif
+        
+        if state = 1 or state = 2 vCam.SetOffset(0, -2, 2*dt)
+        elseif state = 3  vCam.SetOffset(0, 0, 2*dt)
+                  
+        DrawGame(dt)
+        set color 255, 255, 255
+        if state = 1 or state = 3
+            set clip rect 0, 0, pw, cy
+            draw image vMessageImage, (pw - MSG_WIDTH)/2, cy - param*MSG_HEIGHT/2
+            set clip rect 0, cy, pw, ph - cy
+            draw image vMessageImage, (pw - MSG_WIDTH)/2, cy - MSG_HEIGHT + param*MSG_HEIGHT/2
+            clear clip rect
+        elseif state = 2
+            draw image vMessageImage, (pw - MSG_WIDTH)/2, cy - MSG_HEIGHT/2
+            if blinkTimer >= 0.5
+                set caret pw/2, cy + MSG_HEIGHT/2 - 16 - fheight()
+                set color vTextColor
+                center "Continue"
+            endif
+        endif
+        
+        redraw
+        if vFpsCap  fwait vFpsCap
+        else  wait 1
+        
+        if keydown(KEY_ESCAPE, true)  break
+    loop
+endfunc
+
+' CheckFocus
+' ----------
+' Pause if game has lost focus.
+function CheckFocus()
+    if not active()
+        if vLevel = 9  stop music vBossMusic
+        else  stop music vGameMusic
+        set color 0, 0, 0, 128
+        cls
+        while not active()
+            redraw
+            wait 250
+        wend
+        if vLevel = 9  play music vBossMusic
+        else  play music vGameMusic
+        vPrevTime = clock()
+    endif
+endfunc
+
+' CountUp
+' -------
+function CountUp(src, dst)
+    for i = 5 to 0
+        delta = dst - src
+        tick = 10^i
+        if delta > tick*2 or delta > 0 and tick = 1  src = src + tick
+    next
+    return src
+endfunc
+
+' EvalCBC
+' -------
+' Evaluate cubic bezier curve.
+function EvalCBC(dst, curve, param)
+    b0 = (1 - param)^3
+    b1 = 3*(1 - param)^2*param
+    b2 = 3*(1 - param)*param^2
+    b3 = param^3
+    dst.x = b0*curve[0].x + b1*curve[1].x + b2*curve[2].x + b3*curve[3].x
+    dst.y = b0*curve[0].y + b1*curve[1].y + b2*curve[2].y + b3*curve[3].y
+endfunc
+
+' EvalCBCD
+' --------
+' Evaluate cubc bezier curve derivative.
+function EvalCBCD(dst, curve, param)
+    b0 = 3*(1 - param)^2
+    b1 = 6*(1 - param)*param
+    b2 = 3*param^2
+    dst.x = b0*(curve[1].x - curve[0].x) + b1*(curve[2].x - curve[1].x) + b2*(curve[3].x - curve[2].x)
+    dst.y = b0*(curve[1].y - curve[0].y) + b1*(curve[2].y - curve[1].y) + b2*(curve[3].y - curve[2].y)
+endfunc

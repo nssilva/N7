@@ -1,0 +1,16 @@
+' sizeof
+' ------
+
+' Create an array.
+a = [13, 14, 15, 16, 17]
+' 'sizeof(t)' returns the number of elements in table t.
+pln "Size of a = " + sizeof(a)
+' Print the elements.
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+
+' Do the same thing but with string keys.
+a = [foo: 10, bar: 20, baz: 30]
+pln "Size of a = " + sizeof(a)
+foreach k, v in a pln "  a." + k + " = " + v
+
+system "pause"

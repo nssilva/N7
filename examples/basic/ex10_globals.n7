@@ -1,0 +1,42 @@
+' Global variabels work the same way as in naalaa 6. If a variable is global,
+' you can access it from functions and its name can't be used for local
+' variables or parameters.
+
+' In naalaa 6 you wrote:
+'   visible:
+'     foo = "hi"
+'     bar
+'   hidden:
+' , to declare 'foo' and 'bar' as global. Any variable after 'hidden:' would
+' then be non-global. Here you can declare multiple global variables separated
+' by commas on the same line following 'visible'. Assigning values is optional.
+' You can add as many such lines as you like. 'hidden' no longer exists, since
+' it's not needed.
+'   Constants work pretty much the same way as global variables, but they have
+' to be assigned values on declaration and may only contain numbers and strings.
+' You will get a compiler error if you try to change a constant.
+
+' Declare two global variables and a constant. I always use uppercase when
+' naming constants, old habbit.
+visible foo = "hi", bar
+constant MY_PI = 3.14159265359
+
+' Call Shitpickle.
+Shitpickle()
+pln "foo = " + foo
+pln "bar = " + bar
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+
+function Shitpickle()
+    pln "foo   = " + foo
+    pln "bar   = " + bar
+    pln "MY_PI = " + MY_PI
+    foo = "I have changed!"
+    bar = "Me to, I used to be nothing!"
+    ' The line below would cause a compiler error.
+    'MY_PI = 15
+endfunc
+

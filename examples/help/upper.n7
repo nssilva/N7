@@ -1,0 +1,7 @@
+' upper
+' -----
+
+' 'upper(s)' returns the string s converted to uppercase.
+pln "upper(" + chr(34) + "Hello World!" + chr(34) + ") = " + upper("Hello World!")
+
+system "pause"

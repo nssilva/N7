@@ -1,0 +1,2 @@
+a line of text
+a fantastic number is 42

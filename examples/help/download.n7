@@ -1,0 +1,51 @@
+' download.n7
+' -----------
+
+' You can use 'download(url, filename)' to download something from the internet to a destination
+' file. The function returns true on success or false on failure. Depending on where you've put
+' your N7 directory, this example might fail.
+if download("https://naalaa.com/n7/CHANGELOG.txt", "my_file.txt")
+    pln "Downloaded to file successfully!"
+    pln
+else
+    pln "Download to file failed!"
+    pln
+endif
+wait 1000
+
+' If you know that the url will produce pure text, you can use 'download(url, TYPE_STRING)' to
+' get the result as a string. If the download fails, an unset variable is returned.
+aString = download("https://naalaa.com/n7/CHANGELOG.txt", TYPE_STRING)
+if typeof(aString) ' TYPE_UNSET is 0, so we can just write this instead of 'if typeof(aString) = TYPE_STRING'
+    pln "Downloaded to string successfully!"
+    pln
+    wait 1000
+    ' Print the string.
+    pln aString
+    pln
+else
+    pln "Download to string failed!"
+endif
+wait 1000
+
+' If you, for some reason, want the downloaded data as an array of bytes, you can use 'download(url,
+' TYPE_TABLE)'. If the download fails, an unset variable is returned.
+anArray = download("https://naalaa.com/n7/CHANGELOG.txt", TYPE_TABLE)
+if typeof(anArray)
+    pln "Downloaded to byte array successfully!"
+    pln
+    wait 1000
+    ' Just print the first line of text (we know it's text this time)
+    i = 0
+    ' Use 'chr' to convert the ASCII values (bytes) to characters.
+    while anArray[i] <> 10
+        write chr(anArray[i])
+        i = i + 1
+    wend
+    pln
+else
+    pln "Download to byte array failed!"
+endif
+pln
+
+system "pause"

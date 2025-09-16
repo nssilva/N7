@@ -1,0 +1,33 @@
+' A weird effect.
+
+set window "Raster effect", 640, 480
+set redraw off
+
+img = loadimage("assets/logo.png")
+a = 0
+do
+    a = a + 0.05
+    VerticalSinWave(img, 0.05, a, 2)
+    set color 255, 255, 255
+    set caret 0, 0
+    fwait 60
+    redraw
+until keydown(KEY_ESCAPE)
+
+' VerticalSinWave
+' ---------------
+function VerticalSinWave(img, effect, angle, periods)
+    if effect <= 0  return
+    set color 255, 255, 255, 0
+    vstep = 1/height(primary)
+    v = 0
+    astep = 2*PI*periods/height(primary)
+    xmax = width(primary) - 1
+    for y = 0 to height(primary) - 1
+        offset = sin(angle)*effect
+        draw hraster img, y, 0, xmax, 0 + effect - offset, v, 1 - effect + offset, v
+        v = v + vstep
+        angle = angle + astep
+    next
+endfunc
+ 

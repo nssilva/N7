@@ -1,0 +1,13 @@
+' right
+' ----
+
+' 'right(s, n)' returns the right part of the string s starting at character index n (0 is the index
+' of the first character).
+pln "right(" + chr(34) + "cucumber" + chr(34) + ", 3) = " + right("cucumber", 3)
+
+' I admit its definition may seem weird. Why not just return the n rightmost characters? But it's
+' designed to return the opposite part of a string compared to 'left'.
+pln "left("  + chr(34) + "cucumber"  + chr(34) + ", 3) + right("  + chr(34) + "cucumber"  +
+        chr(34) + ", 3) = " + left("cucumber", 3) + right("cucumber", 3)
+
+system "pause"

@@ -1,0 +1,31 @@
+' save image
+' ----------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "save image", 640, 480
+
+' Clear the screen, draw some primitives and write some text.
+set color 64, 64, 96
+cls
+set color 255, 0, 0
+draw rect 110, 190, 100, 100, true
+set color 0, 255, 0
+draw ellipse 320, 240, 50, 50, true
+set color 0, 0, 255
+draw poly [480, 190, 530, 290, 430, 290], true
+set color 255, 255, 255
+set caret 320, 8
+center "My very own image"
+
+' Get a filename using a save file dialog.
+filename = savefiledialog("png")
+
+' Did we get a filename?
+if filename
+    ' 'save image image_id, filename' saves image image_id to file filename. The only supported
+    ' file format is png. 'primary' is the id of the window content, but you can save any image.
+    save image primary, filename
+endif

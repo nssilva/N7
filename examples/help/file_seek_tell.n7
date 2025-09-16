@@ -1,0 +1,37 @@
+' filetell, fileseek/file seek
+' ----------------------------
+
+' Try to open the example file.
+f = openfile("assets/a_file.txt")
+if not f
+    pln "Could not find the example file!"
+    system "pause"
+    end
+endif
+
+' 'filetell(file_id)' returns the current byte position for reading in the file.
+pln "Start position: " + filetell(f)
+
+' Read and print the first line in the file and check the position again. Two characters are
+' required for a new line in a text file on Windows, if you're wondering about the output.
+pln "Position after reading the line " + chr(34) + frln(f) + chr(34) + ": " + filetell(f)
+
+' 'file seek file_id, offset[, whence = SEEK_SET]' tries to move the position for reading in a file.
+' If 'whence' is 'SEEK_SET' (0), the offset, 'offset', is relative to the start of the file). If
+' 'whence' is 'SEEK_END' (2) the offset is relative to the end of the file, and if 'whence' is
+' 'SEEK_CUR' (1), the offset is relative to the current position in the file.
+'   Let's rewind the file and print the position.
+file seek f, 0, SEEK_SET
+pln "Position after rewind: " + filetell(f)
+
+' Seek to 0 bytes from the end of the file. 'filetell' will then return the size of the file.
+file seek f, 0, SEEK_END
+pln "Size of the file: " + filetell(f)
+
+' Back 5 bytes and print the position.
+file seek f, -5, SEEK_CUR
+pln "Position 5 bytes back: " + filetell(f)
+
+free file f
+
+system "pause"

@@ -1,0 +1,50 @@
+' set image grid, cels
+' --------------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "image grids", 640, 480
+
+' Load an image.
+img = loadimage("assets/smileys.png")
+
+' 'set image grid image_id, cols, rows' divides the image id into cols columns and rows rows. This
+' doesn't change the image in any way, but allows you to use a special version of 'draw image' to
+' draw a specific cell of the grid. The cells are indexed from left to right and top to bottom
+' starting with 0. Here we split our image into 3 columns and 2 rows.
+set image grid img, 3, 2
+' This is how the indidual cels are indexed:
+'  ___________
+' | 0 | 1 | 2 |
+' |___|___|___|
+' | 3 | 4 | 5 |
+' |___|___|___|
+
+' You can also load an image and set the number of columns and rows with a single function call,
+' 'loadimage(filename, cols, rows)'.
+
+' Clear the screen.
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+
+' Draw the full image and output its number of cels.
+draw image img, 276, 128
+set caret 320, 104
+' 'cels(image_id)' returns the number of cels of image image_id.
+center "This image has " + cels(img) + " cels"
+
+' Draw the individual cels.
+for i = 0 to 5
+    set caret 168 + i*64, 232
+    center "cel " + i
+    draw image img, 152 + i*64, 256, i
+next
+
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

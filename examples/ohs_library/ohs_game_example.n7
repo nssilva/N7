@@ -1,0 +1,262 @@
+' ohs_example.n7
+' --------------
+' A simple game just to show how the Online High Score library works. I'm not explaining any of the
+' game code (function PlayGame), since its not of importance to the library.
+'
+' By Marcus
+
+#win32
+
+' Include ohs library.
+include "ohs.n7"
+
+constant QUIT = 0, PLAY_GAME = 1, VIEW_HIGH_SCORES = 2
+
+' Create a "client" for the game PuzzlePopper that can display 10 score posts.
+'   The game name should be unique and consist of alpanumeric characters only. It can't be longer
+' than 32 characters.
+'   The number of score posts that can be displayed doesn't really limit how many scores can be
+' saved for a game. It just limits how many posts you will receive. It must be in the rage [1..25].
+visible ohs = OHS("PuzzlePopper", 10)
+'ohs.SetPeriod(OHS_PERIOD_WEEK)
+
+' Create a nice lowres window and turn off automatic redraw.
+set window "Puzzle Popper", 320, 240, false, 3
+set redraw off
+
+do
+    ' MainMenu returns QUIT, PLAY_GAME or VIEW_HIGH_SCORES.
+    result = MainMenu()
+    
+    ' View high scores.
+    if result = VIEW_HIGH_SCORES
+        ' Update the scores by downloading them from the server.
+        ohs.DownloadList()
+        ViewHighScores()
+    ' Play game.
+    elseif result = PLAY_GAME
+        ' PlayGame returns a score. If it's > 0, ask for the player's name.
+        score = PlayGame()
+        if score > 0
+            set color 0, 0, 0
+            cls
+            set color 255, 255, 255
+            set caret 160, 100
+            set justification center
+            wln "PLEASE ENTER YOUR NAME"
+            wln
+            name = rln(16)
+            
+            ' Submit the score to the server, this also downloads an updated list of scores. Then
+            ' call ViewHighScores() to display the high score list.
+            ohs.Submit(name, score)
+            ViewHighScores()
+        endif
+    endif    
+until result = QUIT
+
+' ViewHighScores
+' --------------
+function ViewHighScores()
+    ' GetList returns the last downloaded list of score posts. Each element in the list has a
+    ' 'name' and 'score' field.
+    scores = ohs.GetList()
+    button = CreateButton("Continue", 160, 224)
+    do
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        set caret 160, 8
+        center "=== HIGH SCORES ==="
+        center
+        set caret 40, 32
+        write "PLAYER"
+        set justification right
+        set caret 280, 32
+        write "SCORE" 
+        set justification left
+        
+        ' Loop through the list of score posts and write out the names and scores.
+        for i = 0 to sizeof(scores) - 1
+            set caret 40, 48 + i*16
+            write scores[i].name
+            set justification right
+            set caret 280, 48 + i*16
+            write scores[i].score               
+            set justification left
+        next
+        
+        button.Draw()
+        
+        redraw
+        fwait 60
+    until zone() = button.Id()
+    button.Dispose()
+endfunc
+
+' MainMenu
+' --------
+function MainMenu()
+    playButton =       CreateButton(" Play game ", 160, 140)
+    highScoresButton = CreateButton("High scores", 160, 170)
+    quitButton =       CreateButton("   Leave   ", 160, 200)
+    do
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        set caret 160, 20
+        center "=== PUZZLE POPPER ==="
+        center
+        center "Click on a group of tiles to pop it"
+        center "The group must contain atleast 3 tiles"
+        center "The larger the group, the more points"
+        playButton.Draw()
+        highScoresButton.Draw()
+        quitButton.Draw()
+        z = zone()
+        redraw
+        fwait 60        
+    until z
+    playButton.Dispose()
+    highScoresButton.Dispose()
+    quitButton.Dispose()
+    if z = playButton.Id()  return PLAY_GAME
+    elseif z = highScoresButton.Id()  return VIEW_HIGH_SCORES
+    else  return QUIT
+endfunc
+
+' CreateButton
+' ------------
+function CreateButton(label, centerX, centerY)
+    labelWidth = fwidth(label) + 4
+    x = centerX - (labelWidth)/2
+    y = centerY - (fheight() + 2)/2
+    return [id: createzone(x, y, labelWidth, fheight()), label: label,
+            Id: function()
+                return this.id
+            endfunc,
+            Draw: function()
+                select zone(this.id)
+                    case 0  set color 128, 128, 128
+                    case 1  set color 200, 200, 200
+                    case 2  set color 80, 80, 80
+                endsel
+                draw rect zonex(this.id), zoney(this.id), zonew(this.id), zoneh(this.id), true
+                set color 0, 0, 0
+                set caret zonex(this.id) + zonew(this.id)/2,
+                        zoney(this.id) + (zoneh(this.id) - fheight())/2 + 2
+                center this.label
+            endfunc,
+            Dispose: function()
+                free zone this.id
+            endfunc]
+
+endfunc
+
+' PlayGame
+' --------
+' Play a round of the game, returns a score.
+function PlayGame()
+    gameGrid = dim(10, 10)
+    gridX = 80; gridY = 40
+    colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [255, 0, 255]]
+    for y = 0 to 9  for x = 0 to 9  gameGrid[x][y] = [type: rnd(4), offset: 0, checked: false]
+    flyingScores = []
+    score = 0
+    roundStart = clock()
+    do
+        timePlayed = (clock() - roundStart)/1000
+        for y = 0 to 9  for x = 0 to 9  gameGrid[x][y].offset = int(gameGrid[x][y].offset*0.9)
+        gx = floor((mousex() - gridX)/16); gy = floor((mousey() - gridY)/16)
+        if mousebutton(0, true) and gx >= 0 and gx <= 9 and gy >= 0 and gy <= 9
+            for y = 0 to 9  for x = 0 to 9
+                gameGrid[x][y].checked = false
+                gameGrid[x][y].pop = false
+            next
+            count = MarkGroup(gameGrid, gx, gy, gameGrid[gx][gy].type)
+            if count >= 3
+                points = PopMarked(gameGrid, timePlayed)
+                score = score + points
+                flyingScores[sizeof(flyingScores)] = [s: points, t: 0, x: mousex(), y: mousey() - 8]
+            else
+                flyingScores[sizeof(flyingScores)] = [s: -100, t: 0, x: mousex(), y: mousey() - 8]
+                score = max(score - 100, 0)
+            endif
+        endif
+        i = 0
+        while i < sizeof(flyingScores)
+            flyingScores[i].t = flyingScores[i].t + 1
+            if flyingScores[i].t > 60  free key flyingScores, i
+            else  i = i + 1
+        wend
+        set color 0, 0, 0; cls
+        set clip rect gridX, gridY, 160, 160
+        for y = 0 to 9  for x = 0 to 9
+            set color colors[gameGrid[x][y].type]
+            draw rect gridX + x*16 + 1, gridY + y*16 + 1 +  gameGrid[x][y].offset, 14, 14, true
+        next
+        clear clip rect
+        foreach fs in flyingScores
+            set color 0, 0, 0
+            set caret fs.x + 1, fs.y - fs.t + 1
+            center fs.s
+            set color 255, 255, 255
+            set caret fs.x, fs.y - fs.t
+            center fs.s
+        next
+        set color 255, 255, 255
+        set caret 80, 2
+        center "SCORE"
+        center score
+        set caret 240, 2
+        center "TIME"
+        if timePlayed >= 50  set color 255, 0, 0
+        center int(max(60 - timePlayed, 0))
+        redraw
+        fwait 60
+    until timePlayed >= 60 or keydown(KEY_ESCAPE, true)
+    if timePlayed < 60  return 0
+    else  return score
+    
+    function MarkGroup(gg, x, y, type)
+        if x < 0 or x > 9 or y < 0 or y > 9 or gg[x][y].checked  return 0
+        gg[x][y].checked = true
+        if gg[x][y].type = type
+            gg[x][y].pop = true
+            return 1 + MarkGroup(gg, x - 1, y, type) + MarkGroup(gg, x + 1, y, type) +
+                    MarkGroup(gg, x, y - 1, type) + MarkGroup(gg, x, y + 1, type)
+        endif
+    endfunc
+    
+    function PopMarked(gg, timePlayed)
+        if timePlayed >= 30  types = 5
+        else types = 4
+        tops = 0
+        score = 0
+        scoreAdd = 10
+        for x = 0 to 9; y = 9
+            while y >= 0
+                if gg[x][y] and gg[x][y].pop
+                    if gg[x][y].pop = 1
+                        score = score + scoreAdd
+                        scoreAdd = scoreAdd + 10
+                    endif
+                    found = false
+                    if y > 0  for ny = y - 1 to 0  if gg[x][ny] and not gg[x][ny].pop
+                        found = gg[x][ny]
+                        gg[x][y] = [type: found.type, offset: (ny*16 + found.offset) - y*16]
+                        found.pop = 2
+                        break
+                    endif
+                    if not found
+                        tops = tops + 1
+                        gg[x][y] = [type: rnd(types), offset: -(y + tops)*16]
+                    endif
+                    gg[x][y].pop = false                
+                endif
+                y = y - 1
+            wend
+        next
+        return score
+    endfunc    
+endfunc

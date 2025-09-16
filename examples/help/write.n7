@@ -1,0 +1,25 @@
+' write
+' -----
+
+' 'write s' writes string s without moving to a new line. If no window has been created
+' 'write' writes text to the console.
+write "I won't move to a"
+write " new line!   "
+
+system "pause"
+
+' Create a window of the size 640x480.
+set window "write", 640, 480
+
+' If a window has been created, 'write' writes text to the window.
+write "I won't move to a"
+write " new line either!"
+
+' Write some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+
+

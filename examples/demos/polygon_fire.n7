@@ -1,0 +1,72 @@
+' polygon_fire.n7
+' ---------------
+
+visible vPolyT = dim(64)
+
+set window "Burning polygon mess", screenw()/screenh()*512, 512, true
+set redraw off
+set color 0, 8, 32
+cls
+
+particles = []
+while not keydown(KEY_ESCAPE)
+    i = 0
+    while i < sizeof(particles)
+        if particles[i].Update()  i = i + 1
+        else  free key particles, i
+    wend
+    particles[sizeof(particles)] = FireParticle(width(primary)/2, height(primary) - 64)
+    set color 0, 8, 32, 96
+    cls
+    set additive true
+    foreach p in particles p.Draw()
+    set additive false
+    redraw
+    fwait 60
+wend
+
+function FireParticle(x, y)
+    p = []
+    p.pts = []
+    for i = 1 to 3 + rnd(4)
+        p.pts[sizeof(p.pts)] = (rnd() - 0.5)*48
+        p.pts[sizeof(p.pts)] = (rnd() - 0.5)*48
+    next
+    p.x = x + rnd(32) - 16; p.y = y + rnd(32) - 16
+    p.a = rnd(2*PI); p.as = (rnd() - 0.5)*0.2
+    p.dx = (rnd() - 0.5)*2; p.dy = (rnd() - 0.75)*2
+    p.r = 96; p.g = 80; p.b = 64
+    p.fi = 0; p.p = 0
+    p.Update = function()
+        .x = .x + .dx; .y = .y + .dy
+        .r = 8 + (.r - 8)*0.98; .g = 8 + (.g - 8)*0.96; .b = 8 + (.b - 8)*0.9
+        .dx = .dx*0.975; .dy = max(.dy - 0.01, - 4)
+        .a = .a + .as
+        .fi = min(.fi + 0.05, 1); .p = .p + 0.003
+        if .p >= 1 return false
+        return true
+    endfunc
+    p.Draw = function()
+        set color .r, .g, .b, .fi*(1 - .p)*255
+        DrawPolyXForm(.pts, .x, .y, (1 - .p)*2, 2, .a, false)
+    endfunc
+    return p
+endfunc
+
+' n7 needs something like this in its core: 'draw poly xform', 'draw poly image xform'
+function DrawPolyXForm(points, x, y, sx, sy, a, scaleFirst)
+    if scaleFirst
+        for i = 0 to sizeof(points)/2 - 1
+            px = points[i*2]*sx; py = points[i*2 + 1]*sy
+            vPolyT[i*2] = x + px*cos(a) - py*sin(a)
+            vPolyT[i*2 + 1] = y + py*cos(a) + px*sin(a)
+        next
+    else
+        for i = 0 to sizeof(points)/2 - 1
+            px = points[i*2]; py = points[i*2 + 1]
+            vPolyT[i*2] = x + (px*cos(a) - py*sin(a))*sx
+            vPolyT[i*2 + 1] = y + (py*cos(a) + px*sin(a))*sy
+        next
+    endif
+    draw poly vPolyT, true, sizeof(points)/2
+endfunc

@@ -1,0 +1,57 @@
+' atan2
+' ----
+
+' 'atan2(y, x)' returns the arc tangent in radians of y/x. Simply put, you can use it to calculate
+' the angle between a line from (0, 0) to (x, y) and the positive x-axis. We use 'rad' to convert
+' from degrees to radians and 'deg' to convert from radians to degrees.
+pln "deg(atan2(0, 1)) = " + deg(atan2(0, 1))
+pln "deg(atan2(1, 1)) = " + deg(atan2(1, 1))
+pln "deg(atan2(1, 0)) = " + deg(atan2(1, 0))
+
+system "pause"
+
+' Show a visual example.
+set window "atan2", 640, 480
+set redraw off
+
+do
+    ' Calculate mouse x and y delta values in regard to center of the screen.
+    dx = mousex() - 320
+    dy = mousey() - 240
+    
+    ' If dx = 0 and dy = 0, there is no angle.
+    if dx <> 0 or dy <> 0  angle = deg(atan2(dy, dx))%360
+    else  angle = unset
+
+    ' Clear screen.    
+    set color 0, 0, 0
+    cls
+
+    ' Draw axes.
+    set color 64, 64, 64
+    draw line 0, 240, 640, 240
+    draw line 320, 0, 320, 480
+            
+    ' Draw lines and arc.
+    set color 255, 255, 255
+    if typeof(angle)
+        d = sqr(dx*dx + dy*dy)
+        set color 255, 255, 255
+        PlotArc(320, 240, d, angle)
+        draw line 320, 240, 320 + d, 240 
+        draw line 320, 240, 320 + dx, 240 + dy
+    endif
+    
+    set caret 320, 16
+    center "angle = " + angle
+    set caret 320, 448
+    center "Press Esc to exit (and don't pretend like you didn't play Pac-man) ..."
+
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE)
+
+' Helper.
+function PlotArc(x, y, r, degrees)
+    for a = 0 to rad(degrees) step 2*PI/(r*2*PI)  draw pixel x + cos(a)*r, y + sin(a)*r
+endfunc

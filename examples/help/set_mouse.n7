@@ -1,0 +1,40 @@
+' set mouse
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window and disable automatic redraw.
+set window "set mouse", 640, 480
+set redraw off
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' 'set mouse value' sets the mouse cursor's visibility. Show the mouse cursor with the S key and
+    ' hide it with H.
+    if keydown(KEY_S, true)  set mouse on
+    if keydown(KEY_H, true)  set mouse off
+
+    ' 'set mouse x, y' sets the position of the mouse cursor to x, y. Use the C key to center and R
+    ' to put the mouse cursor at a random position.
+    if keydown(KEY_C, true)  set mouse 320, 240
+    if keydown(KEY_R, true)  set mouse rnd(640), rnd(480)
+
+    ' Clear screen and write some information.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret 320, 8
+    center "Press H to hide the mouse cursor"
+    center "Press S to show the mouse cursor"
+    center "Press C to center the mouse cursor"
+    center "Press R to put the mouse cursor at a random position"
+    center
+    center "Mouse position = " + mousex() + ", " + mousey()
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Upate window content.
+    redraw
+    fwait 60
+wend

@@ -1,0 +1,44 @@
+' With 'select' you evaluate an expression. You can then perform different
+' actions depending on the value using 'case' statements. Each 'case' is
+' followed by one or more expressions separated by commas. If the selected value
+' is equal to any of the expressions in a 'case' statement, the statement(s)
+' that follow(s) until the next 'case' statement (or 'default'/'endsel'
+' statement) are executed. An optional 'default' statement captures values that
+' did not match any of the defined cases. Every 'select' statement must end with
+' 'endsel'. There's no problem with using mixed types in a 'case' statement.
+
+' Let i go from 1 to 5.
+for i = 1 to 5
+    ' Select the value of i and print three different things depending on its
+    ' value.
+    select i
+        case 1, 2
+            pln "i is 1 or 2"
+        case 3
+            pln "i is 3"
+        default
+            pln "i is something else"
+    endsel
+next
+pln
+
+' Create an array of mixed values.
+foo = [10, 3, "hello", 38, "there", [15, 3]]
+for i = 0 to sizeof(foo) - 1
+    ' 'typeof' returns the type of an expression. It can be one of the
+    ' constants: TYPE_NUMBER, TYPE_STRING, TYPE_TABLE, TYPE_FUNCTION and
+    ' TYPE_UNSET. Here we use 'select' and 'typeof' to determine the type of
+    ' each element in an array.
+    s = "foo[" + i + "] is "
+    select typeof(foo[i])
+        case TYPE_NUMBER   pln s + "a number"
+        case TYPE_STRING   pln s + "a string"
+        case TYPE_TABLE    pln s + "a table"
+        case TYPE_FUNCTION pln s + "a function"
+        default            pln s + "something else"
+    endsel
+next
+
+pln
+pln "Press enter to exit"
+tmp = rln()

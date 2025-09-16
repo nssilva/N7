@@ -1,0 +1,48 @@
+' draw ellipse
+' ------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw ellipse", 640, 480
+
+' 'draw ellipse x, y, rx, ry' draws an ellipse with its center at x, y and x and y radiuses rx and
+' ry
+draw ellipse 160, 190, 100, 120
+
+' 'draw ellipse x, y, rx, ru, fill' draws a filled ellipse if fill is true.
+draw ellipse 480, 190, 120, 100, true
+
+' Write some text.
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Loop until spacebar is pressed.
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' Clear screen and display a new message.
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Change clip rect to preserve the text.
+set clip rect 0, 0, 640, 440
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Draw a couple of random ellipses with random colors.
+    for i = 1 to 100
+        set color rnd(256), rnd(256), rnd(256), rnd(256)
+        draw ellipse rnd(640), rnd(440), rnd(80), rnd(80), rnd(2) ' false = 0, true = 1
+    next
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    if not fwait(120) pln "wt"
+wend

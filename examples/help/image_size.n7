@@ -1,0 +1,52 @@
+' width, height
+' -------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw vraster", 640, 480
+
+' Load a smiley image.
+smileyImage = loadimage("assets/smiley.png")
+
+' Load an image with 6 smileys in 3 columns and 2 rows.
+smileysImage = loadimage("assets/smileys.png")
+
+' Clear screen.
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+
+' Draw smiley image.
+draw image smileyImage, 128, 208
+
+' 'width(image_id)' returns the width of image image_id, and 'height(image_id)' returns the height.
+set caret 160, 288
+center "smileyImage"
+center "size: " + width(smileyImage) + "x" + height(smileyImage)
+
+' Draw smileys image.
+draw image smileysImage, 272, 208
+set caret 320, 288
+center "smileysImage"
+center "size: " + width(smileysImage) + "x" + height(smileysImage)
+
+' Setup a 3x2 grid for smileysImage to be able to draw individual cels.
+set image grid smileysImage, 3, 2
+
+' Draw cel 4 of smileysImage.
+draw image smileysImage, 464, 224, 4
+set caret 480, 264
+center "smileysImage"
+' If an image grid has been set up for an image, 'width' and 'height' returns the width and height
+' of a cel.
+center "size: " + width(smileysImage) + "x" + height(smileysImage)
+
+' Write some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+

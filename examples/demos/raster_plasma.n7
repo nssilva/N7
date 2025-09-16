@@ -1,0 +1,43 @@
+' Plasma effect.
+' By John Master, translated from n6 to n7 by Marcus.
+
+set window "Raster plasma", 640, 480
+set redraw off
+
+w = width(primary)
+h = height(primary)
+
+' draw to new image instead.
+img = createimage(w, h)
+set image img
+
+dx = PI*8/w
+dy = PI*4/h
+for x = 0 to w - 1
+    a = 128 + 128*sin(x*dx)*-cos(x*dx*0.5)
+    for y = 0 to h - 1
+        b = 128 + 128*sin(y*dy)*-cos(x*dy*1.2)
+        c = (a + b)*0.5*cos(y*0.0025)
+        set color c, c/4, c/2
+        set pixel x, y
+    next
+next
+
+set image primary
+
+' do nasty animation with generated image and raster command.
+set color 255, 255, 255, 0
+a = 0
+do
+    a = a + 1.0
+    if fwait(60)
+        for y = 0 to h - 1
+            uSrc = 0.5 + (y/h - 0.5)*sin(rad(a))
+            vSrc = 0.5 + cos(rad(a - y))*0.5
+            uDst = 0.5 - sin(rad(a*1.3 + y/2))*0.5
+            vDst = 0.5 - (y/h - 0.5)*cos(rad(a))
+            draw hraster img, y, 0, w - 1, uSrc, vSrc, uDst, vDst
+        next
+        redraw
+    endif
+until keydown(KEY_ESCAPE)

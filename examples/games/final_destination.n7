@@ -1,0 +1,773 @@
+' ==========================================================================================
+'
+' FINAL DESTINATION
+' You can't escape Death...
+' Inspired by the suspense of the Final Destination
+' * Can you outsmart the pattern ?
+' * Can you outrun the inevitable ?
+' Play the Final Destination now - because Death doesn't take a day off !
+'
+' CONTROL KEYS
+' - UP,DOWN     to rotate 
+' - LEFT,RIGHT  to move
+' - SPACE BAR   to drop
+' - ENTER       to continue
+' - ESC         to quit
+'
+' DISCLAIMER
+' Final Destination - inspired theme and visual elements featured in the N7 forum
+' are for creative and illustrative purposes only. They do not reflect the tone, content,
+' or gameplay mechanics of the actual Tetris-style game upon release.
+' This is a demo concept and is not affiliated with the Final Destination franchise or 
+' the Tetris. 
+'
+' REFERENCES
+' - Blocks, a tutorial for Lua and Löve 11 by Santos
+'   https://berbasoft.com/simplegametutorials/love/blocks/
+' - oh_no_sound and hit_ball_sound sfx by Kevin ("A Game of Pool").
+'
+' By 1micha.elok: https://naalaa.com/forum/thread-250.html
+' ==========================================================================================
+
+include "sfx.n7"
+
+#win32
+set window "Final Destination",330,550
+set redraw off
+randomize time()
+
+'Note frequency
+constant DO = 261.63*2 
+constant MI = 329.63
+
+'Beat 
+constant b1 = 0.2 
+constant b2 = 0.4
+
+'create an sfx instance
+visible sfx = SFX() 
+
+'font
+arial32 = createfont("arial", 32, true, true, false, true)
+
+'sound definition 
+visible ding            = CreateSineSfx(0.2,600,600,0.9,11025)
+visible oh_no_sound     = CreateSineSfx(1,600,310,0.215,11600)
+visible hit_ball_sound  = CreateNoiseSfx(0.1, 1.05, 0, 14200)
+
+'color definition
+visible black  = [0,0,0]
+visible white  = [255,255,255]
+visible green1 = [155,188,15] 
+visible green2 = [139,172,15]
+visible green3 = [48,98,48]
+visible green4 = [15,56,15]
+visible green5 = [10,40,10]
+
+visible gridXCount = 11
+visible gridYCount = 19
+
+'storing inert blocks
+visible inert = dim(gridYCount,gridXCount)
+for y = 0 to gridYCount-1
+    for x = 0 to gridXCount-1
+        inert[y][x] = " "
+    next
+next
+
+'storing the piece structures
+'each piece structure is stored as a table of piece rotations
+visible pieceStructures = []
+
+'I structure
+pieceStructures[0] = 
+    [
+        [
+            [" ", " ", " ", " "],
+            [" ", " ", " ", " "],
+            ["i", "i", "i", "i"],
+            [" ", " ", " ", " "]
+        ],
+        [
+            ["i", " ", " ", " "],
+            ["i", " ", " ", " "],
+            ["i", " ", " ", " "],
+            ["i", " ", " ", " "]
+        ]
+    ]
+
+'O structure
+pieceStructures[1] =        
+    [
+        [
+            [" ", " ", " ", " "],
+            ["o", "o", " ", " "],
+            ["o", "o", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+
+'J structure   
+pieceStructures[2] =     
+    [
+        [
+            [" ", " ", " ", " "],
+            ["j", "j", "j", " "],
+            [" ", " ", "j", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "j", " ", " "],
+            [" ", "j", " ", " "],
+            ["j", "j", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            ["j", " ", " ", " "],
+            ["j", "j", "j", " "],
+            [" ", " ", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "j", "j", " "],
+            [" ", "j", " ", " "],
+            [" ", "j", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+
+'L structure   
+pieceStructures[3] =     
+    [
+        [
+            [" ", " ", " ", " "],
+            ["l", "l", "l", " "],
+            ["l", " ", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "l", " ", " "],
+            [" ", "l", " ", " "],
+            [" ", "l", "l", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", " ", "l", " "],
+            ["l", "l", "l", " "],
+            [" ", " ", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            ["l", "l", " ", " "],
+            [" ", "l", " ", " "],
+            [" ", "l", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+
+'T structure       
+pieceStructures[4] =     
+    [
+        [
+            [" ", " ", " ", " "],
+            ["t", "t", "t", " "],
+            [" ", "t", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "t", " ", " "],
+            [" ", "t", "t", " "],
+            [" ", "t", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "t", " ", " "],
+            ["t", "t", "t", " "],
+            [" ", " ", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "t", " ", " "],
+            ["t", "t", " ", " "],
+            [" ", "t", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+
+'S structure       
+pieceStructures[5] =    
+    [
+        [
+            [" ", " ", " ", " "],
+            [" ", "s", "s", " "],
+            ["s", "s", " ", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            ["s", " ", " ", " "],
+            ["s", "s", " ", " "],
+            [" ", "s", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+
+'Z structure
+pieceStructures[6] = 
+    [
+        [
+            [" ", " ", " ", " "],
+            ["z", "z", " ", " "],
+            [" ", "z", "z", " "],
+            [" ", " ", " ", " "]
+        ],
+        [
+            [" ", "z", " ", " "],
+            ["z", "z", " ", " "],
+            ["z", " ", " ", " "],
+            [" ", " ", " ", " "]
+        ]
+    ]
+    
+'storing the initial piece
+visible pieceType = rnd(0,6)
+visible pieceRotation = 0
+
+'setting the initial piece position
+visible pieceX = rnd(3,7)
+visible pieceY = 0
+
+'the number of blocks each piece has on the X and Y axes
+visible pieceXCount = 4
+visible pieceYCount = 4
+
+' game speed, time, timer
+visible gameSpeed = 1
+prevTime = clock()      'to calculate delta time
+visible timer = 0       'a timer variable start at 0 and increases by dt each frame
+
+' offsetting the playing area
+visible offsetX = 3.5
+visible offsetY = 7
+
+'misc
+start = true
+visible count = 0 'count removed rows
+
+
+'-----------
+' Main Loop
+'-----------
+while not keydown(KEY_ESCAPE,true)
+    ' Delta time
+    t = clock()
+    dt = (min(t - prevTime, 66))/1000
+    prevTime = t
+    dt = dt*gameSpeed
+    gameSpeed = gameSpeed + dt*0.005  
+    
+    ' Update 
+    update(dt)
+
+    'clear screen
+    clearScreen(green4,white)
+    
+    'start message
+    if start then
+        intro()
+        message(0,green3,green5,white)
+        message(6,green3,green5,white)
+        start = false
+    endif
+       
+    'info box
+    set color white
+    set caret 10,30 ; wln "Speed"
+    set caret 230,30; wln "Score"
+    set font arial32
+    set caret 10,40 ; wln round(gameSpeed*10000)/100-13 
+    set caret 230,40; wln count
+    set font 0
+
+    'drawing the grid of blocks
+    drawGrid()
+
+    'control keys
+    'rotate
+    if keydown(KEY_UP,true) then
+        testRotation = pieceRotation - 1    
+        if testRotation < 1 then
+            testRotation = sizeof(pieceStructures[pieceType])-1
+        endif   
+        if canPieceMove(pieceX,pieceY,testRotation) then
+            pieceRotation = testRotation
+        endif 
+    elseif keydown(KEY_DOWN,true) then
+        testRotation = pieceRotation + 1    
+        if testRotation > sizeof(pieceStructures[pieceType])-1 then
+            testRotation = 0 
+        endif   
+        if canPieceMove(pieceX,pieceY,testRotation) then
+            pieceRotation = testRotation
+        endif 
+    endif   
+    
+    'drop
+    if keydown(KEY_SPACE,true) then
+        while canPieceMove(pieceX, pieceY + 1,pieceRotation) 
+            play sound hit_ball_sound
+            pieceY = pieceY + 1
+        wend
+    endif
+    
+    'move left or right
+    if keydown(KEY_LEFT,true) then
+        testX = pieceX - 1
+        if canPieceMove(testX, pieceY, pieceRotation) then
+            pieceX = testX
+        endif
+    elseif keydown(KEY_RIGHT,true) then
+        testX = pieceX + 1
+        if canPieceMove(testX, pieceY, pieceRotation) then
+            pieceX = testX
+        endif
+    endif                                         
+    
+    'drawing the piece 
+    drawPiece()
+
+    redraw
+    fwait 60
+wend
+Music()
+message(7,green3,green5,white)
+
+
+'-----------
+' Functions
+'-----------
+function drawGrid()
+    for y = 0 to gridYCount-1
+        for x = 1 to gridXCount-1
+            drawBlock(inert[y][x],x+offsetX,y+offsetY)
+        next
+    next                
+endfunc
+
+function drawPiece()
+    for y = 0 to pieceYCount-1
+        for x= 0 to pieceXCount-1
+            block = pieceStructures[pieceType][pieceRotation][y][x]
+            if block <> " " then
+                drawBlock(block,x + pieceX+offsetX,y+pieceY+offsetY)
+            endif
+        next
+    next    
+endfunc
+
+function drawBlock(block,x,y)
+    'setting colors
+    colors = []
+    if block = " " then 
+        colors[block] = green5 
+    else 
+        colors[block] = green2
+    endif
+     
+    selected = colors[block]
+    set color(selected) 
+    blockSize = 20
+    blockDrawSize = blockSize - 1
+    draw rect (x-1)*blockSize,(y-1)*blockSize,blockDrawSize,blockDrawSize,true        
+endfunc
+
+'To prevent the piece from moving off the left or right of the screen
+'when it is moved or rotated, each of its blocks are checked to see if they
+'are within the playing area before the piece is moved or rotated
+function canPieceMove(testX,testY,testRotation)
+    for y = 0 to pieceYCount-1
+        for x = 0 to pieceXCount-1       
+            if pieceStructures[pieceType][testRotation][y][x]<>" " and
+            ((testX + x) < 1 or
+             (testX + x) > gridXCount-1 or
+             (testY + y) > gridYCount-1 or
+              inert[testY+y][testX+x]<>" ") then
+                  return false
+            endif
+        next
+    next
+    
+    return true
+endfunc
+
+function update(dt)
+    ' Pieces will fall every 0.5 seconds
+    timer = timer + dt
+    if timer >=0.5 then
+        timer = 0
+        'pieceY = pieceY+ 1
+        testY = pieceY + 1
+        if canPieceMove(pieceX,testY,pieceRotation) then
+            pieceY = testY
+        else
+            'When a piece has come to rest, the piece's blocks are
+            'added to the inert blocks
+            for y = 0 to pieceYCount-1
+                for x = 0 to pieceXCount - 1
+                    block = pieceStructures[pieceType][pieceRotation][y][x]    
+                    if block <> " " then
+                        inert[pieceY + y][pieceX + x] = block
+                    endif
+                next        
+            next
+            
+            'find complete rows
+            for y = 0 to gridYCount - 1
+                complete = true
+                for x = 1 to gridXCount - 1
+                    if inert[y][x] = " " then
+                        complete = false
+                        break
+                    endif
+                next
+
+                'removing complete rows                
+                if complete then
+                    for removeY = y to 2 step -1
+                        for removeX = 1 to gridXCount-1
+                            inert[removeY][removeX] =
+                            inert[removeY-1][removeX]
+                        next
+                    next
+                    
+                    play sound ding
+                    
+                    for removeX = 1 to gridXCount-1
+                        inert[1][removeX] = " "
+                    next
+                    
+                    'messages
+                    count = count + 13 'increase score
+                    select count
+                        case 1*13 
+                            message(2,green3,green5,white)
+                        case 3*13 
+                            message(3,green3,green5,white) 
+                        case 5*13 
+                            message(4,green3,green5,white)
+                        case 10*13
+                            message(5,green3,green5,white)    
+                    endsel
+                    
+                endif
+            next
+        
+            'if the timer ticks and the piece can't move down,
+            'the piece is reset to its initial position and rotation
+            newPiece()
+            
+            'game over
+            if not canPieceMove(pieceX,pieceY,pieceRotation) then
+                play sound oh_no_sound
+                message(1,green3,green5,white)
+                reset()
+            endif
+            
+        endif
+    endif
+endfunc
+
+function newPiece()
+    'storing the new piece
+    pieceType = rnd(0,6)
+    pieceRotation = 0
+    
+    'setting the new piece position
+    pieceX = rnd(3,7)
+    pieceY = 0 
+endfunc
+
+'resetting the game over
+function reset()
+    for y = 0 to gridYCount-1
+        for x = 0 to gridXCount-1
+            inert[y][x] = " "
+        next
+    next
+    
+    newPiece()
+    timer = 0
+    'gameSpeed = 1
+endfunc
+
+function clearScreen(color1,color2)
+    set color color1
+    cls
+    set color color2
+endfunc
+
+function message(text,color1,color2,color3)
+    w1 = 250 ; h1 = 400
+    x1 = (width()-w1)/2; y1 = (height()-h1)/2+20
+    set color color1;draw rect x1+10,y1+10,w1,h1,true 'shadow
+    set color color2;draw rect x1,y1,w1,h1,true        'box
+    set color color3;draw rect x1,y1,w1,h1             'border      
+    set caret x1+15,y1+15
+        
+    if text = 0 then
+        Music()
+        wln "FINAL DESTINATION"
+        wln "-----------------------"
+        wln
+        wln "One misstep" 
+        wln "One hesitation "
+        wln "Death catches up."
+        wln
+        wln "The moment you let"
+        wln "your guard down..."
+        wln "It's game over." 
+        wln "Literally"
+        wln 
+        wln "------------------------"
+        wln "Press ENTER to continue"
+    endif
+    
+    if text=1 then
+        wln "FINAL BLOCKS"
+        wln
+        wln "-----------------------"
+        wln
+        wln "You can't escape Death"
+        wln
+        wln "Death..."
+        wln "always finds a way"
+        wln
+        wln "------------------------"
+        wln "Press ESCAPE to quit"
+        wln "Press ENTER to continue"
+    endif
+
+    if text=2 then
+        wln "DEATH whispers ..."
+        wln
+        wln "-----------------------"
+        wln
+        wln "You thought you could" 
+        wln "cheat Death..."
+        wln
+        wln "------------------------"
+        wln "Press ENTER to continue"       
+    endif
+  
+    if text=3 then
+        wln "DEATH whispers ..."
+        wln
+        wln "-----------------------"
+        wln
+        wln "But every shape ... "
+        wln "every move ... "
+        wln "was part of the plan"
+        wln
+        wln "------------------------"
+        wln "Press ENTER to continue"       
+    endif
+
+    if text=4 then
+        wln "DEATH whispers ..."
+        wln
+        wln "-----------------------"
+        wln
+        wln "In this game..."
+        wln "you don't win. "
+        wln
+        wln "You only "
+        wln "delay the inevitable."        
+        wln
+        wln "------------------------"
+        wln "Press ENTER to continue"       
+    endif
+    
+    if text=5 then
+        wln "DEATH whispers ..."
+        wln
+        wln "-----------------------"
+        wln
+        wln "Death doesn't take "
+        wln "a day off !"   
+        wln
+        wln "------------------------"
+        wln "Press ENTER to continue"       
+    endif
+    
+    if text=6 then
+        wln "CONTROL KEYS"
+        wln 
+        wln "-----------------------"
+        wln
+        wln " UP,DOWN     to rotate "
+        wln " LEFT,RIGHT  to move"
+        wln " SPACE BAR   to drop"
+        wln
+        wln "------------------------"
+        wln "Press ENTER to continue"        
+    endif
+    
+    if text=7 then
+        wln "GAME OVER"
+        wln
+        wln "-----------------------"
+        wln
+        wln "It's game over." 
+        wln "Literally"
+        wln
+        wln "Death..."
+        wln "always finds a way"
+        wln
+        wln "------------------------"
+        wln "Press ESCAPE to quit"
+    endif
+    
+    redraw
+    
+    'pause
+    do
+        if (text=1 or text=7) and keydown(KEY_ESCAPE,true) then end
+        if keydown(KEY_RETURN,true) then 
+            play sound hit_ball_sound
+            break
+        endif
+        wait 1
+    loop
+
+endfunc
+
+'sound function, sine sfx
+function CreateSineSfx(duration, startFreq, endFreq, fadeOut, sampleRate)
+    data = []
+    a = 0
+    da = 2*PI*startFreq/sampleRate
+    dda = (2*PI*endFreq/sampleRate - 2*PI*startFreq/sampleRate)/(duration*sampleRate)
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        data[i] = sin(a)*vol
+        a = a + da
+        da = da + dda
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    return createsound(data, data, sampleRate)
+endfunc
+
+'sound function, noise sfx
+function CreateNoiseSfx(duration, pitch, fadeOut, sampleRate)
+    assert sampleRate >= 8000, "CreateBoomSfx: invalid sample rate"
+    assert pitch > 0, "CreateBoomSfx: invalid pitch"
+   
+    ' Mix four different noise frequencies weighted, in a weird way, by the pitch value.
+    freqs = [
+            [v: 0, p: sampleRate/500, d: 0, t: 0, w: pitch],
+            [v: 0, p: sampleRate/1000, d: 0, t: 0, w: pitch^2],
+            [v: 0, p: sampleRate/2000, d: 0, t: 0, w: pitch^3],
+            [v: 0, p: sampleRate/8000, d: 0, t: 0, w: pitch^4]]
+    
+    s = sizeof(freqs)
+    data = []
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        v = 0
+        w = 0
+        for j = 0 to s - 1; f = freqs[j]
+            f.t = f.t - 1
+            if f.t <= 0
+                f.t = f.p
+                f.d = ((rnd()*2 - 1) - f.v)/f.p
+            endif
+            f.v = f.v + f.d
+            v = v + f.v*f.w
+            w = w + f.w
+        next
+        data[i] = vol*v/w
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    
+    return createsound(data, data, sampleRate)
+endfunc
+
+function intro()
+    prevTime = clock()      'to calculate delta time
+    
+    'info box
+    set color white
+    set caret 10,30      ; type("Prologue")
+    set caret 10,30+15   ; wln
+    set caret 10,30+15*2 ; type("You can't escape Death ...")  
+    Music()
+    wait 1000
+    
+    for i = 1 to 2500
+         
+        ' Delta time
+        t = clock()
+        dt = (min(t - prevTime, 66))/50
+        prevTime = t
+    
+        drawGrid()
+
+        set color white
+        set caret width()/2,30+15*2  
+        center ("You saw it before it happened")
+        center ("It was like a premonition")  
+       
+                        
+        for y = 0 to pieceYCount-1
+            for x= 0 to pieceXCount-1
+                block = pieceStructures[pieceType][pieceRotation][y][x]
+                if block <> " " then
+                    drawBlock(block,x + pieceX+offsetX,y+pieceY+offsetY)
+                endif
+            next
+        next  
+        
+        redraw
+                
+        update(dt)
+        clearScreen(green4,white)
+                
+        if (dt*100)%10 = 0 play sound hit_ball_sound
+    
+    next
+    
+    reset()
+    gameSpeed = 1 
+endfunc
+
+'This function will play sound frequency x at duration b
+function Piano(b,x) 
+    'SquareWave(duration,freq,volume)
+    mytune = sfx.SquareWave(b,x,0.05)
+    play sound mytune
+    Pause()
+    free sound mytune 'release sound from memory
+endfunc
+
+'Simple music
+function Music()
+    Piano(b2,DO);Piano(b1,MI)
+    Piano(b2,DO);Piano(b1,MI)
+    Piano(b2,DO);Piano(b1,MI)                                               
+endfunc
+
+function Pause()
+    wait 100
+endfunc
+
+function type(x)
+    for t = 0 to len(x)
+        write mid(x,t)
+        play sound hit_ball_sound
+        wait 100
+        redraw
+    next
+endfunc

@@ -1,0 +1,52 @@
+' draw poly image
+' ---------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw image", 640, 480
+
+' Load a 64x64 pixel plasma image.
+img = loadimage("assets/plasma.png")
+
+' Define an U shaped polygon. Each point has 4 values: x, y, u and v. X and y are screen
+' coordinates, while u and v are image coordinates (x and y but in image space). We set the u and v
+' coordinates to 0 for now.
+points = [
+        0, 0, 0, 0,     ' First point: x, y, u, v
+        50, 0, 0, 0,    ' Second point ...
+        150, 125, 0, 0,
+        150, 0, 0, 0,
+        200, 0, 0, 0,
+        200, 200, 0, 0,
+        150, 200, 0, 0,
+        50, 75, 0, 0,
+        50, 200, 0, 0,
+        0, 200, 0, 0]
+
+' Now we map image coordinates (u and v values) to the points array. The size of the polygon is
+' 200x200, so we can divide the x and y coordinates with 200 and multiply with the width and height
+' of the image to get a plain mapping.
+for i = 0 to sizeof(points)/4 - 1
+    points[i*4 + 2] = width(img)*points[i*4]/200
+    points[i*4 + 3] = height(img)*points[i*4 + 1]/200
+next
+
+' Clear screen gray.
+set color 128, 128, 128
+cls
+
+' Draw textured polygon.
+set color 255, 255, 255
+' 'draw poly image image_id, points[, field_count[, point_count]]' draws a textured polygon using
+' the image image_id and an array of points in the format [x0, y0, u0, v0, x1, y1, u1, v1 .. xn, yn,
+' un, vn]. The u and v coordinates are in image space, while the x and y coordinates are screen
+' coordinates. Unless you want to write your own 3d renderer, the optional field_count should always
+' be 4. If you don't want to use all the points in the array, you can set point_count to the number
+' of points you want to use.
+draw poly image img, points
+
+set caret 320, 460
+center "Press escape to quit ..."
+while not keydown(KEY_ESCAPE, true) fwait 60

@@ -1,0 +1,57 @@
+' sin
+' ---
+
+' 'sin(a)' returns the sine of the angle a, expressed in radians. We use degrees and convert to
+' radians with 'rad'.
+pln "sin(rad(0)) = " + sin(rad(0))
+pln "sin(rad(90)) = " + sin(rad(90))
+pln "sin(rad(180)) = " + sin(rad(180))
+pln "sin(rad(270)) = " + sin(rad(270))
+pln "sin(rad(360)) = " + sin(rad(360))
+
+system "pause"
+
+' Show how a sine curve relates to a circle.
+set window "sin", 800, 400
+set redraw off
+
+' Current angle.
+angle = 0
+do
+    ' Increase angle.
+    angle = (angle + 1)%360
+    
+    ' Clear screen and draw a circle.
+    set color 0, 0, 0
+    cls
+    set color 128, 128, 128
+    draw ellipse 600, 200, 100, 100
+    
+    ' Draw a line from the center of the circle to its edge in the current angle.
+    set color 255, 255, 255
+    circleX = 600 + cos(rad(angle))*100
+    circleY = 200 + sin(rad(angle))*100
+    draw line 600, 200, circleX, circleY
+
+    ' Plot a curve.
+    x = 400
+    a = angle
+    for x = 400 to 100
+        draw pixel x, 200 + sin(rad(a))*100
+        a = a - 1
+    next
+
+    ' Show the connection.
+    set color 128, 128, 128
+    draw line 400, circleY, circleX, circleY
+
+    ' Display some text.    
+    set color 255, 255, 255
+    set caret 400, 24
+    center "angle = " + angle
+    set caret 400, 360
+    center "Press Esc to exit ..."
+         
+    redraw
+    fwait 60
+until keydown(KEY_ESCAPE)

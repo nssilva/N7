@@ -1,0 +1,9 @@
+' wait
+' ----
+
+' 'wait ms' waits for ms milliseconds.
+pln "Please wait for 3 seconds ..."
+wait 3000
+pln "I'm done!"
+
+system "pause"

@@ -1,0 +1,7 @@
+' max
+' ---
+
+' 'max(x, y)' returns the highest number of x and y.
+pln "max(7, 4) = " + max(7, 4)
+
+system "pause"

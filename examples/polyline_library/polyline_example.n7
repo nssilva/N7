@@ -1,0 +1,56 @@
+' polyline_example.n7
+' -------------------
+' The polyline library can be used for ... enemy paths in space shootemups, I guess :)
+
+#win32
+include "polyline.n7"
+
+set window "Polyline", 640, 480
+set redraw off
+
+' Create some random points.
+randomize 11 ' This seed gives a good set.
+points = []
+for i = 0 to 9  points[i] = [rnd(width(primary)), rnd(height(primary))]
+
+' Create a polyline from the points. The last parameter should be true for closed paths, else false.
+path = PolyLine(points, false)
+
+distance = 0
+curved = true
+
+while not keydown(KEY_ESCAPE, true)
+    ' Toggle curved mode.
+    if keydown(KEY_SPACE, true)  curved = not curved
+
+    ' Move forward 4 pixels, wrap at length of path.
+    distance = (distance + 4)%path.GetLength()
+    ' 'GetPoint' returns the position along the path at specified travel distance. If the second
+    ' parameter is true, the point is computed for a composite bezier curve that passes through all
+    ' the original points. If false, a position along the polyline is returned. If disance is
+    ' outside the length of the polyline and the path is not closed, unset is returned.
+    '   Note that the function always returns the same array (but with different values, of course).
+    pos = path.GetPoint(distance, curved)
+
+    set color 0, 0, 0, 24
+    cls
+    ' Draw lines.
+    set color 64, 64, 64
+    for i = 0 to sizeof(points) - 2
+        draw line points[i][0], points[i][1], points[i + 1][0], points[i + 1][1]
+    next
+    ' Draw points.
+    set color 96, 96, 96 
+    for i = 0 to sizeof(points) - 1  draw ellipse points[i][0], points[i][1], 2, 2, true
+
+    ' Draw circle that moves along path.
+    set color 255, 255, 255
+    draw ellipse pos[0], pos[1], 5, 5, true
+
+    ' Instructions.
+    set caret width(primary)/2, height(primary) - fheight()*2
+    center "Press space to toggle curve mode"
+
+    redraw
+    fwait 60
+wend

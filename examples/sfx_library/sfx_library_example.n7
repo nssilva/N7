@@ -1,0 +1,64 @@
+' sfx_library_example
+' -------------------
+
+#win32
+
+' Include the sfx library.
+include "sfx.n7"
+
+' Create a window and print instructions.
+set window "SFX", 640, 480
+wln "1 - Play a square wave sound effect"
+wln "2 - Play a sine wave sound effect"
+wln "3 - Play a noise sound effect"
+wln
+wln "Esc - Quit"
+
+' Create an sfx instance.
+sfx = SFX()
+
+' You can use 'SetSampleRate(value)' to change the sample rate that is used when creating sounds.
+' It defaults to 16000 (so the call below is just for show). There's no point setting a higher value
+' than 22050, since that is the output frequency of all audio in n7.
+sfx.SetSampleRate(16000)
+
+' Use 'SetEcho(count, delay, dropOff, panning)' to enable an echo effect for all sound effects
+' created. Set the 'count' parameter to 0 to disable echo. Echo is disabled by default. 'count' is
+' the number of echos and 'delay' is the delay in seconds between them. 'dropOff' decides how much
+' the volume will decrase for each echo. If 'dropOff' is 0.5, the first echo will have that volume,
+' the second one 0.5*0.5 = 0.25 and so on. 'panning', [-1..1] can be used to make the echo bounce
+' between the left and right speakers. The 'panning' value is inverted after each echo. Set
+' 'panning' to 0 to disable panning.
+sfx.SetEcho(2, 0.4, 0.1, 0)
+
+' Use 'SquareWave(duration, freq, vol)' to create a square wave sound. 'duration' is the duration in
+' seconds (excluding any echo effect). 'freq' is the frequency. It can be either a number or an
+' array of numbers. In the case of an array, it is evaluated as a one dimensional bezier curve. It's
+' not as complicated as it may sound. To make a sound start with a frequencey of 500 and end with
+' 1000, simply set the 'freq' parameter to [500, 1000]. 'vol' is the volume, and just like 'freq' it
+' can be a number or an array. The 'vol' value(s) should be in the range [0..1].
+crispSound = sfx.SquareWave(0.5, [50, 100, -500, 1000], [0.5, 1, 0])
+' You can also use 'SaveSquareWave(filename, duration, freq, vol)' to save a sound to a wav file.
+'sfx.SaveSquareWave("crisp_sound.wav", 0.5, [50, 100, -500, 1000], [0.5, 1, 0])
+
+' Change the echo effect and use 'SineWave(duration, freq, vol)' to create a sine wave sound. The
+' parameters work just as they do for 'SquareWave'.
+sfx.SetEcho(2, 0.15, 0.2, 0)
+blubSound = sfx.SineWave(0.2, [0, 500, 25, 500], [0, 1, 0])
+' You can also use 'SaveSine'Wave(filename, duration, freq, vol)' to save a sound to a wav file.
+'sfx.SaveSineWave("blub_sound.wav", 0.2, [0, 500, 25, 500], [0, 1, 0])
+
+' This time, use panning for the echo effect. 'Noise(duration, freq, vol)' creates a noise sound,
+' and the parameters work just the same way as they do for 'SquareWave' and 'SineWave'.
+sfx.SetEcho(2, 0.4, 0.2, -0.5)
+boomSound = sfx.Noise(0.6, [5000, 100], [1, 0, 1, 0])
+' You can also use 'SaveNoise(filename, duration, freq, vol)' to save a sound to a wav file.
+'sfx.SaveNoise("boom_sound.wav", 0.6, [5000, 100], [1, 0, 1, 0])
+
+' Let the user play the sound effects.
+while not keydown(KEY_ESCAPE)
+    if keydown(KEY_1, true)  play sound crispSound
+    if keydown(KEY_2, true)  play sound blubSound
+    if keydown(KEY_3, true)  play sound boomSound
+    fwait 60
+wend

@@ -1,0 +1,30 @@
+' mousex, mousey
+' --------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window and disable automatic redraw.
+set window "mouse position", 640, 480
+set redraw off
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Clear screen.
+    set color 0, 0, 0
+    cls
+    ' Write mouse coordinates.
+    set color 255, 255, 255
+    set caret 320, 224
+    ' 'mousex()' returns the window x coordinate of the mouse cursor.
+    center "mousex() = " + mousex()
+    ' 'mousey()' returns the window y coordinate of the mouse cursor.
+    center "mousey() = " + mousey()
+
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Upate window content.
+    redraw
+    fwait 60
+wend

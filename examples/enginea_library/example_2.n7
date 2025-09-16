@@ -1,0 +1,90 @@
+' example_2.n7
+' ------------
+
+include "enginea.n7"
+
+' A list of open doors, for automatic closing.
+visible vOpenDoors = []
+
+set window "Example 2", 320, 240, false, 2
+set redraw off
+
+' Use EA_SetView(target_image, fov, z_min, z_max) to set up the renderer.
+EA_SetView(primary, rad(65), 0.1, 6)
+
+' Use EA_LoadMap(filename) to load a map created with the EngineA editor.
+flags = EA_LoadMap("assets/map_2.json")
+assert typeof(flags), "Map could not be loaded"
+
+' Look for the flag "player".
+player = unset
+foreach f in flags
+    if f.flag = "player"
+        player = EA_FpsPlayer()
+        player.SetPos(f.x, f.floorY, f.z)
+        ' Disable jumping for now.
+        player.SetJumpKey(unset)
+        ' Set the movement speed, defaults to 1.
+        player.SetMoveSpeed(1.5)
+    endif
+next
+assert typeof(player), "No player flag found"
+
+' Add the player object and set it to be the camera.
+EA_AddObject(player)
+EA_SetCamera(player)
+
+' Set an update callback for the player. This function will be called once every frame.
+player.Update = function(dt)
+    ' Open doors with the F key.
+    if keydown(KEY_F, true)
+        ' Facing returns an object with lots of information about the closest "wall" in the direction
+        ' that the player is looking. It may return an unset variable if the player is looking on the
+        ' floor or the ceiling. So start by making sure that res has a value with "if res ...". For now
+        ' we're only interested in doors, so next check the type field. If it's a door, type is EA_DOOR.
+        ' The last thing we need to check is how far away the door is. For that we can use the dist
+        ' field. If the distance is less than 1 unit, the player may open the door.
+        res = .Facing()
+        if res and res.type = EA_DOOR and res.dist < 1
+            ' Since type is EA_DOOR, res.data contains a door object. We can use its Open function
+            ' to open the door. It returns true if the door isn't already open/opening.
+            if res.data.Open()
+                ' Put the door at the end of the vOpenDoors array.
+                vOpenDoors[sizeof(vOpenDoors)] = res.data
+                ' And add a timer field to the door object and set it to 3 (seconds).
+                res.data.timer = 3
+            endif
+        endif
+    endif
+endfunc
+
+' Use SetMouseSens to change the mouse sensitivity of the player object so that it suits your
+' setup.
+player.SetMouseSens(0.75)
+
+' Update callback, called by EA once every frame.
+function Update(dt)
+    if keydown(KEY_ESCAPE, true)  EA_Stop()
+    
+    ' Update the open doors.
+    i = 0
+    while i < sizeof(vOpenDoors)
+        d = vOpenDoors[i]
+        ' Close the door and remove it from the array when its timer reaches 0.
+        d.timer = d.timer - dt
+        if d.timer <= 0
+            d.Close()
+            free key vOpenDoors, i
+        else
+            i = i + 1
+        endif
+    wend
+endfunc
+
+' Tell EA to use Update as update function.
+EA_SetUpdateAction(Update)
+
+' Enable fog effect with EA_SetFog(mode, r, g, b), where mode can be EA_RETRO or EA_NORMAL.
+EA_SetFog(EA_RETRO, 0, 0, 0)
+
+EA_Run()

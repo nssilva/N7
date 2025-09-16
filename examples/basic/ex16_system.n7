@@ -1,0 +1,16 @@
+' 'system' works as in n6, but can also be used in an expression to capture the
+' output instead of sending it to stdout.
+
+' This probably doesn't work on Linux.
+result = system("dir /b /a-d")
+pln "Press enter to see the captured result!"
+a = rln()
+pln result
+
+pln "Press enter to see it again!"
+a = rln()
+system "dir /b /a-d"
+
+pln
+pln "Press enter to exit"
+tmp = rln()

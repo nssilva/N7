@@ -1,0 +1,100 @@
+' game_example_1.n7
+' -----------------
+' Create a single path that all enemies follow.
+
+include "polyline.n7"
+
+#win32
+
+set window "PolyLine Game Example", 320, 240, false, 2
+set redraw off
+
+' Create a polyline from an array of points. All enemies will follow this path.
+path = PolyLine([[80, -8], [240, 60], [80, 120], [240, 180], [80, 248]], false)
+
+enemies = []            ' List of enemies.
+enemyDelay = 30         ' Delay between enemies.
+enemyTimer = enemyDelay ' Time until next enemy should spawn.
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Time to spawn a new enemy?
+    enemyTimer = enemyTimer - 1
+    if enemyTimer <= 0
+        enemies[sizeof(enemies)] = Enemy(path)
+        enemyTimer = enemyTimer + enemyDelay
+    endif
+    
+    ' Update enemies.
+    i = 0; while i < sizeof(enemies)
+        ' Alive?
+        if enemies[i].Update()  i = i + 1
+        ' Remove.
+        else  free key enemies, i
+    wend
+
+    ' Draw.    
+    set color 0, 0, 0
+    cls
+    foreach e in enemies  e.Draw()
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "enemies: " + sizeof(enemies)
+            
+    redraw
+    fwait 60
+wend
+
+' Enemy
+' -----
+' Return new enemy that follows the specified path.
+function Enemy(path)
+    e = []
+
+    ' Path, distance traveled and speed.
+    e.path = path    
+    e.dist = 0
+    e.spd = 2
+    ' Size.
+    e.w = 16
+    e.h = 16
+
+    ' UpdatePos
+    ' ---------
+    ' Update position based on currently traveled distance along path.
+    e.UpdatePos = function()
+        ' 'GetPoint' returns 'unset' if distance is out of path range.
+        pos = this.path.GetPoint(this.dist, true)
+        if pos
+            ' Set position and return true.
+            this.x = pos[0] - this.w/2
+            this.y = pos[1] - this.h/2
+            return true
+        else
+            return false
+        endif
+    endfunc
+
+    ' Update
+    ' ------
+    ' Return true while alive.        
+    e.Update = function()
+        ' Increase travel distance.
+        this.dist = this.dist + this.spd
+        ' Return false if end of path has been reached.
+        if not this.UpdatePos()  return false    
+        return true
+    endfunc
+
+    ' Draw
+    ' ----
+    e.Draw = function()
+        set color 0, 200, 0
+        draw rect this.x, this.y, this.w, this.h, true
+    endfunc
+
+    ' Set initial position.
+    e.UpdatePos()
+            
+    return e
+endfunc

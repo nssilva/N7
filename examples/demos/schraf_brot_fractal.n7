@@ -1,0 +1,56 @@
+' QB64pe user, Aurel, posted this in June 2025
+'
+set window "Schraf Brot Fractal", 854, 480, false
+set redraw off
+
+set color 0, 0, 0
+cls
+
+randomize clock()
+
+w = width(primary)
+h = height(primary)
+zoom = 4 / w
+dmin = 0.06
+
+for a = 0 to w - 1
+    for b = 0 to 1.5 * h
+        x = (a - w) * zoom
+        y = (b - h) * zoom
+        i = 0
+        d = 100
+        do
+            u= x * x
+            v = y * y
+            if u + v > 4.8 or i > 30 or d < dmin then
+                break
+            endif
+            t = u - v
+            y = 2 * x * y + 0.156
+            x = t - 0.8
+            i = i + 1
+            n = abs(u + v - 1)
+            if n < d then
+                d = n
+            endif
+        loop
+        if d < dmin then
+            colour = 255 - int(4000 * d)
+            if colour < 0 then
+                colour = 255
+            endif
+            x1 = a - w / 2
+            y1 = b - h / 2
+            x2 = w + w / 2 - 1 - a
+            y2 = h + h / 2 - b
+            set color 0, colour, colour
+            draw line x1, y1, x1 + 1, y1 + 1
+            draw line x2, y2, x2 + 1, y2 + 1
+        endif
+    next
+    'wait(5)
+    redraw
+    fwait 60
+next
+
+wait 3000

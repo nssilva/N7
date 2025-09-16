@@ -1,0 +1,10 @@
+' asin
+' ----
+
+' 'asin(x)' returns the arc sine of x in radians. It's the inverse of 'sin'. We use 'rad' to
+' convert from degrees to radians and 'deg' to convert from radians to degrees.
+c = sin(rad(45))
+pln "sin(rad(45)) = " + c
+pln "deg(asin(" + c + ")) = " + deg(asin(c))
+
+system "pause"

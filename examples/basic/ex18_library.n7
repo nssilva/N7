@@ -1,0 +1,21 @@
+' This file is included in ex18_include.n7
+
+' This constant will be visible in any file that includes this one.
+constant A_CONSTANT = 42
+
+' All variables, visible or not, are local to this file and can't be directly
+' accessed from outside.
+visible vFoobar = "Hey!"
+
+' Functions are visible outside.
+
+function GetFoobar()
+    return vFoobar
+endfunc
+
+function SetFoobar(value)
+    vFoobar = value
+endfunc
+
+
+

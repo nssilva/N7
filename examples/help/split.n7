@@ -1,0 +1,12 @@
+' split
+' -----
+
+' 'sub(s, sub)' returns an array with all substrings of s split at every occurrence of the string
+' sub (sub is excluded from the resulting strings).
+s = "I like pancakes"
+pln s
+
+ss = split(s, " ")
+for i = 0 to sizeof(ss) - 1  pln chr(34) + ss[i] + chr(34)
+
+system "pause"

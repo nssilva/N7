@@ -1,0 +1,38 @@
+'player-cpu
+
+function Player_Cpu()
+    player_cpu = []
+    player_cpu.Width = 20
+    player_cpu.Height = 100
+    player_cpu.x = 608 - player_cpu.Width/2
+    player_cpu.y = 240 - player_cpu.Height/2
+    player_cpu.speed = 5
+    player_cpu.live = true
+   
+    player_cpu.update = function(ball)
+        if this.live
+            this.move(ball)
+        endif
+    endfunc
+   
+    player_cpu.Draw = function()
+        if this.live
+            set color 255,204,0
+            draw rect this.x,this.y,this.Width,this.Height,true
+        endif
+    endfunc
+   
+    player_cpu.move = function(ball)
+        if ball.x > 300
+            if this.y > ball.y and this.y > 0
+                this.y = this.y - (this.speed+ball.speedX)
+            endif
+           
+            if this.y < ball.y and this.y < 480-this.Height
+                this.y = this.y + (this.speed+ball.speedX)
+            endif
+        endif   
+    endfunc
+   
+    return player_cpu
+endfunc

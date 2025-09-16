@@ -1,0 +1,762 @@
+' example_7.n7
+' ------------
+' Currently not convered in the EngineA_Tutorial.pdf.
+
+include "enginea.n7"
+
+' Object identifiers. Instead of looking at the sprite (image) used by an object, set an id field
+' instead. That looks a bit cleaner, although n7 could sure us an "enum" thingie ...
+constant PLAYER_ID          = 1
+constant RUBY_ID            = 2
+constant DIAMOND_ID         = 3
+constant HEART_ID           = 4
+constant CHEST_ID           = 5
+constant PUMPKIN_ID         = 6
+constant PLAYER_BULLET_ID   = 7
+constant KEY_ID             = 8
+constant ENEMY_BULLET_ID    = 9
+constant TREE_ID            = 10
+constant PILLAR_ID          = 11
+constant BARREL_ID          = 12
+
+' Some settings, so that we needn't look for the function calls to change them.
+visible vFullscreen = false          ' Fullscreen mode.
+visible vWindowScale = 2            ' Window scale, when in windowed mode.
+visible vFov = 75                   ' Vertical field of view.
+visible vResolution = 240           ' Vertical window resolution.
+visible vMouseSensitivity = 0.5     ' Mouse sensitivity.
+visible vUsePitch = true            ' Use pitch (look up/down) or not.
+visible vFpsCap = 60                ' Fps cap.
+
+' A list of open doors, for automatic closing.
+visible vOpenDoors = []
+
+' Sprite images.
+visible vRubyImage, vDiamondImage, vHeartImage, vChestImage, vKeyImage
+visible vPumpkinImage, vPumpkinDeathImage, vEnemyBulletImage
+visible vTreeImage, vPillarImage, vBarrelImage
+visible vExplosionImage
+visible vWandImage, vPlayerBulletImage
+
+visible vFont, vLargeFont
+
+' Sound effects.
+visible vPlayerShootSound, vWallHitSound
+visible vEnemyHitSound, vEnemyDeathSound, vEnemyShootSound
+visible vBonusSound, vBarrelSound, vLockedSound, vDoorSound
+
+' Music.
+visible vGameMusic
+
+' Game objects.
+visible vPlayer
+
+' Score and keys.
+visible vScore = 0, vKeys = 0
+
+' Set up a fullscreen window with the same aspect ratio as the screen.
+set window "Example 7", vResolution*screenw()/screenh(), vResolution, vFullscreen, vWindowScale
+set redraw off
+
+vFont = loadfont("assets/font")
+vLargeFont = loadfont("assets/font_large")
+
+' Use EA_SetView(target_image, fov, z_min, z_max) to set up the renderer.
+EA_SetView(primary, rad(vFov), 0.05, 6)
+
+' Load sprite images.
+vRubyImage = loadimage("assets/ruby.png")
+vDiamondImage = loadimage("assets/diamond.png")
+vHeartImage = loadimage("assets/heart.png")
+vChestImage = loadimage("assets/chest.png")
+vPumpkinImage = loadimage("assets/pumpkin_dirs.png", 8, 8)
+vPumpkinDeathImage = loadimage("assets/pumpkin_death.png", 5, 2)
+vPlayerBulletImage = loadimage("assets/player_bullet.png", 4, 1)
+vKeyImage = loadimage("assets/key.png")
+vEnemyBulletImage = loadimage("assets/enemy_bullet.png", 4, 1)
+vTreeImage = loadimage("assets/tree.png")
+vPillarImage = loadimage("assets/pillar.png")
+vBarrelImage = loadimage("assets/barrel.png")
+vExplosionImage = loadimage("assets/explosion.png", 5, 2)
+vWandImage = loadimage("assets/wand_hand.png")
+
+' Load sound effects.
+vPlayerShootSound = loadsound("assets/player_shoot.wav")
+vWallHitSound = loadsound("assets/wall_hit.wav")
+vEnemyHitSound = loadsound("assets/enemy_hit.wav")
+vEnemyDeathSound = loadsound("assets/enemy_die.wav")
+vEnemyShootSound = loadsound("assets/enemy_shoot.wav")
+vBonusSound = loadsound("assets/bonus.wav")
+vBarrelSound = loadsound("assets/barrel.wav")
+vLockedSound = loadsound("assets/locked.wav")
+vDoorSound = loadsound("assets/door.wav")
+
+' Load music.
+vGameMusic = loadmusic("assets/punk.mp3")
+
+' Use EA_LoadMap(filename) to load a map created with the EngineA editor.
+flags = EA_LoadMap("assets/map_7.json")
+assert typeof(flags), "Map could not be loaded"
+
+' Go through flags and create objects.
+vPlayer = unset
+' Create low resolution circle polygons to be used for collision checking against the tree, pillar
+' and barrel. These polygons will function just like walls.
+treePoly = CreateCirclePoly(0.25, 5)
+pillarPoly = CreateCirclePoly(0.4, 5)
+barrelPoly = CreateCirclePoly(0.2, 5)
+foreach f in flags
+    select f.flag
+        case "player"
+            vPlayer = CreatePlayer(f.x, f.floorY, f.z)
+            EA_AddObject(vPlayer)
+            EA_SetCamera(vPlayer)
+        case "ruby"
+            ' Use a helper function, CreateItem, implemented later. It creates a sprite (static
+            ' object) from the specified image.
+            EA_AddStaticObject(CreateItem(RUBY_ID, vRubyImage, f.x, f.floorY, f.z))
+        case "diamond"
+            EA_AddStaticObject(CreateItem(DIAMOND_ID, vDiamondImage, f.x, f.floorY, f.z))
+        case "heart"
+            EA_AddStaticObject(CreateItem(HEART_ID, vHeartImage, f.x, f.floorY, f.z))
+        case "chest"
+            EA_AddStaticObject(CreateItem(CHEST_ID, vChestImage, f.x, f.floorY, f.z))
+        case "key"
+            EA_AddStaticObject(CreateItem(KEY_ID, vKeyImage, f.x, f.floorY, f.z))
+        case "pumpkin"
+            EA_AddObject(CreatePumpkinEnemy(f.x, f.floorY, f.z))
+        case "tree"
+            obj = CreateItem(TREE_ID, vTreeImage, f.x, f.floorY, f.z)
+            obj.SetColPoly(treePoly)
+            EA_AddStaticObject(obj)
+        case "pillar"
+            obj = CreateItem(PILLAR_ID, vPillarImage, f.x, f.floorY, f.z)
+            obj.SetColPoly(pillarPoly)
+            EA_AddStaticObject(obj)
+        case "barrel"
+            obj = CreateItem(BARREL_ID, vBarrelImage, f.x, f.floorY, f.z)
+            obj.SetColPoly(barrelPoly)
+            EA_AddStaticObject(obj)
+    endsel
+next
+assert typeof(vPlayer), "No player flag found"
+
+' Tell EA to use Update as update function.
+EA_SetUpdateAction(Update)
+
+' Tell EA to use Draw as draw function.
+EA_SetDrawAction(Draw)
+
+' Enable fog effect with EA_SetFog(mode, r, g, b), where mode can be EA_RETRO or EA_NORMAL.
+EA_SetFog(EA_NORMAL, 0, 0, 0)
+
+' Doors should slide to the side.
+EA_SetDoorMode(EA_SLIDE_SIDE)
+
+EA_SetFpsCap(vFpsCap)
+
+' Start music.
+set music volume vGameMusic, 0.4
+play music vGameMusic, true
+
+'EA_SetDebugOutput(true)
+
+' Enter game loop.
+EA_Run()
+
+' Update callback, called by EA once every frame.
+function Update(dt)
+    if keydown(KEY_ESCAPE, true)  EA_Stop()
+    
+    ' Update the open doors.
+    i = 0
+    while i < sizeof(vOpenDoors)
+        d = vOpenDoors[i]
+        ' Close the door and remove it from the array when its timer reaches 0.
+        d.timer = d.timer - dt
+        if d.timer <= 0
+            d.Close()
+            free key vOpenDoors, i
+        else
+            i = i + 1
+        endif
+    wend
+endfunc
+
+' Draw function, called by EA when it has rendered the scene.
+function Draw()
+    ' Crosshair.
+    set color 255, 255, 255, 32
+    draw ellipse width(primary)/2, height(primary)/2 + 3, 3, 3, false
+
+    ' Staff.    
+    set color 255, 255, 255
+    draw image vWandImage,
+            (width(primary) - width(vWandImage))/2 - 23 + cos(vPlayer.bobAngle*0.5)*vPlayer.bobEffect*8,
+            height(primary) - height(vWandImage) + 8 + sin(vPlayer.bobAngle)*vPlayer.bobEffect*6
+            
+    ' Fill screen with red if player's hit timer > 0.
+    if vPlayer.htimer
+        set color 255, 0, 0, vPlayer.htimer*128
+        cls
+    endif
+
+    ' Health.
+    set font vFont
+    set caret 48, 2
+    set color 255, 255, 255
+    center "HEALTH"
+    set font vLargeFont
+    ' Set color based on health.
+    if vPlayer.stamina >= 75  set color 0, 255, 0
+    elseif vPlayer.stamina >= 50 set color 255, 255, 0
+    elseif vPlayer.stamina >= 25  set color 255, 128, 0
+    else  set color 255, 0, 0
+    center vPlayer.stamina
+
+    ' Score.
+    set font vFont
+    set caret width(primary)/2, 2
+    set color 255, 255, 255
+    center "SCORE"
+    set font vLargeFont
+    set color 0, 208, 255
+    center vScore
+    
+    ' Keys.
+    set font vFont
+    set caret width(primary) - 48, 2
+    set color 255, 255, 255
+    center "KEYS"
+    set font vLargeFont
+    set color 255, 208, 0
+    center vKeys
+endfunc
+
+' Create and return a player object.
+function CreatePlayer(x, y, z)
+    player = EA_FpsPlayer()
+    ' Set it field.
+    player.id = PLAYER_ID
+    player.SetPos(x, y, z)
+    ' SetLeap sets a height that the player can leap up to automatically without jumping.
+    player.SetLeap(0.25)
+    ' SetHeight sets the player's height. It defaults to 0.5.
+    player.SetHeight(0.6)
+    ' SetEye sets the height of the player's eyes, default is 0.5.
+    player.SetEye(0.5)
+    ' Set the movement speed, defaults to 1.
+    player.SetMoveSpeed(1.5)
+    ' Use SetMouseSens to change the mouse sensitivity of the player object so that it suits your
+    ' setup.
+    player.SetMouseSens(vMouseSensitivity)
+    ' Disable pitch, to make it a bit more doom like.
+    player.SetUsePitch(vUsePitch)
+
+    ' Add some fields for bob effect of the weapon.
+    player.bobAngle = 0
+    player.bobEffect = 0
+    player.stimer = 0
+    
+    ' Stamina, where 100 is max, and a hit timer that controls how often the player can get hurt.
+    player.stamina = 100
+    player.htimer = 0
+    
+    ' Set an update callback for the player. This function will be called once every frame.
+    player.Update = function(dt)
+        ' Walking is a function in EA_FpsPlayer, it returns true if the player is moving. Use it do
+        ' control the bob effect of the weapon.
+        if .Walking()
+            .bobAngle = (.bobAngle + 8*dt)%(PI*4)
+            .bobEffect = min(.bobEffect + 2.0*dt, 1)
+        else
+            .bobEffect = max(.bobEffect - 2*dt, 0)
+        endif
+    
+        ' Open doors with the F key.
+        if keydown(KEY_F, true)
+            ' Facing returns an object with lots of information about the closest "wall" in the direction
+            ' that the player is looking. It may return an unset variable if the player is looking on the
+            ' floor or the ceiling. So start by making sure that res has a value with "if res ...". For now
+            ' we're only interested in doors, so next check the type field. If it's a door, type is EA_DOOR.
+            ' The last thing we need to check is how far away the door is. For that we can use the dist
+            ' field. If the distance is less than 1 unit, the player may open the door.
+            res = .Facing()
+            if res and res.type = EA_DOOR and res.dist < 1
+                ' Since type is EA_DOOR, res.data contains a door object. We can use its Open
+                ' function to open the door. It returns true if the door isn't already open/opening.
+                '    There are two door textures set up in the editor, one for regular doors and one
+                ' for locked doors. They use the texture indexes 14 and 15. If it's a locked door,
+                ' 15, it can only be opened by spending a key, and in that case it should stay open.
+                if res.data.GetTexture() = 14
+                    if res.data.Open()
+                        .PlaySound(vDoorSound, 0.5)
+                        ' Put the door at the end of the vOpenDoors array.
+                        vOpenDoors[sizeof(vOpenDoors)] = res.data
+                        ' And add a timer field to the door object and set it to 3 (seconds).
+                        res.data.timer = 3
+                    endif
+                elseif res.data.GetTexture() = 15
+                    ' Got a key?
+                    if vKeys > 0 and res.data.Open()
+                        .PlaySound(vDoorSound, 0.5)
+                        vKeys = vKeys - 1
+                    else
+                        .PlaySound(vLockedSound, 0.5)
+                    endif
+                endif
+            endif
+        endif
+        
+        ' Pick up items. Every object can call its SectorObjects function to get an array of all the
+        ' objects in its current sector. The returned value may be an unset variable, so check for that
+        ' first, then its size.
+        objs = .SectorObjects()
+        if objs and sizeof(objs)
+            for i = 0 to sizeof(objs) - 1
+                ' Use CollidesWith(obj) to check if the player collides (overlaps) with this object.
+                if .CollidesWith(objs[i])
+                    ' Use the sprite image to determine what type of object it is.
+                    select objs[i].id
+                        case RUBY_ID
+                            .PlaySound(vBonusSound, 0.75)
+                            vScore = vScore + 25
+                            EA_RemoveObject(objs[i])
+                        case DIAMOND_ID
+                            .PlaySound(vBonusSound, 0.75)
+                            vScore = vScore + 50
+                            EA_RemoveObject(objs[i])
+                        case HEART_ID
+                            .PlaySound(vBonusSound, 0.75)
+                            ' Increase stamina, max 100.
+                            .stamina = min(.stamina + 25, 100)
+                            EA_RemoveObject(objs[i])
+                        case CHEST_ID
+                            .PlaySound(vBonusSound, 0.75)
+                            vScore = vScore + 100
+                            EA_RemoveObject(objs[i])
+                        case KEY_ID
+                            .PlaySound(vBonusSound, 0.75)
+                            vKeys = vKeys + 1
+                            EA_RemoveObject(objs[i])
+                    endsel
+                endif
+            next
+        endif
+        
+        ' Decrease shoot timer.
+        .stimer = max(.stimer - dt, 0)
+        ' Shoot with left mouse button if stimer is 0.
+        if mousebutton(0, true) and .stimer = 0
+            ' Play sound effect at this object's position with the object function
+            ' PlaySound(sound_id, vol). It adds a stereo effect based on the position of the object
+            ' and lowers the volume by the distance to the camera. Since the player IS the camera we
+            ' could just as well have used the regular 'play sound' command.
+            .PlaySound(vPlayerShootSound, 0.3)
+            ' Can't shoot again for 0.5 seconds.
+            .stimer = 0.5
+            ' Create player bullet and add to engine.
+            EA_AddObject(CreatePlayerBullet(
+                    PLAYER_BULLET_ID,
+                    vPlayerBulletImage,
+                    .X() + .DX()*0.2, .Y() - 0.3 + .DY()*0.2, .Z() + .DZ()*0.2,
+                    .DX()*4, .DY()*4, .DZ()*4))
+        endif
+        
+        ' Decrease hit timer.
+        .htimer = max(.htimer - dt, 0)
+    endfunc
+    
+    ' Hit.
+    player.Hit = function(damage)
+        if .htimer = 0
+            .htimer = 1
+            .stamina = max(.stamina - damage, 0)
+        endif
+    endfunc
+    
+    return player
+endfunc
+
+
+' Create and return a sprite, static object, using the image img.
+function CreateItem(id, img, x, y, z)
+    ' A static object is a sprite or mesh that can't be moved after being added to the engine. It
+    ' can be assigned an Update function and hence be animated, and it can be removed. It can also
+    ' be assigned a collision polygon, so that it becomes an obstacle that non-static object can
+    ' bump into and even stand on. This function is used for creating items that the player can
+    ' pick up though.
+    item = EA_StaticObject()
+    ' Set id field.
+    item.id = id
+    ' Use SetSprite(img_id, cel, onlyYaw) to set the image. onlyYaw means that the sprite will
+    ' always face the camera but only be rotated around the y axis, which is good for this kind of
+    ' objects. If onlyYaw is set to false, the sprite will also be rotated around the x axis to 
+    ' completely face the camera.
+    item.SetSprite(img, 0, true)
+    ' A unit sized wall in these examples is 64x64 pixels large. To make the pixel density
+    ' consistent, we therefor calculate the sprite's size by dividing its pixel size with 64. 
+    item.SetHeight(height(img)/64)
+    item.SetRadius(0.5*width(img)/64)
+    ' Set position with SetPos(x, y, z)
+    item.SetPos(x, y, z)
+    
+    return item
+endfunc
+
+' Create and return a pumpkin enemy.
+function CreatePumpkinEnemy(x, y, z)
+    ' The object returned by EA_FpsPlayer (used for the player) is based on a regular object
+    ' returned by EA_Object. For enemies, bullets etc, we have to implement lots of functionality
+    ' ourselves.
+    enemy = EA_Object()
+    ' Set id field.
+    enemy.id = PUMPKIN_ID
+    ' There's no difference between SetSprite for a static object and a regular object.
+    enemy.SetSprite(vPumpkinImage, 0, true)
+    ' Nor is there any difference in SetHeight, SetRadius or SetPosition, so I'm using the same
+    ' logic as in CreateItem.
+    enemy.SetHeight(height(vPumpkinImage)/64)
+    enemy.SetRadius(0.5*width(vPumpkinImage)/64)
+    enemy.SetPos(x, y, z)
+    ' Give the enemy a random starting direction with SetYaw(radians). We'll use the the direction
+    ' given by yaw to move the enemy.
+    enemy.SetYaw(rad(rnd(360)))
+    
+    ' Stamina.
+    enemy.stamina = 4
+    
+    ' We need to control the animation of the enemy, so let's add a frame field.
+    enemy.frame = 0
+    
+    ' Put the speed in a field, will change depending on if the enemy is aware of the player or not.
+    enemy.spd = 0.75
+    
+    ' Vertical speed for more realistic gravity than in the previous example, and a flag that will
+    ' be set to true if the enemy is on ground.
+    enemy.dy = 0.1
+    enemy.onGround = false
+    
+    ' For a push effect when hit.
+    enemy.push = 0
+    enemy.pushDX = 0
+    enemy.pushDZ = 0
+    ' And a timer for flashing white when taking damage.
+    enemy.htimer = 0
+    
+    ' A flag set to true when the enemy becomes aware of the player. If the enemy loses track of
+    ' the player, the flag is set to false again.
+    enemy.aware = false
+    ' A delay in seconds. When it reaches 0, we check if the enemy can see the player. It's quite an
+    ' "expensive" check, so we only do it once per second.
+    enemy.atimer = rnd()
+    enemy.shouldShoot = false
+    
+    ' In the Update function of the enemy, we'll animate it and make it change direction whenever it
+    ' bumps into a wall.
+    enemy.Update = function(dt)
+        ' Let's start with the simple stuff, the animation of the enemy. It has four frames, and
+        ' we want to display them all 2 times during a time period of 1s and then start over, so:
+        .frame = (.frame + dt*8)%4
+        
+        ' Calculate the rendering angle of the enemy, based on its direction and the location of the
+        ' camera (player). This formula, which I'm too tired to explain, will work as long as your
+        ' sprites have 8 directions and use the same grid layout as the pumpkin image. The columns
+        ' represents the angle in 45 degree steps, and the rows are the different frames.
+        a = (atan2(.X() - vPlayer.X(), .Z() - vPlayer.Z()) + rad(22.5) - .Yaw() + PI)%(PI*2)
+        ' The image has four frames but eight rows. The last four rows are white versions of the
+        ' cels, and they're used briefly when the enemy has been hit. So if the hit timer (htimer)
+        ' is larger than 0, add 32 to the cel value.
+        .SetCel(int((a/(PI*2))*8) + int(.frame)*8 + (.htimer > 0)*32)
+        
+        ' If the onGround flag was set during the last frame the enemy is on ground. In that case
+        ' set the vertical speed to 0.1 (0 would prevent the onGround flag from being set this
+        ' this frame).
+        if .onGround
+            .dy = 0.1
+        else
+            ' If the enemy is not on ground, increase dy (gravity).
+            .dy = .dy + 7*dt
+        endif
+        
+        ' Decrease awareness timer. When it reaches 0, check if the enemy can see the player.
+        .atimer = max(.atimer - dt, 0)
+        if .atimer = 0
+            ' Set timer to 1 second.
+            .atimer = 1
+            ' Not aware of player?
+            if not .aware
+                ' Calculate vector between player and enemy.
+                dx = vPlayer.X() - .X()
+                dz = vPlayer.Z() - .Z()
+                ' Distance larger than 0, don't want a division by 0.
+                d = dx*dx + dz*dz
+                if d > 0 and d < 36
+                    ' Make (dx dz) a unit vector and calculate the dot product between it and the
+                    ' enemy's direction. Since both vectors are unit vectors, the dot product is
+                    ' the cosine of the angle beween them.
+                    k = 1/sqr(d)
+                    if dx*k*.DX() + dz*k*.DZ() > 0.71 ' acos(dp) = 45, so about 90 degree field of view.
+                        ' Is player actually visible?
+                        if .Visible(vPlayer)
+                            ' Become aware, increase speed. Set atimes to 0, it controls when the
+                            ' enemy shoots.
+                            .aware = true
+                            .spd = 2
+                            .shouldShoot = true
+                        endif
+                    endif
+                endif
+            else
+                ' If player is no longer visible, make enemy unaware and restore speed. Don't care
+                ' about the enemy's fov here.
+                if not .Visible(vPlayer)
+                    .aware = false
+                    .spd = 0.75
+                else
+                    ' Shoot?
+                    if .shouldShoot
+                        .PlaySound(vEnemyShootSound, 0.8)
+                        .shouldShoot = false
+                        EA_AddObject(CreateEnemyBullet(ENEMY_BULLET_ID, vEnemyBulletImage,
+                                .X() + .DX()*0.1, .Y() -0.25, .Z() + .DZ()*0.1,
+                                .DX()*3, 0, .DZ()*3))
+                    else
+                        ' Shoot next time.
+                        .shouldShoot = true
+                        ' A wee jump.
+                        if .onGround then .dy = -2.5
+                    endif
+                endif
+            endif
+            ' Move towards player if aware.
+            if .aware
+                .SetYaw(atan2(vPlayer.X() - .X(), vPlayer.Z() - .Z()))
+            endif
+        endif
+        
+        ' The object function Move(dx, dy, dz, leap) TRIES to move the object in the direction
+        ' (dx dy dz). The last parameter, leap, let's the object auto-leap over heights <= leap
+        ' units (EA_FpsPlayer uses this function with the leap value set with SetLeap). It returns
+        ' an object with lots of information about how it went. We use the object functions DX and
+        ' DZ that returns the direction based on the object's yaw angle. There's also a DY function,
+        ' but it's only relevant if you also use SetPitch, which we don't for now.
+        '    Adding a push effect to the movement vetor.
+        res = .Move((.DX()*.spd + .push*.pushDX)*dt, .dy*dt, (.DZ()*.spd + .push*.pushDZ)*dt, 0)
+        ' As I said, the object that Move returns, contains lots of information. You can use it to
+        ' tell what type of wall or static object the object bumped into. But for now, we just need
+        ' to know if the enemy ran into a wall, and we know it did if res.w (w for wall) is true.
+        if res.w
+            ' So, what to do when the enemy has hit a wall? We could just give it a new completely
+            ' random direction (yaw angle). But, it would be stupid to send him straight into the
+            ' wall again. res.dx and res.dz contains the normal of the wall/static object that the
+            ' enemy bumped into. The normal is a vector perpendicular to the wall. We can use atan2
+            ' to convert that normal into an angle (in radians). Then we add a random 180 degrees
+            ' to that angle:
+            .SetYaw(rad(deg(atan2(res.dx, res.dz)) - 90 + rnd()*180))
+            if .aware then .atimer = min(.atimer, 0.25)
+            .push = 0
+        endif
+        
+        ' Set onGround field to res.g, which is true if there was a collision with the ground.
+        .onGround = res.g
+        
+        ' Check for collision with player.
+        if .CollidesWith(vPlayer)
+            vPlayer.Hit(15)
+            ' Push away from player.
+            dx = .X() - vPlayer.X(); dz = .Z() - vPlayer.Z()
+            d = dx*dx + dz*dz
+            if d > 0
+                k = 2/sqr(d)
+                dx = dx*k; dz = dz*k
+                .Push(dx, dz)
+            endif
+        endif
+        
+        ' Decrease push effect and hit timer.
+        .push = max(.push - 1.5*dt, 0)
+        .htimer = max(.htimer - dt, 0)
+    endfunc
+    
+    ' Called when enemy is hit by something. dx and dz is the hit vector, for example the direction
+    ' of a player bullet.
+    enemy.Hit = function(dx, dz)
+        ' Decrease stamina.
+        .stamina = .stamina - 1
+        ' Still alive?
+        if .stamina > 0
+            ' Play sound effect.
+            .PlaySound(vEnemyHitSound, 0.4)
+            ' Push.
+            .Push(dx, dz)
+            ' Set hit timer, for flash effect, to 0.15 seconds.
+            .htimer = 0.15
+            ' Make aware of player and decrease the awarness timer so that the enemy starts chasing the
+            ' player.
+            .aware = true
+            .atimer = min(.atimer, 0.1)
+        ' Dead.
+        else
+            .PlaySound(vEnemyDeathSound, 0.75)
+            ' Remove this object.
+            EA_RemoveObject(this)
+            ' Add an animation with same position and dimensions as this enemy.
+            AddSpriteAnim(vPumpkinDeathImage, .X(), .Y(), .Z(), .Radius(), .Height(), 0.75, true)
+        endif
+    endfunc
+
+    ' Push.    
+    enemy.Push = function(dx, dz)
+        ' Keep the old push vector multiplied by the param (usually 0 though).
+        .pushDX = .push*.pushDX + dx
+        .pushDZ = .push*.pushDZ + dz
+        .push = 1
+    endfunc
+    
+    return enemy
+endfunc
+
+' Create and return a new player bullet.
+function CreatePlayerBullet(id, img, x, y, z, dx, dy, dz)
+    b = EA_Object()
+    ' Set id field.
+    b.id = id
+    ' Position.
+    b.SetPos(x, y, z)
+    ' Set sprite and size.
+    b.SetSprite(img, 0, false)
+    b.SetHeight(height(img)/64)
+    b.SetRadius(0.5*width(img)/64)
+    ' Add fields for movement.
+    b.dx = dx
+    b.dy = dy
+    b.dz = dz
+    ' Set number of cels and current cel.
+    b.numCels = cels(img)
+    b.cel = 0
+    b.Update = function(dt)
+        ' Update animation if the image cel count > 1.
+        if .numCels > 1
+            .cel = (.cel + dt*30)%.numCels
+            .SetCel(int(.cel))
+        endif
+        ' Move.
+        res = .Move(.dx*dt, .dy*dt, .dz*dt, 0)
+        ' Hit anything?
+        if res.any
+            ' Did the bullet hit a barrel?
+            if res.info and res.info.type = EA_OBJECT and res.info.data.id = BARREL_ID
+                ' Call play sound for the barrel object.
+                res.info.data.PlaySound(vBarrelSound, 1)
+                ' Remove barrel.
+                EA_RemoveObject(res.info.data)
+                ' Add an explosion animation.
+                AddSpriteAnim(vExplosionImage,
+                        res.info.data.X(), res.info.data.Y(), res.info.data.Z(),
+                        0.5*width(vExplosionImage)/64, height(vExplosionImage)/64, 0.75,
+                        true)                
+            else
+                ' Play sound effect.
+                .PlaySound(vWallHitSound, 0.25)
+            endif
+            ' Remove this object.
+            EA_RemoveObject(this)
+        else
+            ' Check for collision with enemies.
+            objs = .SectorObjects()
+            if objs and sizeof(objs)
+                for i = 0 to sizeof(objs) - 1
+                    ' Pumpkin?
+                    if objs[i].id = PUMPKIN_ID
+                        if .CollidesWith(objs[i])
+                            ' Call its Hit(dx, dz) function and remove this bullet object.
+                            objs[i].Hit(.dx, .dz)
+                            EA_RemoveObject(this)
+                            break
+                        endif
+                    endif
+                next
+            endif
+        endif
+    endfunc
+
+    return b
+endfunc
+
+' Create and return a new enemy bullet. I just copied CreatePlayerBulletImage because I'm to lazy
+' to create a base "class" and let player and enemy bullets extend it.
+function CreateEnemyBullet(id, img, x, y, z, dx, dy, dz)
+    b = EA_Object()
+    ' Set id field.
+    b.id = id
+    ' Position.
+    b.SetPos(x, y, z)
+    ' Set sprite and size.
+    b.SetSprite(img, 0, false)
+    b.SetHeight(height(img)/64)
+    b.SetRadius(0.5*width(img)/64)
+    ' Add fields for movement.
+    b.dx = dx
+    b.dy = dy
+    b.dz = dz
+    ' Set number of cels and current cel.
+    b.numCels = cels(img)
+    b.cel = 0
+    b.Update = function(dt)
+        ' Update animation if the image cel count > 1.
+        if .numCels > 1
+            .cel = (.cel + dt*30)%.numCels
+            .SetCel(int(.cel))
+        endif
+        ' Move.
+        res = .Move(.dx*dt, .dy*dt, .dz*dt, 0)
+        ' Hit anything?
+        if res.any
+            ' Play sound effect.
+            .PlaySound(vWallHitSound, 0.25)
+            ' Remove this object.
+            EA_RemoveObject(this)
+        else
+            ' Check for collision with player.
+            if .CollidesWith(vPlayer)
+                vPlayer.Hit(10)
+                EA_RemoveObject(this)
+            endif
+        endif
+    endfunc
+
+    return b
+endfunc
+
+' Add sprite animation.
+function AddSpriteAnim(img, x, y, z, r, h, duration, onlyYaw)
+    a = EA_StaticObject()
+    a.id = 0
+    a.SetSprite(img, 0, onlyYaw)
+    a.SetRadius(r)
+    a.SetHeight(h)
+    a.celCount = cels(img)
+    a.cel = 0
+    a.spd = a.celCount/duration
+    a.SetPos(x, y, z)
+    a.Update = function(dt)
+        .cel = .cel + .spd*dt
+        if .cel >= .celCount
+            EA_RemoveObject(this)
+        else
+            .SetCel(int(.cel))
+        endif
+    endfunc
+    EA_AddStaticObject(a)
+endfunc
+
+function CreateCirclePoly(r, vertices)
+    p = []
+    astep = 2*PI/vertices
+    for i = 0 to vertices - 1
+        p[sizeof(p)] = r*cos(i*astep)
+        p[sizeof(p)] = r*sin(i*astep)
+    next
+    return p
+endfunc

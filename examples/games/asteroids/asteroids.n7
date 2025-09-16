@@ -1,0 +1,1610 @@
+' asteroids
+' ---------
+' Posted by kcfb on the naalaa forum.
+
+include "highscore.n7"
+visible name = ""
+#win32
+
+visible filename = "my_highscorelist.txt"
+visible current_hs 
+visible instruction_page = 1
+' Init list if one cannot be loaded.
+if not HS_Load(filename)  HS_Init(10, "Asteroids", 1000)
+
+visible sound_on = true 
+visible enemy_craft_audio = loadmusic ("audio/enemy_craft2.wav")
+visible music_playing = false
+visible player_missile_audio = loadsound ("audio/zap4.wav")
+visible enemy_missile_audio = loadsound ("audio/enemy_missile.wav")
+visible player_hit_audio = loadsound ("audio/player_hit.wav")
+visible enemy_hit_audio = loadsound ("audio/enemy_hit.wav")
+visible asteroid_hit_audio = loadsound ("audio/asteroid_hit.wav")
+
+### these for text_at function##################
+visible red = [255,0,0,255], blue = [0,0,255,255],black = [0,0,0,255],white = [255,255,255,255]
+visible transparent_black = [0,0,0,64]
+################################################
+
+visible screen_w = 640,screen_h = 480
+visible font20 = createfont ("arial",20)
+visible font16 = createfont ("arial",16)
+'Open a window
+set window "Asteroids",screen_w,screen_h
+'enable double buffering
+set redraw off
+'================================================
+'Title screen wireframes
+visible targets = []
+targets = [[16 + 48,200],[80 + 48,200],[144 + 48,200],[208 + 48,200],[272 + 48,200],
+[336 + 48,200],[400 + 48,200],[464 + 48,200],[528 + 48,200]]
+
+
+visible a_wireframe = [[-16,-32],[12,-32],[28,28],[16,28],[0,-20],[-4,-20],[-20,28],[-32,28],[-16,-32],[-32,28],[-20,28],[-12,8],[8,8],[4,-4],[-8,-4],[-20,28],[-32,28],[-16,-32]]
+visible s_wireframe = [[28,-32],[28,-20],[-20,-20],[-20,-8],[16,-8],[28,-8],[28,28],[-32,28],[-32,16],[16,16],[16,4],[-32,4],[-32,-32],[28,-32]]
+visible t_wireframe = [[-32,-32],[28,-32],[28,-20],[4,-20],[4,28],[-8,28],[-8,-20],[-32,-20],[-32,-32]]
+visible e_wireframe = [[-32,-32],[28,-32],[28,-20],[-20,-20],[-20,-8],[4,-8],[4,4],[-20,4],[-20,16],[28,16],[28,28],[-32,28],[-32,-32]]
+visible r_wireframe = [[-32,-32],[-32,28],[-20,28],[-20,0],[-20,0],[12,28],[28,28],[-4,0],[16,0],[28,-12],[28,-32],[-32,-32],[-32,-20],[16,-20],[16,-16],[8,-8],[-20,-8],[-20,-20],[-32,-20]]
+visible o_wireframe = [[-4,-32],[-32,-32],[-32,28],[28,28],[28,-32],[-4,-32],[-4,-20],[-20,-20],[-20,16],[16,16],[16,-20],[-4,-20]]
+visible i_wireframe = [[-16,-32],[12,-32],[12,-20],[4,-20],[4,16],[12,16],[12,28],[-16,28],[-16,16],[-8,16],[-8,-20],[-16,-20],[-16,-32]]
+visible d_wireframe = [[-32,-32],[12,-32],[28,-16],[28,12],[12,28],[-32,28],[-32,-32],[-8,-32],[-8,-20],[-20,-20],[-20,16],[8,16],[16,8],[16,-12],[8,-20],[-8,-20],[-8,-32],[-32,-32]]
+
+
+visible title = []
+title[sizeof(title)] = [x:rnd(screen_w + 1000) - 500,y:rnd(-1000,1500),dx:0,dy:0,
+               original_wireframe:a_wireframe,'x & y values relative to 0,0
+               new_wireframe:[],'used in calculations for rotating the polygons
+               world_wireframe : [],'this is the new_wireframe added to the polygons current 
+                                    'x & y position on screen
+               angle:0.0,angle_inc : 0.0, ' used when rotating the polygons
+               
+               can_move:true]
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),-0.0,s_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,t_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,e_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),-0.0,r_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,o_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,i_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,d_wireframe)
+polygons_add_no_movement(title,rnd(screen_w + 1000) - 500,rnd(-1000,1500),0.0,s_wireframe)            
+               
+polygons_update_world_values(title)                             
+
+visible start_moving = false
+counter = 0
+visible shrink_timer = 0
+
+'================================================
+'wireframes used when enemy spaceship destroyed
+visible exp_enemy_wireframe1 = [[-14,-1],[-13,-3],[-12,-4],[-12,-6],[-10,-7],[-9,-9],[-8,-9],[-7,-10],[-5,-11],[-2,-12],[0,-12],[2,-10],[4,-10],[6,-8],[7,-6],[8,-4],[8,-2],[9,0],[8,1],[6,2],[3,3],[1,4],[0,3],[-2,3],[-3,3],[-4,3],[-6,3],[-7,3],[-8,2],[-9,2],[-10,2],[-10,0],[-11,1]]
+
+visible exp_enemy_wireframe2 = [[-23,-1],[-23,-2],[-22,-4],[-21,-5],[-19,-6],[-18,-7],[-15,-7],[-13,-8],[-10,-8],[-9,-8],[-7,-8],[-4,-9],[-1,-9],[0,-0]]
+visible exp_enemy_wireframe3 = [[-23,-1],[-23,-2],[-22,-4],[-21,-5],[-19,-6],[-18,-7],[-15,-7],[-13,-8],[-10,-8],[-9,-8],[-7,-8],[-4,-9],[-1,-9],[0,-0]]
+visible exp_enemy_wireframe4 = [[-23,-1],[-23,-2],[-22,-4],[-21,-5],[-19,-6],[-18,-7],[-15,-7],[-13,-8],[-10,-8],[-9,-8],[-7,-8],[-4,-9],[-1,-9],[0,-0]]
+visible exp_enemy_wireframe5 = [[-23,-1],[-23,-2],[-22,-4],[-21,-5],[-19,-6],[-18,-7],[-15,-7],[-13,-8],[-10,-8],[-9,-8],[-7,-8],[-4,-9],[-1,-9],[0,-0]]
+visible enemy_exp = []
+enemy_exp[sizeof(enemy_exp)] = [x:screen_w/2,y:screen_h/2,dx:rnd(10) / 10 - 0.4,dy:rnd(10) / 10 - 0.6,
+               original_wireframe:exp_enemy_wireframe1,'x & y values relative to 0,0
+               new_wireframe:[],'used in calculations for rotating the polygons
+               world_wireframe : [],'this is the new_wireframe added to the polygons current 
+                                    'x & y position on screen
+               angle:0.0,angle_inc : 0.035, ' used when rotating the polygons
+               mid_x:0,mid_y:0]
+polygons_add_exp(enemy_exp,screen_w/2,screen_h/2,-0.03,exp_enemy_wireframe2)
+polygons_add_exp(enemy_exp,screen_w/2,screen_h/2,0.025,exp_enemy_wireframe3)
+polygons_add_exp(enemy_exp,screen_w/2,screen_h/2,-0.02,exp_enemy_wireframe4)   
+polygons_add_exp(enemy_exp,screen_w/2,screen_h/2,0.015,exp_enemy_wireframe5)                           
+               
+               
+polygons_update_world_values(enemy_exp)                             
+
+
+
+
+
+
+'===============================================
+visible exp_wireframe1 = [[-12,0],[12,0]]
+visible exp_wireframe2 = [[0,-12],[0,12]]
+visible exp_wireframe3 = [[-6,6],[6,-6]]
+visible exp_wireframe4 = [[-6,6],[6,-6]]
+visible exp = []
+exp[sizeof(exp)] = [x:screen_w/2,y:screen_h/2,dx:rnd(10) / 10 - 0.5,dy:rnd(10) / 10 - 0.5,
+               original_wireframe:exp_wireframe1,'x & y values relative to 0,0
+               new_wireframe:[],'used in calculations for rotating the polygons
+               world_wireframe : [],'this is the new_wireframe added to the polygons current 
+                                    'x & y position on screen
+               angle:0.0,angle_inc : 0.035, ' used when rotating the polygons
+               mid_x:0,mid_y:0]
+polygons_add_exp(exp,screen_w/2,screen_h/2,-0.03,exp_wireframe2)
+polygons_add_exp(exp,screen_w/2,screen_h/2,0.025,exp_wireframe3)
+polygons_add_exp(exp,screen_w/2,screen_h/2,-0.02,exp_wireframe4)               
+               
+               
+polygons_update_world_values(exp)                             
+'===============================================
+
+visible spaceship_wireframe = [[0,-11],[-11,11],[0,6],[11,11],[0,-11]]
+visible large_asteroid_wireframe = [[-16,-46],[12,-44],[16,-28],[32,-22],[45,-12],[46,13],[34,21],[37,33],[21,36],[19,44],[-7,44],[-20,33],[-30,33],[-36,20],[-45,10],[-45,-15],[-32,-22],[-16,-44]]
+visible medium_asteroid_wireframe = [[-8,-23],[6,-22],[8,-14],[16,-11],[22,-6],[23,6],[17,10],[18,16],[10,18],[9,22],[-3,22],[-10,16],[-15,16],[-18,10],[-22,5],[-22,-7],[-16,-11],[-8,-22]]
+visible small_asteroid_wireframe = [[-4,-11],[3,-11],[4,-7],[8,-5],[11,-3],[11,3],[8,5],[9,8],[5,9],[4,11],[-1,11],[-5,8],[-7,8],[-9,5],[-11,2],[-11,-3],[-8,-5],[-4,-11]]
+
+visible asteroids = []
+
+visible asteroid_to_delete = 999
+visible level = 1
+visible spaceship = []
+spaceship[0] = [x:screen_w/2,y:screen_h/2,dx:0.0,dy:0.0,
+               original_wireframe:spaceship_wireframe,'x & y values relative to 0,0
+               new_wireframe:[],'used in calculations for rotating the polygons
+               world_wireframe : [],'this is the new_wireframe added to the polygons current 
+                                    'x & y position on screen
+               angle:0.0,angle_inc : 0.0, ' used when rotating the polygons
+               mid_x:0,mid_y:0]
+'===============================================      
+
+polygons_update_world_values(asteroids)'create a wireframe with world coordinates
+                      
+visible enemy_ship = []
+enemy_ship = [x:-50,y:40,dx:1,dy:0.0,
+                w:32,h:4,radius : 8,
+                active_now : false,
+                timer_target : 700]
+                
+visible enemy_ship_timer = 0
+visible enemy_bullet_timer = 0
+visible enemy_bullets = []
+'===============================================                         
+visible enemy_destroyed_timer = 0
+
+visible bullets = []
+bullets = fill([x:0,y:0,dx:0,dy:0,active_now:false],12)                
+visible bullets_timer = 30 
+visible bullet_speed = 1.5              
+polygons_update_world_values(spaceship)'create a wireframe with world coordinates
+visible score = 0
+visible lives = 3
+visible menuItem = 0
+title_screen()
+
+############  to calculate FPS  ##########################
+visible framecount,lasttime = 999,fps,frametime = 0,starttime = 0,endtime = 0
+##########################################################
+current_hs = HS_GetScore(0)
+##############################################################################################
+#######################################   GAME LOOP  #########################################
+##############################################################################################
+do
+
+set mouse off
+###  for FPS calc #########
+framecount = framecount + 1 
+starttime = clock()
+###########################
+
+bullets_timer = bullets_timer + 1
+'==========================================
+enemy_ship_timer = enemy_ship_timer + 1
+if enemy_ship_timer > enemy_ship.timer_target
+    enemy_ship_routine()
+endif
+'==========================================
+'delete any asteroids from last check on collision
+if asteroid_to_delete <> 999
+    free key asteroids,asteroid_to_delete
+    asteroid_to_delete = 999
+endif
+'==========================================
+if lives <= 0 then end_game()
+'==========================================
+'clear the screen
+set color black
+cls
+set color white
+
+
+
+'call some functions
+controls()
+end_level()
+if sizeof(asteroids) > 0
+    polygons_wrap(asteroids,screen_w,screen_h)
+    polygons_update_world_values(asteroids) ' may be needed when thrust is applied
+    polygons_rotate(asteroids)
+    polygons_draw(asteroids)
+endif
+
+if sizeof(spaceship) > 0
+    polygons_wrap(spaceship,screen_w,screen_h)
+    polygons_update_world_values(spaceship) ' may be needed when thrust is applied
+    polygons_rotate(spaceship)
+    polygons_draw(spaceship)
+endif
+set color white
+move_bullets()
+if sizeof(asteroids) > 0
+    collisions()
+endif
+'==========================================
+'draw some stuff
+foreach bullet in bullets
+        if bullet.active_now = true
+            draw ellipse bullet.x + 2,bullet.y + 2,4,4
+        endif
+next
+if enemy_ship.active_now = true
+    draw ellipse enemy_ship.x + enemy_ship.w/2,enemy_ship.y - 6 + enemy_ship.h/2,8,8
+    draw ellipse enemy_ship.x + enemy_ship.w/2,enemy_ship.y+ enemy_ship.h/2,enemy_ship.w / 2,6',true
+endif
+
+if sizeof(enemy_bullets) > 0
+    foreach bull in enemy_bullets
+        bull.x = bull.x + bull.vec[0]
+        bull.y = bull.y + bull.vec[1]
+        draw ellipse bull.x + 4,bull.y + 4,4,4,1
+    next
+   
+endif
+
+
+if sizeof(enemy_bullets) > 0
+set color red
+draw rect enemy_bullets[0].x,enemy_bullets[0].y,2,2,1
+endif
+set color white
+set font font16
+
+
+set font font20
+set caret 50,10
+set justification left
+write "SCORE : " + score
+set caret screen_w / 2,screen_h - 25
+set justification center
+write "HIGH SCORE : " + current_hs
+set caret screen_w - 50,10
+set justification right
+write "LEVEL : " + level
+set caret screen_w /2,10
+set justification center
+write "LIVES : " + lives
+
+
+if enemy_ship.active_now = true and music_playing = false
+    
+    play music enemy_craft_audio,true
+    music_playing = true
+endif
+
+'copy back buffer to the screen
+redraw
+'cap FPS to 60
+if not fwait(60) pln "wtf"
+
+#######  FPS calc  ############################
+endtime = clock()
+frametime = frametime + endtime - starttime
+if frametime > 1000 # 1 second
+    fps = framecount
+    framecount = 0
+    frametime = 0
+endif
+################################################
+
+
+until keydown(KEY_ESCAPE)
+
+#########################################################################################
+#################################  FUNCTIONS  ###########################################
+#########################################################################################
+function title_screen()
+
+do
+if keydown(KEY_SPACE)
+    start_game()
+    menu_screen()
+    break
+endif
+
+counter = counter+1
+'clear the screen
+set color black
+cls
+set color white
+
+if counter = 100 
+    start_moving = true
+    foreach letter in title
+        letter.angle_inc = rnd(20)/100 - 0.1
+    next 
+endif
+
+target_reached = 0
+if start_moving = true
+for i = 0 to sizeof(title) - 1
+    title[i].dx = (targets[i][0] - title[i].x ) / 200 ' increase to decrease speed
+    title[i].dy = (targets[i][1] - title[i].y ) / 200
+    
+    if title[i].x  - 0 < targets[i][0] + 8  and title[i].x - 0 > targets[i][0] - 8 
+        if title[i].y - 0 < targets[i][1] + 8  and title[i].y  - 0 > targets[i][1] - 8 
+            target_reached = target_reached +1 
+            title[i].ang = 0
+            title[i].ang_inc = 0
+            title[i].dx = 0
+            title[i].dy = 0
+            title[i].x = targets[i][0]  
+            title[i].y = targets[i][1] 
+            title[i].can_move = false
+           
+        endif
+    endif
+next
+endif
+
+if target_reached = 9
+    wait 120
+    polygons_shrink(title)
+    start_game()
+    menu_screen()
+    break
+   
+endif
+
+polygons_update_world_values(title) 
+polygons_rotate_title(title)
+polygons_draw_title(title)
+set color 192,192,255
+set caret screen_w/2,screen_h - 50
+set justification center
+write "PRESS SPACE BAR TO EXIT THIS SCREEN"
+'copy back buffer to the screen
+redraw
+'cap FPS to 60
+fwait 60
+
+until keydown(KEY_ESCAPE)
+
+
+
+
+endfunc
+'==============================================================
+function text_at(x,y,text,colour)
+    
+    set color colour[0],colour[1],colour[2],colour[3]
+    set caret x,y
+    center text
+endfunc
+'==========================================================
+'create the initial world values of the polygons. World values are 
+'used when drawing the polygons to screen.
+function polygons_update_world_values(polygons)
+
+foreach polygon in polygons
+mid_x_calc = 0
+mid_y_calc = 0
+
+    if not sizeof(polygon.new_wireframe) polygon.new_wireframe = copy(polygon.original_wireframe)
+    if not sizeof(polygon.world_wireframe) polygon.world_wireframe = copy(polygon.original_wireframe)
+
+    for j = 0 to sizeof(polygon.original_wireframe) - 1
+        'create initial new_wireframe - this will be subsequently
+        'updated each time the polygons_rotate function is called.
+        'polygons_rotate is the only function that needs new_wireframe.
+        'polygon.new_wireframe[j] = [polygon.original_wireframe[j][0] ,
+        '                                 polygon.original_wireframe[j][1] ]
+        polygon.new_wireframe[j][0] = polygon.original_wireframe[j][0]
+        polygon.new_wireframe[j][1] = polygon.original_wireframe[j][1]
+        
+        'polygon.world_wireframe[j] = [polygon.original_wireframe[j][0] + polygon.x,
+        '                                 polygon.original_wireframe[j][1] + polygon.y]
+        polygon.world_wireframe[j][0] = polygon.original_wireframe[j][0] + polygon.x
+        polygon.world_wireframe[j][1] = polygon.original_wireframe[j][1] + polygon.y
+                                                                                  
+        mid_x_calc = mid_x_calc + polygon.world_wireframe[j][0] ' this will be used for collision detection
+        
+        mid_y_calc = mid_y_calc + polygon.world_wireframe[j][1] ' this will be used for collision detection
+    next
+    polygon.mid_x = mid_x_calc / sizeof(polygon.original_wireframe)'not the most accurate measure, but good enough!
+    polygon.mid_y = mid_y_calc / sizeof(polygon.original_wireframe)
+next
+endfunc
+'==============================================
+function polygons_shrink(polygons)
+
+for a = 0 to 999
+    set color black
+    cls
+    for i = 0 to sizeof(polygons) - 1 ' don't use foreach
+        for j = 0 to sizeof(polygons[i].original_wireframe) - 1
+        
+            if i <> 1 'only shrink the last instance of the letter S
+                polygons[i].original_wireframe [j][0] = polygons[i].original_wireframe [j][0] * 0.9980
+                polygons[i].original_wireframe [j][1] = polygons[i].original_wireframe [j][1] * 0.9980
+            
+            endif
+            
+        if keydown(KEY_SPACE)
+            a = 999
+        endif
+            
+        next
+        polygons[i].x = polygons[i].x - (i-3)/32
+    next
+    
+    polygons_update_world_values(title) 
+
+    polygons_draw_title(title)
+    set color white
+    set caret screen_w/2,screen_h - 50
+    set justification center
+    
+    write "PRESS SPACE BAR TO EXIT THIS SCREEN"
+        
+    redraw
+    fwait(60)
+next    
+wait 200 
+'end   
+endfunc
+
+'==========================================================
+'===============================================
+'add a new polygon 
+
+function polygons_add_exp(polygons,x,y,angle_inc,orig_wireframe)
+polygons[sizeof(polygons)] = [x:x,y:y,
+                            dx:rnd(10)/10 - 0.5,
+                            dy:rnd(10)/10 - 0.5,
+                            original_wireframe : orig_wireframe,
+                            new_wireframe:[],
+                            world_wireframe : [],
+                            angle:0,
+                            angle_inc : angle_inc
+                            
+                            ]
+
+polygons_update_world_values(polygons)
+endfunc
+'=====================================================
+'add a new polygon 
+function polygons_add_no_movement(polygons,x,y,angle_inc,orig_wireframe)
+
+polygons[sizeof(polygons)] = [x:x,y:y,
+                            dx:0,
+                            dy:0,
+                            original_wireframe : orig_wireframe,
+                            new_wireframe:[],
+                            world_wireframe : [],
+                            angle:0,
+                            angle_inc : angle_inc,can_move:true                    
+                            ]
+
+polygons_update_world_values(polygons)
+endfunc
+'==============================================
+'===============================================
+'add a new polygon 
+
+function polygons_add_slow(polygons,x,y,dx,dy,orig_wireframe)
+polygons[sizeof(polygons)] = [x:x,y:y,
+                            dx:rnd(10)/10 - 0.5,
+                            dy:rnd(10)/10 - 0.5,
+                            original_wireframe : orig_wireframe,
+                            new_wireframe:[],
+                            world_wireframe : [],
+                            angle:1.3,
+                            angle_inc : rnd(8)/100 - 0.04
+                            
+                            ]
+
+polygons_update_world_values(polygons)
+endfunc
+'===============================================
+'add a new polygon 
+
+function polygons_add_medium(polygons,x,y,dx,dy,orig_wireframe)
+polygons[sizeof(polygons)] = [x:x,y:y,
+                            dx:rnd(20)/10 - 1.0,
+                            dy:rnd(20)/10 - 1.0,
+                            original_wireframe : orig_wireframe,
+                            new_wireframe:[],
+                            world_wireframe : [],
+                            angle:1.3,
+                            angle_inc : rnd(8)/100 - 0.04
+                            
+                            ]
+
+polygons_update_world_values(polygons)
+endfunc
+'==============================================
+'add a new polygon 
+
+function polygons_add_fast(polygons,x,y,dx,dy,orig_wireframe)
+polygons[sizeof(polygons)] = [x:x,y:y,
+                            dx:rnd(30)/10 - 1.5,
+                            dy:rnd(30)/10 - 1.5,
+                            original_wireframe : orig_wireframe,
+                            new_wireframe:[],
+                            world_wireframe : [],
+                            angle:1.3,
+                            angle_inc : rnd(8)/100 - 0.04
+                            
+                            ]
+
+polygons_update_world_values(polygons)
+endfunc
+'==============================================
+function polygons_draw(polygons)
+if sizeof(polygons) > 0
+    foreach polygon in polygons
+        for j = 0 to sizeof(polygon.original_wireframe) - 1
+            if j + 1 < sizeof(polygon.world_wireframe)
+                draw line polygon.world_wireframe[j][0],polygon.world_wireframe[j][1],
+                          polygon.world_wireframe[j + 1][0],polygon.world_wireframe[j + 1][1]
+            else
+                draw line polygon.world_wireframe[j][0],polygon.world_wireframe[j][1],
+                          polygon.world_wireframe[0][0],polygon.world_wireframe[0][1] 
+            endif
+        next
+    next
+endif
+endfunc
+'===============================================
+function polygons_rotate(polygons)
+'calculations for rotating the polygons each frame.
+foreach polygon in polygons
+    'change angle
+    polygon.angle = polygon.angle + polygon.angle_inc
+    'add thrust
+    polygon.x = polygon.x + polygon.dx
+    polygon.y = polygon.y + polygon.dy
+
+    
+    
+    
+    for i = 0 to sizeof(polygon.original_wireframe) - 1
+        polygon.new_wireframe[i][0] =  polygon.original_wireframe[i][0] * cos(polygon.angle) - polygon.original_wireframe[i][1] * sin(polygon.angle)
+        polygon.new_wireframe[i][1] =  polygon.original_wireframe[i][0] * sin(polygon.angle) + polygon.original_wireframe[i][1] * cos(polygon.angle)
+    
+        polygon.world_wireframe[i][0] = polygon.x + polygon.new_wireframe[i][0]
+        polygon.world_wireframe[i][1] = polygon.y + polygon.new_wireframe[i][1]
+  
+    next
+next
+
+endfunc
+'================================================
+function polygons_wrap(polygons,screen_w,screen_h)
+
+foreach polygon in polygons
+    if polygon.x > screen_w + 10
+        polygon.x = polygon.x  - screen_w - 20
+        
+        break
+    elseif polygon.x < 0 - 10
+        polygon.x = polygon.x  + screen_w + 20
+        
+        break
+    endif
+
+    if polygon.y > screen_h + 10
+        polygon.y = polygon.y  - screen_h -20
+        
+        break
+    elseif polygon.y < 0 - 10
+        polygon.y = polygon.y  + screen_h + 20
+        
+        break
+    endif
+next
+
+endfunc
+'=================================================
+function split_polygon(polygon,element)
+if sound_on = true 
+    play sound asteroid_hit_audio
+endif
+current_x = polygon[element].x
+current_y = polygon[element].y
+if polygon[element].original_wireframe = large_asteroid_wireframe
+    free key polygon,element
+    if level = 1
+    polygons_add_slow(asteroids,current_x,current_y,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,medium_asteroid_wireframe)
+    polygons_add_slow(asteroids,current_x+16,current_y+16,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,medium_asteroid_wireframe)
+    elseif level = 2
+    polygons_add_medium(asteroids,current_x,current_y,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,medium_asteroid_wireframe)
+    polygons_add_medium(asteroids,current_x+16,current_y+16,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,medium_asteroid_wireframe)
+    elseif level > 2
+    polygons_add_medium(asteroids,current_x,current_y,rnd(30)/10 - 1.5,rnd(30)/10 - 1.5,medium_asteroid_wireframe)
+    polygons_add_medium(asteroids,current_x+16,current_y+16,rnd(30)/10 - 1.5,rnd(30)/10 - 1.5,medium_asteroid_wireframe)
+    endif
+elseif polygon[element].original_wireframe = medium_asteroid_wireframe
+    free key polygon,element
+    if level = 1
+    polygons_add_slow(asteroids,current_x,current_y,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,small_asteroid_wireframe)
+    polygons_add_slow(asteroids,current_x+8,current_y+8,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,small_asteroid_wireframe)
+    elseif level = 2
+    polygons_add_medium(asteroids,current_x,current_y,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,small_asteroid_wireframe)
+    polygons_add_medium(asteroids,current_x+8,current_y+8,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,small_asteroid_wireframe)
+    elseif level > 2
+    polygons_add_medium(asteroids,current_x,current_y,rnd(30)/10 - 1.5,rnd(30)/10 - 1.5,small_asteroid_wireframe)
+    polygons_add_medium(asteroids,current_x+8,current_y+8,rnd(30)/10 - 1.5,rnd(30)/10 - 1.5,small_asteroid_wireframe)
+    endif
+else
+    asteroid_to_delete = element 'the asteroid will be deleted at the start of the next frame.
+    
+endif
+endfunc
+
+'======================================================================
+
+function controls()
+if keydown(KEY_LEFT)
+    spaceship[0].angle = spaceship[0].angle - 0.05
+endif
+
+if keydown(KEY_RIGHT)
+    spaceship[0].angle = spaceship[0].angle + 0.05
+endif
+'thrust
+if keydown(KEY_UP)
+    'velocity vector
+    spaceship[0].dx = spaceship[0].dx + sin(spaceship[0].angle) * 0.01'increase to make initial speed faster
+    spaceship[0].dy = spaceship[0].dy - cos(spaceship[0].angle) * 0.01
+endif
+spaceship[0].x = spaceship[0].x + spaceship[0].dx
+spaceship[0].y = spaceship[0].y + spaceship[0].dy
+
+if keydown(KEY_SPACE)
+    if bullets_timer > 30 ' restrict bullets
+        foreach bullet in bullets
+            if bullet.active_now = false
+                bullets_timer = 0
+                bullet.active_now = true
+               bullet.x  = spaceship[0].mid_x
+               bullet.y = spaceship[0].mid_y
+               bullet.dx = sin(spaceship[0].angle) * 3'increase to make initial speed faster
+               bullet.dy = - cos(spaceship[0].angle) * 3
+               bullet.x  = spaceship[0].mid_x + bullet.dx * 5 ' move bullet to radius of spaceship
+               bullet.y = spaceship[0].mid_y + bullet.dy * 5
+               if sound_on = true then  play sound player_missile_audio
+               break 
+            endif
+        next
+    endif
+endif
+
+
+
+endfunc
+'======================================
+function move_bullets()
+foreach bullet in bullets
+    if bullet.active_now = true
+        bullet.x = bullet.x + bullet.dx
+        bullet.y = bullet.y + bullet.dy
+            if bullet.x > screen_w or  bullet.x < 0 or  bullet.y > screen_h or  bullet.y < 0
+                 bullet.active_now = false
+            endif            
+    endif
+next
+endfunc
+ '===================================================
+function collisions()
+if sizeof(asteroids) > 0
+for k = 0 to sizeof(asteroids) - 1 ' do not use foreach here because
+                        ' the specific asteroid must be identified 
+                        ' and passed to the function "split_polygon()"
+    if asteroids[k].original_wireframe = large_asteroid_wireframe
+        asteroid_radius = 48
+    elseif asteroids[k].original_wireframe = medium_asteroid_wireframe
+        asteroid_radius = 24
+    else
+    
+        asteroid_radius = 12
+    endif
+
+    'collision bullet > asteroid
+    foreach bullet in bullets
+        if bullet.active_now = true
+            if bullet.x > asteroids[k].mid_x - asteroid_radius and  bullet.x < asteroids[k].mid_x + asteroid_radius
+                if bullet.y > asteroids[k].mid_y - asteroid_radius and  bullet.y < asteroids[k].mid_y + asteroid_radius
+                    bullet.active_now = false
+                    'free key asteroids,i
+                    score = score + 20
+                    split_polygon(asteroids,k)
+    '                break
+                endif
+            endif
+        endif
+    next
+'collision player spaceship > asteroid    
+    for l = 0 to sizeof(spaceship) - 1
+            if spaceship[l].x > asteroids[k].mid_x - asteroid_radius and  spaceship[l].x < asteroids[k].mid_x + asteroid_radius
+                if spaceship[l].y > asteroids[k].mid_y - asteroid_radius and  spaceship[l].y < asteroids[k].mid_y + asteroid_radius
+                    spaceship_hit()
+                    
+                    wait 1000
+                    
+                    break
+                endif
+            endif
+        
+    next
+next
+endif
+'collision enemy spaceship > player spaceship
+if enemy_ship.active_now = true
+    for l = 0 to sizeof(spaceship) - 1
+        if spaceship[l].x + 6 > enemy_ship.x and  spaceship[l].x - 6 < enemy_ship.x + enemy_ship.w
+            if spaceship[l].y + 6 > enemy_ship.y and  spaceship[l].y - 6 < enemy_ship.y + enemy_ship.h
+                
+                    spaceship_hit()
+                    wait 1000
+                    break
+            endif
+        endif
+    next
+endif 
+
+
+'collision enemy spaceship bullets > player spaceship
+if sizeof(enemy_bullets) > 0
+for l = 0 to sizeof(spaceship) - 1
+    foreach enemy_bullet in enemy_bullets
+        if spaceship[l].x  > enemy_bullet.x - enemy_bullet.w and  spaceship[l].x  < enemy_bullet.x + enemy_bullet.w 
+            if spaceship[l].y  > enemy_bullet.y - enemy_bullet.h  and  spaceship[l].y  < enemy_bullet.y + enemy_bullet.h 
+                spaceship_hit()
+                wait 1000
+                break
+            endif
+        endif
+    next
+next
+endif  
+
+'collision player bullets > enemy spaceship
+if sizeof(bullets)  > 0
+foreach bullet in bullets
+        if bullet.active_now = true
+            if bullet.x > enemy_ship.x  and  bullet.x < enemy_ship.x + enemy_ship.w
+                if bullet.y > enemy_ship.y and  bullet.y < enemy_ship.y + enemy_ship.h
+                     if enemy_ship.active_now = true
+                         score = score + 200
+                         enemy_ship.active_now = false
+                         enemy_spaceship_hit   ()
+                     endif
+                endif
+           endif
+       endif
+next     
+                           
+                                    
+endif                                                      
+endfunc            
+            
+            
+'====================================================
+function start_game()
+'stop enemy ship audio
+enemy_ship.active_now = false
+    stop music enemy_craft_audio
+    music_playing = false    
+
+bullets = fill([x:0,y:0,dx:0,dy:0,active_now:false],12)   ' kill off bullets
+asteroids = []'kill off asteroids
+
+enemy_ship = [x:-50,y:40,dx:1,dy:0.0,
+                w:32,h:4,radius : 8,
+                active_now : false,
+                timer_target : 700]
+                
+enemy_ship_timer = 0
+enemy_bullet_timer = 0
+enemy_bullets = []
+
+spaceship[0].x = screen_w/2
+spaceship[0].y = screen_h/2
+spaceship[0].dx = 0
+spaceship[0].dy = 0
+
+if level = 1
+   asteroids[sizeof(asteroids) ] = [x:screen_w / 2,y:100,dx:0.5,dy:0.3,
+               original_wireframe:large_asteroid_wireframe,'x & y values relative to 0,0
+               new_wireframe:[],'used in calculations for rotating the polygons
+               world_wireframe : [],'this is the new_wireframe added to the polygons current 
+                                    'x & y position on screen
+               angle:0.1,angle_inc : 0.05, ' used when rotating the polygons
+               mid_x:0,mid_y:0]
+    
+    polygons_add_slow(asteroids,screen_w - 100,screen_h - 100,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,large_asteroid_wireframe)
+    polygons_add_slow(asteroids,100,screen_h - 100,rnd(10)/10 - 0.5,rnd(10)/10 - 0.5,large_asteroid_wireframe)
+elseif level = 2
+    polygons_add_medium(asteroids,100,100,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,large_asteroid_wireframe)    
+    polygons_add_medium(asteroids,screen_w - 100,screen_h - 100,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,large_asteroid_wireframe)
+    polygons_add_medium(asteroids,100,screen_h - 100,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,large_asteroid_wireframe)
+    polygons_add_medium(asteroids,screen_w - 100,100,rnd(20)/10 - 1.0,rnd(20)/10 - 1.0,large_asteroid_wireframe)
+    bullet_speed = 2.25
+
+
+
+elseif level = 3
+    polygons_add_fast(asteroids,100,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)    
+    polygons_add_fast(asteroids,screen_w - 100,screen_h - 100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,100,screen_h - 100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,screen_w - 100,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,screen_w / 2,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe) 
+    bullet_speed = 3
+    
+elseif level > 3    
+    polygons_add_fast(asteroids,100,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)    
+    polygons_add_fast(asteroids,screen_w - 100,screen_h - 100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,100,screen_h - 100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,screen_w - 100,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe)
+    polygons_add_fast(asteroids,screen_w / 2,100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe) 
+    polygons_add_fast(asteroids,screen_w / 2,screen_h - 100,rnd(30)/15 - 1.5,rnd(30)/15 - 1.5,large_asteroid_wireframe) 
+    bullet_speed = level
+    
+    
+endif   
+
+
+current_hs = HS_GetScore(0)
+
+
+
+
+wait 1000    
+endfunc
+'=====================================================    
+function end_level()
+if sizeof(asteroids) = 0
+    wait 1000
+    set caret screen_w/2,screen_h/2
+    set font font20
+    set justification center
+    write "LEVEL " + level + " COMPLETE"
+    redraw 
+    wait 1000
+    level = level + 1
+    start_game()
+endif
+    
+        
+endfunc
+'=====================================================    
+function spaceship_hit()
+
+    if sound_on = true then play sound player_hit_audio
+    
+    enemy_ship.active_now = false
+    stop music enemy_craft_audio
+    music_playing = false
+'first, show the explosion
+foreach explosion in exp
+    explosion.x = spaceship[0].x
+    explosion.y = spaceship[0].y
+next
+timer = 0
+while timer < 300
+timer = timer + 1
+set color 0,0,0
+cls
+set color 255,255,255
+
+''for j = 0 to 2000
+polygons_wrap(exp,screen_w,screen_h)
+    polygons_update_world_values(exp) ' may be needed when thrust is applied
+    polygons_rotate(exp)
+    set color red
+    polygons_draw(exp)
+    set color white
+'next
+if sizeof(asteroids) > 0
+    polygons_wrap(asteroids,screen_w,screen_h)
+    polygons_update_world_values(asteroids) ' may be needed when thrust is applied
+    polygons_rotate(asteroids)
+    polygons_draw(asteroids)
+endif
+set font font20
+set caret 50,10
+set justification left
+write "SCORE : " + score
+set caret screen_w - 50,10
+set justification right
+write "LEVEL : " + level
+set caret screen_w /2,10
+set justification center
+write "LIVES : " + lives
+set caret screen_w / 2,screen_h - 25
+set justification center
+write "HIGH SCORE : " + current_hs
+controls()
+
+redraw
+fwait(60)
+wend
+
+
+
+
+spaceship[0].x = screen_w/2
+spaceship[0].y = screen_h/2
+spaceship[0].dx = 0
+spaceship[0].dy = 0
+lives = lives - 1
+enemy_bullets = []
+bullets = fill([x:0,y:0,dx:0,dy:0,active_now:false],12)  
+'bullets = []
+'avoid spaceship reappearing in the middle of an asteroid
+
+foreach i in asteroids
+    if i.x > 200 and i.x <=  screen_w / 2
+        i.x = 200
+    elseif i.x > screen_w / 2 and i.x < 440
+        i.x = 440
+    elseif i.y > screen_h / 2 and i.y < 360
+        i.y = 360
+    elseif i.y > 120  and i.y <=  screen_h / 2
+        i.y = 120    
+    endif
+next
+
+enemy_ship.active_now = false
+    enemy_ship_timer = 0
+    enemy_ship.timer_target = rnd(500) + 700 
+    enemy_ship.y = rnd(screen_h - 100) + 50
+    ch = rnd(2)
+    if ch = 1
+        enemy_ship.x = -50
+        enemy_ship.dx = 1
+    else
+        enemy_ship.x = screen_w + 50
+        enemy_ship.dx = -1
+    endif
+
+endfunc
+'=====================================================  
+'=====================================================    
+function enemy_spaceship_hit()
+
+
+if sound_on = true then play sound enemy_hit_audio
+    enemy_ship.active_now = false
+    stop music enemy_craft_audio
+    music_playing = false
+    enemy_bullets = []
+'first, show the explosion
+for i = 0 to sizeof(enemy_exp) - 1
+    enemy_exp[i].x = enemy_ship.x
+    enemy_exp[i].y = enemy_ship.y
+next
+enemy_destroyed_timer = 0
+while enemy_destroyed_timer < 300
+enemy_destroyed_timer = enemy_destroyed_timer + 1
+bullets_timer = bullets_timer + 1
+set color 0,0,0
+cls
+set color 255,255,255
+controls()
+move_bullets()
+collisions()
+'==========================================
+'delete any asteroids from last check on collision
+if asteroid_to_delete <> 999
+    free key asteroids,asteroid_to_delete
+    asteroid_to_delete = 999
+endif
+'==========================================
+
+foreach bullet in bullets
+        if bullet.active_now = true
+            draw ellipse bullet.x + 2,bullet.y + 2,4,4
+        endif
+next
+
+
+
+
+''for j = 0 to 2000
+polygons_wrap(enemy_exp,screen_w,screen_h)
+    polygons_update_world_values(enemy_exp) ' may be needed when thrust is applied
+    polygons_rotate(enemy_exp)
+    set color red
+    polygons_draw(enemy_exp)
+    set color white
+'next
+if sizeof(asteroids) > 0
+    polygons_wrap(asteroids,screen_w,screen_h)
+    polygons_update_world_values(asteroids) ' may be needed when thrust is applied
+    polygons_rotate(asteroids)
+    polygons_draw(asteroids)
+endif
+if sizeof(spaceship) > 0
+    polygons_wrap(spaceship,screen_w,screen_h)
+    polygons_update_world_values(spaceship) ' may be needed when thrust is applied
+    polygons_rotate(spaceship)
+    polygons_draw(spaceship)
+endif
+
+
+set font font20
+set caret 50,10
+set justification left
+write "SCORE : " + score
+set caret screen_w - 50,10
+set justification right
+write "LEVEL : " + level
+set caret screen_w /2,10
+set justification center
+write "LIVES : " + lives
+set caret screen_w / 2,screen_h - 25
+set justification center
+write "HIGH SCORE : " + current_hs
+
+set caret enemy_ship.x,enemy_ship.y
+                    write "200"
+
+
+
+redraw
+fwait(60)
+wend
+wait 10
+
+
+
+    enemy_ship.active_now = false
+    enemy_ship_timer = 0
+    enemy_ship.timer_target = rnd(500) + 700 
+    enemy_ship.y = rnd(screen_h - 100) + 50
+    ch = rnd(2)
+    if ch = 1
+        enemy_ship.x = -50
+        enemy_ship.dx = 1
+    else
+        enemy_ship.x = screen_w + 50
+        enemy_ship.dx = -1
+    endif
+
+enemy_bullets = []
+
+
+
+endfunc
+'=====================================================   
+function reset_variables()'may not be used
+'enemy ship
+ enemy_ship.active_now = false
+    enemy_ship_timer = 0
+    enemy_ship.timer_target = rnd(500) + 700 
+    enemy_ship.y = rnd(screen_h - 100) + 50
+    ch = rnd(2)
+    if ch = 1
+        enemy_ship.x = -50
+        enemy_ship.dx = 1
+    else
+        enemy_ship.x = screen_w + 50
+        enemy_ship.dx = -1
+    endif
+'player ship
+spaceship[0].x = screen_w/2
+spaceship[0].y = screen_h/2
+spaceship[0].dx = 0
+spaceship[0].dy = 0
+'
+
+endfunc
+'============================================== 
+function end_game()
+    'stop music
+    enemy_ship.active_now = false
+    stop music enemy_craft_audio
+    music_playing = false
+
+
+
+    t = 0
+    while t < 5000
+    t = t + 1
+    
+    set caret screen_w/2,screen_h/2
+    set font font20
+    set justification center
+    write "ALL LIVES LOST"
+    set caret screen_w/2,screen_h/2 + 25
+    write "GAME OVER"
+    redraw 
+    wend
+    
+    
+    
+    menuItem = 0
+    high_score()
+    level = 1
+    lives = 3
+    score = 0
+    menu_screen()
+    
+
+    
+
+endfunc
+'=====================================================
+function menu_screen()
+do
+'pln menuItem
+temp_timer = (temp_timer + 1) % 100
+set color 255,255,255
+    if keydown(KEY_DOWN,true)
+        if menuItem < 6
+            menuItem = menuItem + 1
+        else if menuItem = 6
+            menuItem = 0
+        endif
+    endif 
+    if keydown(KEY_UP,true)
+        if menuItem > 0 
+            menuItem = menuItem - 1
+        else if menuItem = 0 
+            menuItem = 6
+        endif
+    endif
+set color black
+cls
+set color white
+'draw image bg_menu_3,0,0
+
+
+if temp_timer < 25
+    text_at(screen_w/2,25, "Use the ARROW KEYS To Move in The Menu",[0,255,255,255])
+    text_at(screen_w/2,45, "Press the SPACE BAR to Select an Item",[0,255,255,255])
+else
+    text_at(screen_w/2,25, "Use the ARROW KEYS To Move in The Menu",white)
+    text_at(screen_w/2,45, "Press the SPACE BAR to Select an Item",white)
+endif    
+
+if menuItem = 0
+    text_at(screen_w/2,70, "PLAY",[0,255,255,255])
+else
+    text_at(screen_w/2,70, "PLAY",white) 
+endif    
+
+'----------------
+
+if menuItem = 1
+    text_at(screen_w/2,90, "HOW TO PLAY",[0,255,255,255])
+else
+    text_at(screen_w/2,90, "HOW TO PLAY",white)
+endif
+'rem --------- 
+
+if menuItem = 2
+    text_at(screen_w/2,110, "FULL SCREEN",[0,255,255,255])
+else
+    text_at(screen_w/2,110, "FULL SCREEN",white)
+endif
+
+'rem --------------
+if menuItem = 3
+    text_at(screen_w/2,130, "640 * 480 SCREEN",[0,255,255,255])
+else
+    text_at(screen_w/2,130, "640 * 480 SCREEN",white)
+endif
+'rem --------- 
+if menuItem = 4
+    text_at(screen_w/2,150, "HIGH SCORES",[0,255,255,255])
+else
+    text_at(screen_w/2,150, "HIGH SCORES",white)
+endif
+
+    
+'rem --------- 
+if menuItem = 5 and sound_on = true
+    text_at(screen_w/2 ,170, "SOUND ON/OFF - CURRENTLY ON",[0,255,255,255])
+elseif menuItem = 5 and sound_on = false
+    text_at(screen_w/2 ,170, "SOUND ON/OFF - CURRENTLY OFF",[0,255,255,255])
+elseif  menuItem <> 5 and sound_on = true
+    text_at(screen_w/2 ,170, "SOUND ON/OFF - CURRENTLY ON",white)
+else
+    
+    text_at(screen_w/2 ,170, "SOUND ON/OFF - CURRENTLY OFF",white)
+endif
+
+
+if menuItem = 6
+    text_at(screen_w/2,190, "QUIT",[0,255,255,255])
+else
+    text_at(screen_w/2,190, "QUIT",white)
+endif
+redraw
+wait 10
+
+until keydown(KEY_SPACE,true) 'or keydown(KEY_RETURN,true) 
+
+
+if  menuItem = 1
+    instructions()
+    
+    
+else if menuItem = 0
+    start_game()
+  
+
+    wait 30
+
+ 
+elseif menuItem = 2
+    
+    set window "Asteroids",screen_w,screen_h,true,2
+    
+    menuItem = 0
+   
+    menu_screen()
+elseif menuItem = 3
+
+    set window "Asteroids",screen_w,screen_h',false,2
+    menuItem = 0
+    menu_screen()
+else if menuItem = 4
+    show_hs()
+   ' DisplayList()
+    
+
+   
+   
+    menuItem = 0
+    menu_screen()
+   
+    ##################
+    #### high scores #
+    ##################
+    
+elseif menuItem = 5
+    if sound_on = true 
+        sound_on = false
+    elseif sound_on = false
+        sound_on = true
+    endif
+    menuItem = 0
+    menu_screen()
+elseif menuItem = 6
+'    if difficulty = 1 
+'        difficulty = 2
+'    elseif difficulty = 2
+'        difficulty = 1
+'    endif
+'    menuItem = 0
+'    menu_screen()
+   
+'elseif menuItem = 7
+    end
+
+endif
+
+'until menuItem = 0 or menuItem = 2 or menuItem = 3
+  
+endfunc
+###########################################
+
+
+'===============================================                         
+function enemy_ship_routine()
+enemy_ship.active_now = true
+
+
+enemy_ship.x = enemy_ship.x + enemy_ship.dx
+enemy_ship.y = enemy_ship.y + enemy_ship.dy
+'enemy_bullets = []
+enemy_bullet_timer = enemy_bullet_timer + 1
+
+if enemy_ship.x > screen_w + 100 or enemy_ship.x < -100
+    enemy_ship.active_now = false
+    stop music enemy_craft_audio
+    music_playing = false
+    enemy_ship_timer = 0
+    enemy_ship.timer_target = rnd(500) + 700 
+    enemy_ship.y = rnd(screen_h - 100) + 50
+    ch = rnd(2)
+    if ch = 1
+        enemy_ship.x = -50
+        enemy_ship.dx = 1
+    else
+        enemy_ship.x = screen_w + 50
+        enemy_ship.dx = -1
+    endif
+endif
+
+if enemy_bullet_timer > 150 and enemy_ship.active_now = true
+    enemy_bullet_timer = 0 
+    enemy_bullets[sizeof(enemy_bullets)] = [x:enemy_ship.x ,
+    y:enemy_ship.y ,w:8,h:8,
+    angle:0,
+    vec:[0,0]   ]
+    
+    temp_angle = angle_rad([enemy_ship.x,enemy_ship.y],[spaceship[0].x,spaceship[0].y])
+    
+    enemy_bullets[sizeof(enemy_bullets)-1].angle=temp_angle
+    enemy_bullets[sizeof(enemy_bullets)-1].vec=vectors_from_angle(temp_angle)
+    if sound_on = true then play sound enemy_missile_audio    
+endif 
+bullet2kill = 999
+
+if sizeof(enemy_bullets) > 0 ' do not use foreach here
+    for i = 0 to sizeof(enemy_bullets) - 1
+        if enemy_bullets[i].x > screen_w or enemy_bullets[i].x < 0 or enemy_bullets[i].y > screen_h or enemy_bullets[i].y < 0
+            bullet2kill = i ' don't delete the key in a loop
+        endif
+    next
+    
+endif
+'now we can delete the key
+    if bullet2kill <> 999
+        free key enemy_bullets,bullet2kill
+    endif      
+            
+
+endfunc
+'==================================================
+##################################
+function angle_rad(start_point,end_point)
+    dx = end_point[0] - start_point[0]
+    dy = end_point[1] - start_point[1]
+    angle_r = atan2(-dx,dy)   
+    
+    return angle_r + PI
+endfunc
+##################################
+##########################################
+function vectors_from_angle(ang)
+    vector_x = sin(ang ) * bullet_speed 'change speed of bullets
+    vector_y = -cos(ang) * bullet_speed
+    return [vector_x,vector_y]
+
+endfunc
+###########################################
+' -------------------------------------------------
+
+function high_score()
+' check to see if High score qualifies for table
+didQualify = HS_IsQualified(score)
+
+set caret 160,0
+center "YOUR SCORE: " + str(score)
+if didQualify
+    get_name()
+endif
+
+if HS_AddEntry(name, score)
+                        set color 0,0,0
+                        cls
+                        set color 255,255,255    
+                        set caret screen_w / 2,110
+
+        
+        center "CONGRATULATIONS........... "
+        center " YOU QUALIFIED AS ONE OF"
+        center " THE HIGHEST SCORES..."
+else
+                        set color 0,0,0
+                        cls
+                        set color 255,255,255    
+                        set caret screen_w / 2,110
+
+        center "SORRY, YOU DID NOT QUALIFY FOR "
+        center "THE HIGH SCORE LIST......."
+endif
+redraw
+
+set color 0, 0, 0
+cls
+set color 255, 255, 255
+
+
+redraw
+    wait 1000
+show_hs()  
+
+HS_Save(filename)    
+  
+  
+endfunc
+###############################################################
+' -----------------------------------------------------
+function get_name()
+
+' Clear screen and display list.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    
+    ' Get name.
+set caret screen_w / 2,0
+center "YOUR SCORE: " + str(score)
+
+set redraw on
+    set caret screen_w / 2, 40
+    center
+    center "WELL DONE ... YOU ARE ONE"
+    center "OF THE TOP 10 SCORES"
+    center "ENTER YOUR NAME BELOW.."
+    center ""
+    name = rln(10)
+    
+set redraw off
+
+endfunc
+##############################################################
+###########################################
+function show_hs()
+go_now = true
+do
+set color black
+cls
+set color white
+'set font font20
+'DisplayList()
+set caret screen_w / 2,10
+    set justification center
+    write "HIGH SCORE TABLE"
+    set caret screen_w / 2,30
+    write "================"
+    entries = HS_GetEntries()
+    for i = 0 to sizeof(entries) - 1
+        set justification right
+        set caret screen_w / 3 + 70, 50 + i*20
+        write entries[i].score
+        set caret screen_w / 3 + 130, 50 + i*20
+        set justification left
+        write entries[i].name
+        
+        'set justification center
+    next
+
+
+
+
+
+text_at(screen_w / 2,400,"PRESS SPACE BAR TO EXIT",[255,255,255,255])
+redraw
+wait 10
+if keydown(KEY_SPACE,true) then go_now = false     
+until go_now = false
+endfunc
+'================================================
+function DisplayList()
+'until keydown(KEY_SPACE)
+    set caret 50,10
+    set justification left
+    write "HIGH SCORE TABLE"
+    set caret 50,20
+    write "================"
+    entries = HS_GetEntries()
+    for i = 0 to sizeof(entries) - 1
+        set justification left
+        set caret 50, 40 + i*16
+        write entries[i].score
+        set caret 100, 40 + i*16
+        'set justification right
+        write entries[i].name
+        
+        set justification left
+    next
+endfunc
+'===============================================
+function instructions()
+go_now = true
+
+do
+
+
+set color 0,0,0
+cls
+set color 255,0,255
+set caret screen_w/2,10
+' center "++++++++++++++++++++++++++++++++++++"
+center "***** HOW TO PLAY *****"
+' center "++++++++++++++++++++++++++++++++++++"
+center ""
+set color 0,255,255
+if instruction_page = 1
+    center "You are travelling through space" 
+    center "when you encounter an asteroid storm."
+    center ""
+    center "Use the arrow keys to rotate your ship" 
+    center "and move forward. The space bar fires"
+    center "your missiles. Tip - hold the button down"
+    center "for continuous fire."
+    center " "
+    center "The level ends when you have destroyed all"
+    center "of the asteroids." 
+    
+    center""
+    set color 255,255,255
+    center "Press the SPACE key to continue..."
+    redraw
+    wait 10
+    
+elseif instruction_page = 2
+    
+    center "Look out for the enemy spaceship - it's" 
+    center "missiles are accurate, so you need to"
+    center "keep moving."
+    center ""
+    center "You score points for hitting asteroids,"
+    center "and a bigger bonus score for destroying"
+    center "the enemy spaceship."
+    center " "
+    
+    center " "
+    set color 255,255,255
+    center "Press the SPACE key to continue..."
+    redraw
+    wait 10
+endif
+if keydown(KEY_SPACE,true) 
+    if instruction_page = 1
+        instruction_page = 2
+    else
+        go_now = false
+    endif
+endif
+
+
+until not go_now
+    instruction_page = 1
+    menuItem = 0
+    menu_screen()
+    
+
+endfunc
+'==========================================================
+'===============================================
+
+function polygons_draw_title(polygons)
+
+    for i = 0 to sizeof(polygons) - 1
+    if polygons[i].can_move = true
+        set color white
+    else
+        set color red
+    endif
+
+        for j = 0 to sizeof(polygons[i].original_wireframe) - 1
+            if j + 1 < sizeof(polygons[i].world_wireframe)
+                draw line polygons[i].world_wireframe[j][0],polygons[i].world_wireframe[j][1],
+                          polygons[i].world_wireframe[j + 1][0],polygons[i].world_wireframe[j + 1][1]
+            else
+                draw line polygons[i].world_wireframe[j][0],polygons[i].world_wireframe[j][1],
+                          polygons[i].world_wireframe[0][0],polygons[i].world_wireframe[0][1] 
+            endif
+        next
+    next
+
+endfunc
+'===============================================
+'===============================================
+function polygons_rotate_title(polygons)
+'calculations for rotating the polygons each frame.
+for j = 0 to sizeof(polygons) - 1
+if polygons[j].can_move = true
+    'change angle
+    polygons[j].angle = polygons[j].angle + polygons[j].angle_inc
+    'add thrust
+    polygons[j].x = polygons[j].x + polygons[j].dx
+    polygons[j].y = polygons[j].y + polygons[j].dy
+   
+    for i = 0 to sizeof(polygons[j].original_wireframe) - 1
+        polygons[j].new_wireframe[i][0] =  polygons[j].original_wireframe[i][0] * cos(polygons[j].angle) - polygons[j].original_wireframe[i][1] * sin(polygons[j].angle)
+        polygons[j].new_wireframe[i][1] =  polygons[j].original_wireframe[i][0] * sin(polygons[j].angle) + polygons[j].original_wireframe[i][1] * cos(polygons[j].angle)
+    
+        polygons[j].world_wireframe[i][0] = polygons[j].x + polygons[j].new_wireframe[i][0]
+        polygons[j].world_wireframe[i][1] = polygons[j].y + polygons[j].new_wireframe[i][1]
+  
+    next
+endif
+next
+
+endfunc
+'=====================================================

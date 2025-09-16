@@ -1,0 +1,50 @@
+' load sound, sound, play sound, free sound
+' -----------------------------------------
+
+' 'load sound sound_id, filename' loads sound sound_id from file filename. 'loadsound(filename)'
+' does the same thing as the command 'load sound' but auto-generates and returns an unused
+' identifier. The 'load sound' command is for backward compability with n6, the preferred way of
+' loading a sound is through the 'loadsound' function. Only wav files in PCM format are supported.
+boingSound = loadsound("assets/boing.wav")
+plingSound = loadsound("assets/pling.wav")
+weirdSound = loadsound("assets/weird.wav")
+
+' 'sound(sound_id)' returns true if the sound sound_id exists (has been loaded).
+if not (sound(boingSound) and sound(plingSound) and sound(weirdSound))
+    pln "Could not load all sounds"
+    pln "Press Esc to quit ..."
+    system "pause"
+    end
+endif
+
+' Create a window of the size 640x480.
+set window "sounds", 640, 480
+
+' Write unstructions.
+set color 255, 255, 255
+set caret 320, 216
+center "Press 1 to play a boing sound"
+center "Press 2 to play a pling sound to the right"
+center "Press 3 to play a weird sound to the left"
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' 'play sound sound_id' plays sound sound_id.
+    if keydown(KEY_1, true)  play sound boingSound
+    ' 'play sound sound_id, v, p' plays sound sound_id with volume v, [0..1], and panning p,
+    ' [-1..1], where -1 is left and 1 is right. The default values for volume and panning are 1 and
+    ' 0
+    if keydown(KEY_2, true)  play sound plingSound, 1, 0.75
+    if keydown(KEY_3, true)  play sound weirdSound, 1, -0.75
+    
+    ' Cap the fps at 60.
+    fwait 60
+wend
+
+' 'free sound sound_id' removes the sound sound_id from memory. All sounds are automatically freed
+' when the program ends, so here it isn't really needed.
+free sound boingSound
+free sound plingSound
+free sound weirdSound

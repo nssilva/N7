@@ -1,0 +1,28 @@
+' free val
+' --------
+
+' Put some numbers and strings in an array and print its size and elements.
+a = [13, "hello", 2, "boop", "hello", 13, 4]
+pln "Size of a = " + sizeof(a)
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+
+' 'free val t, v' removes every entry with v as value from table t. If entries with numeric keys are
+' removed from a sequence, any sequent keys will be re-indexed.
+free val a, "hello"
+free val a, 2
+' Print again.
+pln "Size of a after removing value hello and 2 = " + sizeof(a)
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+
+' Do the same thing but with string keys.
+a = [foo: "hello", bar: 2, baz: "hello", qux: 25]
+pln "Size of a = " + sizeof(a)
+foreach k, v in a pln "  a." + k + " = " + v
+
+free val a, "hello"
+free val a, 2
+pln "Size of a after removing value hello and 2 = " + sizeof(a)
+foreach k, v in a pln "  a." + k + " = " + v
+
+system "pause"
+

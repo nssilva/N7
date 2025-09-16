@@ -1,0 +1,142 @@
+'pong
+
+#win32
+
+include "player.n7"
+include "player-cpu.n7"
+include "ball.n7"
+include "miscellaneous.n7"
+
+set window "example pong",640,480,false
+set redraw off
+
+
+'instancias y variables---------------------------
+Font = createfont("Consolas",64)
+set font Font
+
+visible state = 0
+visible timer = 5
+
+player = []
+player_cpu = []
+ball = []
+
+while not keydown(KEY_ESCAPE,true)
+    set color 0,0,0
+    cls
+   
+    'objetos-----------------------------
+    select state
+    case 0
+        'iniciar objetos y variables----------
+        timer = 5
+        set_score_player(0)
+        set_score_player_cpu(0)
+       
+        player = Player()
+        player_cpu = Player_Cpu()
+        ball = Ball()
+        'escena introducion------------------
+        set color 255,0,204
+        set caret 320,100
+        center "NAALAA PONG"
+        set color 255,204,0
+        set caret 320,250
+        center "start"
+        'si pulsas return me mandas al estado 5
+        if keydown(KEY_RETURN,true)
+            state = 5
+        endif
+    case 5
+        'escena introducion parte 2---------------
+        set color 255,0,204
+        set caret 320,100
+        center "NAALAA PONG"
+        set color 255,204,0
+        set caret 320,250
+        center timer
+        'si llega a 0 me mandas al estado 10
+        timer = timer - 1
+        if timer < -1
+            state = 10
+        endif
+        wait(1000)
+    case 10
+        'juego------------------------------
+        player.update()
+        player.Draw()
+        player_cpu.update(ball)
+        player_cpu.Draw()
+        ball.update(player,player_cpu)
+        ball.Draw()
+       
+        'puntuacion player-----------------------
+        set color 255,0,204
+        set caret 162,32
+        wln(get_score_player())
+        'puntuacion player cpu--------------------
+        set color 255,204,0
+        set caret 448,32
+        wln(get_score_player_cpu())
+       
+        'lineas para el fondo------------------
+        set color 255,255,255
+        'linea en y
+        draw line 315,32,315,448
+        draw line 325,32,325,448
+        'linea en x arriba
+        draw line 32,22,608,22
+        draw line 32,32,608,32
+        'linea en x abajo
+        draw line 32,448,608,448
+        draw line 32,458,608,458
+       
+        'mandar a la pantalla de game over-------------
+        if get_score_player() >= 10 or get_score_player_cpu() >= 10
+            state = 20
+        endif
+    case 20
+        'eliminar objetos y pantalla game over------------
+        player.live = false
+        player_cpu.live = false
+        ball.live = false
+       
+        set color 255,255,255
+        set caret 320,200
+        center "GAME OVER"
+        'esperar 1 segundo y me mandas al estado 25
+        wait(1000)
+        timer = 5
+        state = 25
+    case 25
+        'pantalla game over parte 2-----------------------
+        set color 255,255,255
+        set caret 320,200
+        center "GAME OVER"
+       
+        set color 255,204,0
+        set caret 320,300
+        center timer
+        'si llega a 0 me mandas al estado 0
+        timer = timer - 1
+        if timer < -1
+            state = 0
+        endif
+        wait(1000)
+    endsel
+   
+    'pausar el juego-----------------------
+    if state = 10 and keydown(KEY_P,true)
+        set color 50,200,200
+        set caret 320,200
+        center "PAUSE"
+        while not keydown(KEY_P,true)
+            wait(10)
+            redraw
+        wend
+    endif
+           
+    redraw
+    fwait 60
+wend

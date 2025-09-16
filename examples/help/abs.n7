@@ -1,0 +1,11 @@
+' abs
+' ---
+
+' 'abs(x)' returns the absolute value of a x.
+pln "abs(-13.5) = " + abs(-13.5)
+
+' If the math spirit is strong in you, you can put an expression between | characters instead of
+' using 'abs'.
+pln "|5 - 8| = " + |5 - 8|
+
+system "pause"

@@ -1,0 +1,146 @@
+' create_sound.n7
+' ---------------
+
+#win32
+
+' Create some sound effects. Look at the implementations of CreateSineSfx, CreateSquareSfx and
+' CreateNoiseSfx to see how 'createsound' works.
+sampleRate = 11025
+explosionSnd = CreateNoiseSfx(0.6, 0.9, 0, 22050)
+laserShotSnd = CreateSquareSfx(0.25, 500, 100, 0.75, sampleRate)
+jumpSnd = CreateSineSfx(0.2, 50, 600, 0.9, sampleRate)
+pickupSnd = CreateSineSfx(0.1, 1500, 1500, 0.2, sampleRate)
+gunShotSnd = CreateNoiseSfx(0.2, 1.2, 0, sampleRate)
+
+' Create a window and output some info.
+set window "Create sound", 640, 480
+wln "1 - Explosion"
+wln "2 - Laser shot"
+wln "3 - Jump"
+wln "4 - Pickup"
+wln "5 - Gun shot"
+
+' Loop until user presses escape.
+while not keydown(KEY_ESCAPE)
+    ' Use the numeric keys to play different sound effects.
+    if keydown(KEY_1, true) play sound explosionSnd
+    if keydown(KEY_2, true) play sound laserShotSnd
+    if keydown(KEY_3, true) play sound jumpSnd
+    if keydown(KEY_4, true) play sound pickupSnd
+    if keydown(KEY_5, true) play sound gunShotSnd
+    ' Sleep some.
+    wait 16
+wend
+
+' CreateSineSfx
+' -------------
+' Create a sine wave sound effect. 'duration' is the duration of the sound in seconds. 'startFreq'
+' is the frequency at the start of the effect and 'endFreq' is the frequency at the end. You can
+' use different values of 'startFreq' and 'endFreq' to create slide effects. 'fadeOut' determines
+' when/if the sound should start fading out. If 'fadeOut' is 0, the fade out starts immediately, and
+' if it's 1 there is no fade out. 'sampleRate' (samples per second) should be in the range [8000 ..
+' 22050]. N7 outputs audio at a sample rate of 22050, so higher values than that makes no sense.
+function CreateSineSfx(duration, startFreq, endFreq, fadeOut, sampleRate)
+    data = []
+    a = 0
+    da = 2*PI*startFreq/sampleRate
+    dda = (2*PI*endFreq/sampleRate - 2*PI*startFreq/sampleRate)/(duration*sampleRate)
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        data[i] = sin(a)*vol
+        a = a + da
+        da = da + dda
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    ' 'createsound(leftData, rightData, sampleRate)' creates a new sound and returns a sound id.
+    ' 'leftData' is an array with data for the left channel and 'rightData' is for the right
+    ' channel. The values in the arays should be in the range [-1..1]. 'sampleRate' is the number
+    ' of samples per second, So if you want to create a sound that lasts for three seconds with a
+    ' sample rate of 11025, the data arrays should contain 33075 (11025*3) elements each.
+    '   You can also use 'create sound sound_id, leftData, rightData, sampleRate' if you want to
+    ' use your own sound id.
+    return createsound(data, data, sampleRate)
+endfunc
+
+' CreateSquareSfx
+' ---------------
+' Same as CreateSineSfx but using a square wave.
+function CreateSquareSfx(duration, startFreq, endFreq, fadeOut, sampleRate)
+    data = []
+    a = 0
+    da = 2*PI*startFreq/sampleRate
+    dda = (2*PI*endFreq/sampleRate - 2*PI*startFreq/sampleRate)/(duration*sampleRate)
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        ' No, using sin here is stupid.
+        sa = sin(a)
+        if sa < 0  sa = -1
+        elseif sa > 0 sa = 1
+        data[i] = sa*vol
+        a = a + da
+        da = da + dda
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    ' 'createsound(leftData, rightData, sampleRate)' creates a new sound and returns a sound id.
+    ' 'leftData' is an array with data for the left channel and 'rightData' is for the right
+    ' channel. The values in the arays should be in the range [-1..1]. 'sampleRate' is the number
+    ' of samples per second, So if you want to create a sound that lasts for three seconds with a
+    ' sample rate of 11025, the data arrays should contain 33075 (11025*3) elements each.
+    '   You can also use 'create sound sound_id, leftData, rightData, sampleRate' if you want to
+    ' use your own sound id.
+    return createsound(data, data, sampleRate)
+endfunc
+
+' CreateNoiseSfx
+' --------------
+' Create a noise sound effect. 'duration' is the duration of the sound in seconds. A 'pitch' value
+' < 0 increases the lower noise frequencies, while a value > 1 increases the higher frequencies.
+' 'fadeOut' determines when/if the sound should start fading out. If 'fadeOut' is 0, the fade out
+' starts immediately, and if it's 1 there is no fade out. 'sampleRate' (samples per second) should
+' be in the range [8000 .. 22050]. N7 outputs audio at a sample rate of 22050, so higher values than
+' that makes no sense.
+function CreateNoiseSfx(duration, pitch, fadeOut, sampleRate)
+    assert sampleRate >= 8000, "CreateBoomSfx: invalid sample rate"
+    assert pitch > 0, "CreateBoomSfx: invalid pitch"
+   
+    ' Mix four different noise frequencies weighted, in a weird way, by the pitch value.
+    freqs = [
+            [v: 0, p: sampleRate/500, d: 0, t: 0, w: pitch],
+            [v: 0, p: sampleRate/1000, d: 0, t: 0, w: pitch^2],
+            [v: 0, p: sampleRate/2000, d: 0, t: 0, w: pitch^3],
+            [v: 0, p: sampleRate/8000, d: 0, t: 0, w: pitch^4]]
+    
+    s = sizeof(freqs)
+    data = []
+    vol = 1
+    fadeOut = fadeOut*duration*sampleRate
+    fadeOutDelta = 1/(duration*sampleRate - fadeOut)
+    for i = 0 to duration*sampleRate - 1
+        v = 0
+        w = 0
+        for j = 0 to s - 1; f = freqs[j]
+            f.t = f.t - 1
+            if f.t <= 0
+                f.t = f.p
+                f.d = ((rnd()*2 - 1) - f.v)/f.p
+            endif
+            f.v = f.v + f.d
+            v = v + f.v*f.w
+            w = w + f.w
+        next
+        data[i] = vol*v/w
+        if i > fadeOut  vol = vol - fadeOutDelta
+    next
+    ' 'createsound(leftData, rightData, sampleRate)' creates a new sound and returns a sound id.
+    ' 'leftData' is an array with data for the left channel and 'rightData' is for the right
+    ' channel. The values in the arays should be in the range [-1..1]. 'sampleRate' is the number
+    ' of samples per second, So if you want to create a sound that lasts for three seconds with a
+    ' sample rate of 11025, the data arrays should contain 33075 (11025*3) elements each.
+    '   You can also use 'create sound sound_id, leftData, rightData, sampleRate' if you want to
+    ' use your own sound id.
+    return createsound(data, data, sampleRate)
+endfunc

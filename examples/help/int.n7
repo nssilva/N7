@@ -1,0 +1,15 @@
+' int
+' ---
+
+' 'int(x)' returns an integer representation of a variable/expression. If the argument is anything
+' but a number or a string that can be converted to a number, 0 is returned.
+n = int(3.14)
+if typeof(n) = TYPE_NUMBER
+    pln n + " is a number"
+endif
+n = int("5.971")
+if typeof(n) = TYPE_NUMBER
+    pln n + " is a number"
+endif
+
+system "pause"

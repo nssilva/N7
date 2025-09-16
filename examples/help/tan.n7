@@ -1,0 +1,40 @@
+' tan
+' ---
+
+' 'tan(a)' returns the tangent of the angle a, expressed in radians. We use degrees and convert to
+' radians with 'rad'.
+
+pln "tan(rad(0)) = " + tan(rad(0))
+pln "tan(rad(45)) = " + tan(rad(45))
+pln "tan(rad(135)) = " + tan(rad(135))
+pln "tan(rad(180)) = " + tan(rad(180))
+
+system "pause"
+
+' Plot a tan curve for 0..360 degrees.
+set window "tan", 640, 480
+
+' Draw base line.
+set color 128, 128, 128
+draw line 140, 240, 500, 240
+
+' Plot the curve.
+set color 255, 255, 255
+for angle = 0 to 360
+    ' The tangent of 90 (or 270) degrees is undefined (infinity), so lets not plot antything
+    ' around those areas.
+    if angle%180 <= 85 or angle%180 >= 95  draw pixel 140 + angle, 240 + tan(rad(angle))*10
+next
+
+' Write angles for the x-axis.
+set color 128, 128, 128
+for angle = 0 to 360 step 90
+    set caret 140 + angle, 248
+    center angle
+next
+
+' Loop until Esc is pressed.
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to exit ..."
+while not keydown(KEY_ESCAPE)  wait 16

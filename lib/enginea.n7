@@ -1,0 +1,2492 @@
+' enginea.n7
+' ----------
+
+' New
+'  EA_Objects
+'  EA_Doors?
+'  EA_Texture
+'  Light
+'  player.jumping
+' door.y() wrong value
+' EA_RenderedSectors
+' EA_RenderedSectorCount
+' EA_Camera()
+' obj RenderDef
+
+include "s3d.n7"
+include "json.n7"
+include "qsort.n7"
+include "file.n7"
+
+constant GLITCH_OFFS = 0.005
+
+' Gravity.
+constant EA_G = 5
+
+constant EA_NONE = 0
+
+' Collision detection modes.
+constant EA_FAST = 1
+constant EA_NORMAL = 2
+
+constant EA_RETRO = 1
+
+' Door modes.
+constant EA_SLIDE_UP = 1
+constant EA_SLIDE_DOWN = 2
+constant EA_SLIDE_SIDE = 3
+
+' Facing types.
+constant EA_WALL = 1
+constant EA_DOOR = 2
+constant EA_OBJECT = 3
+
+'
+visible vWhiteLight = [255, 255, 255]
+
+' Map data.
+visible vSectors = []
+visible vRendered = []
+visible vCLines = []
+visible vCGrid = unset
+visible vTextures = []
+visible vDoors = [], vADoors = [], vDoorSpeed = 2.5
+visible vObjects = []
+visible vRemoveList = []
+visible vCam = unset, vCamObj = unset
+
+visible vDoorMode = EA_SLIDE_UP
+
+' Rendering settings.
+visible vTarget = primary
+visible vFog = EA_NONE, vFogR = 0, vFogG = 0, vFogB = 0
+visible vZMin = 0.1, vZMax = 6, vZMaxSqr = 6*6
+visible vFov = rad(65)
+visible vMouseSens = 1
+
+visible vDebug = false
+visible vSectorsRendered = 0
+
+' Callbacks.
+visible vUpdate = unset
+visible vDraw = unset
+
+' Status.
+visible vRunning = false
+visible vTick = 0
+
+visible vFpsCap = 0
+visible vDeltaTime, vFps
+visible vUTime = 0
+visible vRTime = 0
+visible vProjPortal = []
+visible vSectorY = [c: unset, f: unset]
+visible vFacing = [type: unset, data: unset, dist: unset, dx: unset, dy: unset, dz: unset]
+visible vPushout = [type: unset, data: unset, dist: unset, dx: unset, dy: unset, dz: unset]
+
+visible vSndMaxZ = 8
+visible vSndMaxZSqr = vSndMaxZ*vSndMaxZ
+
+' EA_SetDebugOutput
+' -----------------
+function EA_SetDebugOutput(value)
+    vDebug = value
+endfunc
+
+' EA_SetFpsCap
+' ------------
+function EA_SetFpsCap(value)
+    vFpsCap = value
+endfunc
+
+' EA_SetView
+' ----------
+function EA_SetView(target, fov, zmin, zmax)
+    vTarget = target
+    vFov = fov
+    vZMin = zmin
+    vZMax = zmax
+    vZMaxSqr = vZMax*vZMax
+    if vRunning  S3D_SetView(vTarget, vFov, vZMin, vZMax)
+endfunc
+
+' EA_SetFog
+' ---------
+function EA_SetFog(mode, r, g, b)
+    assert mode = EA_NONE or mode = EA_NORMAL or mode = EA_RETRO, "EA_SetFog: Invalid value"
+    vFog = mode
+    vFogR = r
+    vFogG = g
+    vFogB = b
+endfunc
+
+' EA_SetDoorMode
+' --------------
+function EA_SetDoorMode(value)
+    assert value >= 1 and value <= 3, "EA_SetDoorMode: Invalid value"
+    vDoorMode = value
+endfunc
+
+' EA_SetDoorSpeed
+' ---------------
+function EA_SetDoorSpeed(value)
+    assert value >= 0, "EA_SetDoorSpeed: Invalid value"
+    vDoorSpeed = value
+endfunc
+
+' EA_SetUpdateAction
+' ------------------
+function EA_SetUpdateAction(action)
+    vUpdate = action
+endfunc
+
+' EA_SetDrawAction
+' ----------------
+function EA_SetDrawAction(action)
+    vDraw = action
+endfunc
+
+' EA_SetCamera
+' ------------
+function EA_SetCamera(cam)
+    assert key(cam.ea_, "eye"), "EA_SetCamera: Not a valid camera object"
+    vCam = cam.ea_
+    vCamObj = cam
+endfunc
+
+' EA_Camera
+' ---------
+function EA_Camera()
+    return vCamObj
+endfunc
+
+' EA_Run
+' ------
+function EA_Run()
+    assert sizeof(vSectors), "EA_Run: No sectors exists"
+    assert vCam, "EA_Run: No camera has been set"
+    
+    S3D_SetView(vTarget, vFov, vZMin, vZMax)
+    
+    vRunning = true
+    foreach o in vObjects
+        if o.ea_.Run  o.ea_.Run()
+        if o.Run  o.Run()
+    next
+    vTick = clock()
+    while vRunning
+        t = clock()
+        ' Hard coded lower fps cap. If the fps goes lower than 15, things will simply slow down.
+        vDeltaTime = (min(t - vTick, 66))/1000
+        if vDeltaTime  vFps = vFps*0.95 + 0.05/vDeltaTime
+        vTick = t
+        
+        if vUpdate  vUpdate(vDeltaTime)
+        
+        ' Objects.
+        vUTime = clock()
+        if sizeof(vObjects)
+            for i = 0 to sizeof(vObjects) - 1
+                ' Only update object if sector was render or distance < zmax
+                o = vObjects[i]; ea = o.ea_
+                dx = ea.x - vCam.x; dz = ea.z - vCam.z
+                if ea.s and ea.s.wr or dx*dx + dz*dz < vZMaxSqr
+                    if ea.Update  ea.Update(vDeltaTime)
+                    if o.Update  o.Update(vDeltaTime)
+                endif
+            next
+        endif
+        vUTime = clock() - vUTime
+        ' Safely delete objects.
+        if sizeof(vRemoveList)
+            for i = 0 to sizeof(vRemoveList) - 1
+                obj = vRemoveList[i]
+                free val vObjects, obj
+                if obj.ea_.s
+                    ' Remove object from its sector.
+                    free val obj.ea_.s.eas, obj.ea_
+                    free val obj.ea_.s.obj, obj
+                    ' Remove sub-sector.
+                    if key(obj.ea_, "ss")  free val obj.ea_.s.subSectors, obj.ea_.ss
+                    ' Remove collision lines.
+                    if key(obj.ea_, "cl") 
+                        foreach cl in obj.ea_.cl
+                            free val vCLines, cl
+                            for x = floor(obj.ea_.xmin) to floor(obj.ea_.xmax)
+                                for z = floor(obj.ea_.zmin) to floor(obj.ea_.zmax)
+                                    if vCGrid[x][z]  free val vCGrid[x][z], cl
+                                next
+                            next
+                        next
+                    endif
+                endif
+            next
+            clear vRemoveList
+        endif
+        
+        ' Update active doors.
+        i = 0
+        while i < sizeof(vADoors)
+            d = vADoors[i]
+            if d.o
+                d.p = d.p - vDeltaTime*vDoorSpeed
+                if d.p <= 0
+                    d.p = 0
+                    ' eh he he ...
+                    d.cl[7] = 100000
+                    d.cl[8] = 100000
+                    free key vADoors, i
+                else
+                    i = i + 1
+                endif
+            else
+                d.p = d.p + vDeltaTime*vDoorSpeed
+                if d.p >= 1
+                    d.p = 1
+                    free key vADoors, i
+                else
+                    i = i + 1
+                endif
+            endif
+        wend
+        
+        vRTime = clock()
+        EA_Render()
+        vRendered[vSectorsRendered] = unset
+        vRTime = clock() - vRTime
+        if vDraw  vDraw()
+        
+        redraw
+        if vFpsCap  fwait vFpsCap
+        else wait 1
+    wend    
+endfunc
+
+function EA_UpdateTime()
+    return vUTime
+endfunc
+
+function EA_RenderTime()
+    return vRTime
+endfunc
+
+' EA_Stop
+' -------
+function EA_Stop()
+    vRunning = false
+    foreach o in vObjects
+        if o.ea_.Stop  o.ea_.Stop()
+        if o.Stop  o.Stop()
+    next
+endfunc
+
+' EA_Pause
+' --------
+function EA_Pause()
+    foreach o in vObjects
+        if o.ea_.Pause  o.ea_.Pause()
+        if o.Pause  o.Pause()
+    next
+endfunc
+
+' EA_Resume
+' ---------
+function EA_Resume()
+    foreach o in vObjects
+        if o.ea_.Resume  o.ea_.Resume()
+        if o.Resume  o.Resume()
+    next
+endfunc
+
+' EA_Sectors
+' ----------
+function EA_Sectors()
+    return vSectors
+endfunc
+
+' EA_RenderedSectors
+' ------------------
+' Ends with unset.
+function EA_RenderedSectors()
+    return vRendered
+endfunc
+
+' EA_RenderedSectorCount
+' ----------------------
+function EA_RenderedSectorCount()
+    return vSectorsRendered
+endfunc
+
+' EA_Objects
+' ----------
+function EA_Objects()
+    return vObjects
+endfunc
+
+' EA_Doors
+' --------
+function EA_Doors()
+    return vDoors
+endfunc
+
+' EA_Texture
+' ----------
+function EA_Texture(i)
+    assert i >= 0 and i < sizeof(vTextures), "EA_Texture: Invalid index"
+    return vTextures[i]
+endfunc
+
+' EA_FreeMap
+' ----------
+function EA_FreeMap()
+    if typeof(vTextures)  foreach t in vTextures  if image(t)  free image t
+    foreach s in vSectors
+        if s.mesh  S3D_FreeMesh(s.mesh)
+        if s.ground  S3D_FreeMesh(s.ground)
+        if s.ceiling  S3D_FreeMesh(s.ceiling)
+        foreach ss in s.subSectors
+            if ss.mesh  S3D_FreeMesh(ss.mesh)
+            if ss.ground  S3D_FreeMesh(ss.ground)
+            if ss.ceiling S3D_FreeMesh(ss.ceiling)
+        next
+    next
+    clear vSectors
+    clear vRendered
+    clear vCLines
+    clear vCGrid
+    clear vTextures
+    clear vObjects
+    clear vRemoveList
+    clear vDoors
+    clear vADoors
+    vCam = unset
+    vSectorsRendered = 0
+    vRendered[0] = unset
+endfunc
+
+' EA_AddCLine
+' -----------
+function EA_AddCLine(x0, z0, x1, z1, top, btm, type, data)
+    'ln = [x0, z0, x1, z1]
+    'dx = x1 - x0; dz = z1 - z0
+    dx = x1 - x0; dz = z1 - z0
+    ln = [x0, z0, dx, dz]
+    ln[6] = sqr(dx*dx + dz*dz)
+    ln[4] = dx/ln[6]
+    ln[5] = dz/ln[6]
+    ln[7] = top
+    ln[8] = btm
+    ' Used by Facing.
+    ln[9] = type
+    ln[10] = data
+    vCLines[sizeof(vCLines)] = ln
+    
+    xmin = floor(min(x0, x1)); xmax = floor(max(x0, x1))
+    zmin = floor(min(z0, z1)); zmax = floor(max(z0, z1))
+    for z = zmin to zmax  for x = xmin to xmax
+        if EA_LineInTile(x, z, ln)
+            if not typeof(vCGrid[x][z])  vCGrid[x][z] = []
+            vCGrid[x][z][sizeof(vCGrid[x][z])] = ln
+        endif
+    next
+    return ln
+endfunc
+
+' EA_LoadMap
+' ----------
+function EA_LoadMap(filename)
+    data = JSON_FromFile(filename)
+    assert data, "EA_LoadMap: Could not load " + filename
+
+    EA_FreeMap()
+
+    ' Load textures.    
+    path = GetPath(filename)
+    for i = 0 to sizeof(data.textures) - 1
+        if data.textures[i]
+            vTextures[i] = loadimage(GetPathCombined(path, data.textures[i]))
+            assert image(vTextures[i]), "EA_LoadMap: Could not load image " + data.textures[i]
+        else
+            vTextures[i] = unset
+        endif
+    next
+
+    vCGrid = fill(unset, 100, 100)
+    
+    ' Load sectors.
+    for sectId = 0 to sizeof(data.sectors) - 1
+        sector = data.sectors[sectId]
+        polygon = sector.polygon
+        walls = sector.walls
+        c = sizeof(polygon)/2
+        xmin = 100000; xmax = 0; zmin = 100000; zmax = 0
+        for i = 0 to c - 1
+            polygon[i*2] = polygon[i*2]/32
+            polygon[i*2 + 1] = polygon[i*2 + 1]/32
+            xmin = min(xmin, polygon[i*2]); xmax = max(xmax, polygon[i*2])
+            zmin = min(zmin, polygon[i*2 + 1]); zmax = max(zmax, polygon[i*2 + 1])
+        next
+        xmin = floor(xmin); xmax = ceil(xmax); zmin = floor(zmin); zmax = ceil(zmax)
+        s = []
+        vSectors[sizeof(vSectors)] = s
+        s.name = sector.name
+        s.polygon = polygon
+        s.floory = -sector.floorHeight
+        s.wallh = sector.wallHeight
+        s.ceily = s.floory - s.wallh
+        if key(sector, "light")  s.lgt_ = sector.light
+        else  s.lgt_ = copy(vWhiteLight)
+        s.wallt = vTextures[sector.wallTexture]
+        s.floort = vTextures[sector.floorTexture]
+        if typeof(sector.ceilingTexture)  s.ceilt = vTextures[sector.ceilingTexture]
+        else  s.ceilt = unset
+        s.r = false ' render flag used while rendering.
+        s.wr = false' flagged in each render if sector was rendered
+        s.portals = []
+        s.eas = []
+        s.obj = []
+        s.Doors = function()
+            return .doors
+        endfunc
+        s.Objects = function()
+            return .obj
+        endfunc
+        s.Name = function()
+            return .name
+        endfunc
+        s.SetName = function(name)
+            .name = name
+        endfunc
+        s.Light = function()
+            return .lgt_
+        endfunc
+        s.SetLight = function(r, g, b)
+            .lgt_[0] = r; .lgt_[1] = g; .lgt_[2] = b
+        endfunc
+        ' Generate wall mesh and add collision data.
+        s.mesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+        for i = 0 to c - 1
+            if typeof(walls[i].texture)
+                texture = vTextures[walls[i].texture]
+                textureIndex = walls[i].texture
+            else
+                texture = s.wallt
+                textureIndex = sector.wallTexture
+            endif
+            S3D_Texture(texture)
+            j = (i + 1)%c
+            x0 = polygon[i*2]; z0 = polygon[i*2 + 1]
+            x1 = polygon[j*2]; z1 = polygon[j*2 + 1]
+            if typeof(walls[i].portal)
+                floory = s.floory
+                ceily = s.floory - s.wallh
+                opfloory = -data.sectors[walls[i].portal].floorHeight
+                opceily = opfloory - data.sectors[walls[i].portal].wallHeight
+                if opfloory < floory
+                    h = (floory - opfloory)/s.wallh
+                    S3D_Vertex(x0, opfloory - GLITCH_OFFS*2, z0, 0, 1 - h)
+                    S3D_Vertex(x1, opfloory - GLITCH_OFFS*2, z1, 1, 1 - h)
+                    S3D_Vertex(x1, floory, z1, 1, 1)
+                    S3D_Vertex(x0, floory, z0, 0, 1)
+                endif
+                if opceily > ceily
+                    h = (opceily - ceily)/s.wallh
+                    S3D_Vertex(x0, ceily, z0, 0, 0)
+                    S3D_Vertex(x1, ceily, z1, 1, 0)
+                    S3D_Vertex(x1, opceily + GLITCH_OFFS*2, z1, 1, h)
+                    S3D_Vertex(x0, opceily + GLITCH_OFFS*2, z0, 0, h)
+                endif
+                if key(walls[i], "id")  id = walls[i].id
+                else  id = unset
+                portal = [
+                        p: [x0, max(ceily, opceily), z0,
+                            x1, max(ceily, opceily), z1,
+                            x1, min(floory, opfloory), z1,
+                            x0, min(floory, opfloory), z0],
+                        n: [-(z1 - z0), x1 - x0],
+                        s: walls[i].portal,
+                        id: id] ' 2k25, hm
+                Normalize(portal.n)
+                s.portals[sizeof(s.portals)] = portal
+                if typeof(walls[i].door)  portal.d = walls[i].door
+                else  portal.d = unset
+                ' Collision walls.
+                if opfloory < floory
+                    EA_AddCLine(x0, z0, x1, z1, opfloory, floory, EA_WALL, textureIndex)
+                endif
+                if opceily > ceily
+                    EA_AddCLine(x0, z0, x1, z1, ceily, opceily, EA_WALL, textureIndex)
+                endif
+            else
+                dx = x1 - x0; dz = z1 - z0
+                wallLength = sqr(dx*dx + dz*dz)
+                splits = ceil(wallLength/(s.wallh*width(texture)/height(texture)))
+                dx = dx/splits
+                dz = dz/splits
+                for k = 0 to splits - 1
+                    xx0 = x0 + k*dx
+                    xx1 = xx0 + dx
+                    zz0 = z0 + k*dz
+                    zz1 = zz0 + dz
+                    S3D_Vertex(xx0, s.floory - s.wallh, zz0, 0, 0)
+                    S3D_Vertex(xx1, s.floory - s.wallh, zz1, 1, 0)
+                    S3D_Vertex(xx1, s.floory, zz1, 1, 1)
+                    S3D_Vertex(xx0, s.floory, zz0, 0, 1)
+                next
+                ' Collision.
+                EA_AddCLine(x0, z0, x1, z1, s.floory - s.wallh, s.floory, EA_WALL, textureIndex)
+            endif
+        next
+        S3D_End()
+        S3D_EndMesh()
+        ' Generate ground mesh.
+        s.ground = S3D_BeginMesh()
+        S3D_Texture(s.floort)
+        for z = zmin to zmax - 1  for x = xmin to xmax - 1
+            if x = 38 and z = 11
+                polygons = PolyClipToRect(polygon, x, z, 1, 1)
+            else
+                polygons = PolyClipToRect(polygon, x, z, 1, 1)
+            endif
+            foreach p in polygons
+                c = sizeof(p)/2
+                if c = 3
+                    S3D_Begin(S3D_TRIANGLES)
+                    for i = 0 to c - 1
+                        px = p[i*2]; pz = p[i*2 + 1]
+                        S3D_Vertex(px, s.floory - GLITCH_OFFS, pz, px - x, pz - z) 
+                    next
+                    S3D_End()
+                elseif c = 4
+                    S3D_Begin(S3D_QUADS)
+                    for i = 0 to c - 1
+                        px = p[i*2]; pz = p[i*2 + 1]
+                        S3D_Vertex(px, s.floory - GLITCH_OFFS, pz, px - x, pz - z)
+                    next
+                    S3D_End()
+                elseif c > 4
+                    psplit = SplitTilePoly(p, x, z)
+                    S3D_Begin(S3D_TRIANGLES)
+                    foreach t in psplit
+                        for i = 0 to 2
+                            px = t[i*2]; pz = t[i*2 + 1]
+                            S3D_Vertex(px, s.floory - GLITCH_OFFS, pz, px - x, pz - z)
+                        next
+                    next
+                    S3D_End()
+                endif
+            next
+        next
+        S3D_EndMesh()
+        ' Generate ceiling mesh.
+        if typeof(s.ceilt)
+            s.ceiling = S3D_BeginMesh()
+            S3D_Texture(s.ceilt);
+            for z = zmin to zmax - 1  for x = xmin to xmax - 1
+                polygons = PolyClipToRect(polygon, x, z, 1, 1)
+                foreach p in polygons
+                    c = sizeof(p)/2
+                    if c = 3
+                        S3D_Begin(S3D_TRIANGLES)
+                        for i = c - 1 to 0
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, s.floory - s.wallh + GLITCH_OFFS, pz, px - x, pz - z) 
+                        next
+                        S3D_End()
+                    elseif c = 4
+                        S3D_Begin(S3D_QUADS)
+                        for i = c - 1 to 0
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, s.floory - s.wallh + GLITCH_OFFS, pz, px - x, pz - z)
+                        next
+                        S3D_End()
+                    elseif c > 4
+                        psplit = SplitTilePoly(p, x, z)
+                        S3D_Begin(S3D_TRIANGLES)
+                        foreach t in psplit
+                            for i = 2 to 0
+                                px = t[i*2]; pz = t[i*2 + 1]
+                                S3D_Vertex(px, s.floory - s.wallh + GLITCH_OFFS, pz, px - x, pz - z)
+                            next
+                        next
+                        S3D_End()
+                    endif
+                next
+            next
+            S3D_EndMesh()
+        else
+            s.ceiling = unset
+        endif
+        ' Sub-sectors.
+        s.subSectors = []
+        foreach subSector in sector.subSectors
+            s.subSectors[sizeof(s.subSectors)] = CreateSubSector(subSector, s.floory, s.wallh)
+        next
+    next
+    foreach s in vSectors
+        EA_GenerateSectorPip(s)
+        s.doors = []
+        foreach p in s.portals
+            p.s = vSectors[p.s]
+            ' door?
+            if typeof(p.d) ' d is currently an image
+                p.d = AddDoor(s, p, p.d)
+                s.doors[sizeof(s.doors)] = p.d
+            endif
+        next
+    next
+    ' ugh, while testing, validate doors.
+    foreach d in vDoors
+        assert typeof(d.pb), "EA_LoadMap: Door mismatch detected, call Marcus!"
+    next
+    
+    ' Build collision grid info.
+    xmin = vCLines[0][0]; xmax = vCLines[0][0]
+    zmin = vCLines[0][1]; zmax = vCLines[0][1]
+    foreach ln in vCLines
+        ' modified ln[2, 3] to be dx, dz instead of point
+        xmin = min(xmin, min(ln[0], ln[0] + ln[2]))
+        xmax = max(xmax, max(ln[0], ln[0] + ln[2]))
+        zmin = min(zmin, min(ln[1], ln[1] + ln[3]))
+        zmax = max(zmax, max(ln[1], ln[1] + ln[3]))
+    next
+    
+    foreach f in data.flags
+        s = EA_SectorAt(f.x, f.z)
+        if typeof(s)
+            lim = EA_SectorLimitsY(s, f.x, f.z)
+            f.floorY = lim.f
+            f.ceilingY = lim.c
+        else
+            f.floorY = unset
+            f.ceilingY = unset
+        endif   
+    next
+
+    flags = data.flags
+    free data
+    gc
+    return flags
+    
+    ' CreateSubSector
+    ' ---------------
+    function CreateSubSector(sector, floorY, wallHeight)
+        subSector = []
+        polygon = sector.polygon
+        walls = sector.walls
+        c = sizeof(polygon)/2
+        xmin = 100000; xmax = 0; zmin = 100000; zmax = 0
+        for i = 0 to c - 1
+            polygon[i*2] = polygon[i*2]/32
+            polygon[i*2 + 1] = polygon[i*2 + 1]/32
+            xmin = min(xmin, polygon[i*2]); xmax = max(xmax, polygon[i*2])
+            zmin = min(zmin, polygon[i*2 + 1]); zmax = max(zmax, polygon[i*2 + 1])
+        next
+        xmin = floor(xmin); xmax = ceil(xmax); zmin = floor(zmin); zmax = ceil(zmax)
+        subSector.polygon = polygon
+        subSector.wallt = vTextures[sector.wallTexture]
+        subSector.floort = vTextures[sector.floorTexture]
+        subSector.ceilt = vTextures[sector.ceilingTexture]
+        subSector.type = sector.type
+        invPolygon = []
+        for i = c - 1 to 0
+            invPolygon[sizeof(invPolygon)] = polygon[i*2]
+            invPolygon[sizeof(invPolygon)] = polygon[i*2 + 1]
+        next
+        
+        ' Wall.
+        if sector.type = 1
+            topy = floorY - wallHeight - GLITCH_OFFS*2
+            bottomy = floorY + GLITCH_OFFS*2
+        ' Floor.
+        elseif sector.type = 2
+            topy = floorY - sector.wallHeight - GLITCH_OFFS*2
+            bottomy = floorY + GLITCH_OFFS*2
+        ' Ceiling.
+        else
+            topy = floorY - wallHeight - GLITCH_OFFS*2
+            bottomy = topy + sector.wallHeight + GLITCH_OFFS*2
+        endif
+        subSector.wallh = bottomy - topy
+        subSector.floory = bottomy
+        subSector.ceily = topy
+        
+        ' Generate wall mesh.
+        subSector.mesh = S3D_BeginMesh()
+        S3D_Begin(S3D_QUADS)
+        for i = 0 to c - 1
+            if typeof(walls[i].texture)
+                texture = S3D_Texture(vTextures[walls[i].texture])
+                textureIndex = walls[i].texture
+            else
+                texture = subSector.wallt
+                textureIndex = sector.wallTexture
+            endif
+            S3D_Texture(texture)        
+            j = (i + 1)%c
+            x0 = polygon[i*2]; z0 = polygon[i*2 + 1]
+            x1 = polygon[j*2]; z1 = polygon[j*2 + 1]
+            dx = x1 - x0; dz = z1 - z0
+            wallLength = sqr(dx*dx + dz*dz)
+            splits = ceil(wallLength/(subSector.wallh*width(texture)/height(texture)))
+            dx = dx/splits
+            dz = dz/splits
+            for k = 0 to splits - 1
+                xx0 = x0 + k*dx
+                xx1 = xx0 + dx
+                zz0 = z0 + k*dz
+                zz1 = zz0 + dz
+                S3D_Vertex(xx0, topy, zz0, 0, 0)
+                S3D_Vertex(xx1, topy, zz1, 1, 0)
+                S3D_Vertex(xx1, bottomy, zz1, 1, 1)
+                S3D_Vertex(xx0, bottomy, zz0, 0, 1)
+            next
+            EA_AddCLine(x0, z0, x1, z1, topy + GLITCH_OFFS*2, bottomy - GLITCH_OFFS*2, EA_WALL, textureIndex)
+        next
+        S3D_End()
+        if sector.type = 2
+            ' Generate ground.
+            S3D_Texture(subSector.floort)
+            for z = zmin to zmax - 1  for x = xmin to xmax - 1
+                polygons = PolyClipToRect(invPolygon, x, z, 1, 1)
+                foreach p in polygons
+                    c = sizeof(p)/2
+                    if c = 3
+                        S3D_Begin(S3D_TRIANGLES)
+                        ' + glitch
+                        for i = 0 to c - 1
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, topy, pz, px - x, pz - z) 
+                        next
+                        S3D_End()
+                    elseif c = 4
+                        S3D_Begin(S3D_QUADS)
+                        for i = 0 to c - 1
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, topy, pz, px - x, pz - z)
+                        next
+                        S3D_End()
+                    elseif c > 4
+                        psplit = SplitTilePoly(p, x, z)
+                        S3D_Begin(S3D_TRIANGLES)
+                        foreach t in psplit
+                            for i = 0 to 2
+                                px = t[i*2]; pz = t[i*2 + 1]
+                                S3D_Vertex(px, topy, pz, px - x, pz - z)
+                            next
+                        next
+                        S3D_End()
+                    endif
+                next
+            next
+        ' Ceiling mesh?
+        elseif sector.type = 3
+            S3D_Texture(subSector.ceilt)
+            for z = zmin to zmax - 1  for x = xmin to xmax - 1
+                polygons = PolyClipToRect(invPolygon, x, z, 1, 1)
+                foreach p in polygons
+                    c = sizeof(p)/2
+                    ' -glitch
+                    if c = 3
+                        S3D_Begin(S3D_TRIANGLES)
+                        for i = c - 1 to 0
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, bottomy, pz, px - x, pz - z) 
+                        next
+                        S3D_End()
+                    elseif c = 4
+                        S3D_Begin(S3D_QUADS)
+                        for i = c - 1 to 0
+                            px = p[i*2]; pz = p[i*2 + 1]
+                            S3D_Vertex(px, bottomy, pz, px - x, pz - z)
+                        next
+                        S3D_End()
+                    elseif c > 4
+                        psplit = SplitTilePoly(p, x, z)
+                        S3D_Begin(S3D_TRIANGLES)
+                        foreach t in psplit
+                            for i = 2 to 0
+                                px = t[i*2]; pz = t[i*2 + 1]
+                                S3D_Vertex(px, bottomy, pz, px - x, pz - z)
+                            next
+                        next
+                        S3D_End()
+                    endif
+                next
+            next
+        endif
+        S3D_EndMesh()
+        subSector.ground = unset
+        subSector.ceiling = unset
+        EA_GenerateSectorPip(subSector)
+        
+        return subSector
+    endfunc
+
+    ' PolyClipToRect
+    ' --------------
+    function PolyClipToRect(polygon, x, y, w, h)
+        list = PolyRemoveAboveY(polygon, y)
+        newList = []
+        foreach p in list
+            l = PolyRemoveLeftOfX(p, x)
+            foreach pp in l  newList[sizeof(newList)] = pp
+        next
+        list = newList
+        newList = []
+        foreach p in list
+            l = PolyRemoveBelowY(p, y + h)
+            foreach pp in l  newList[sizeof(newList)] = pp
+        next
+        list = newList
+        newList = []
+        foreach p in list
+            l = PolyRemoveRightOfX(p, x + w)
+            foreach pp in l  newList[sizeof(newList)] = pp
+        next
+        foreach p in newList
+            i = 0
+            count = sizeof(p)/2
+            while i < count
+                j = (i + 1)%count 
+                if p[i*2] = p[j*2] and p[i*2 + 1] = p[j*2 + 1]
+                    free key p, i*2
+                    free key p, i*2
+                    count = count - 1
+                else
+                    i = i + 1
+                endif
+            wend
+        next
+        return newList
+    
+        ' PolyRemoveAboveY
+        ' ----------------
+        function PolyRemoveAboveY(polygon, y)
+            pcount = sizeof(polygon)/2
+            intersects = []
+            ok = 0
+            for i = 0 to pcount - 1
+                j = (i + 1)%pcount
+                x0 = polygon[i*2]; y0 = polygon[i*2 + 1]; x1 = polygon[j*2]; y1 = polygon[j*2 + 1]
+                if y0 <= y and y1 > y or y1 <= y and y0 > y
+                    intersects[sizeof(intersects)] = [x: x0 + (x1 - x0)*(y - y0)/(y1 - y0), p0: i, p1: j]
+                endif
+                if polygon[i*2 + 1] > y  ok = ok + 1
+            next    
+            if sizeof(intersects) = 0
+                for i = 0 to pcount - 1  if polygon[i*2 + 1] < y  return []
+                return  [polygon]
+            endif
+            qsort(intersects, function(a, b); return a.x - b.x; endfunc)
+            edges = []
+            for i = 0 to sizeof(intersects)/2 - 1
+                if intersects[i*2 + 1].x - intersects[i*2].x <> 0
+                    edges[sizeof(edges)] = [i0: intersects[i*2], i1: intersects[i*2 + 1], managed: false]
+                endif
+            next    
+            if not sizeof(edges)
+                if ok > 1  return [polygon]
+                else  return []
+            endif
+            polygons = []
+            for edgeIndex = 0 to sizeof(edges) - 1
+                if not edges[edgeIndex].managed
+                    cp = []
+                    cp[sizeof(cp)] = edges[edgeIndex].i0.x; cp[sizeof(cp)] = y
+                    pointIndex = edges[edgeIndex].i0.p1
+                    startPointIndex = pointIndex
+                    do
+                        cp[sizeof(cp)] = polygon[pointIndex*2]; cp[sizeof(cp)] = polygon[pointIndex*2 + 1]
+                        for i = 0 to sizeof(edges) - 1
+                            if edges[i].i1.p0 = pointIndex
+                                cp[sizeof(cp)] = edges[i].i1.x; cp[sizeof(cp)] = y
+                                if not edges[i].i0.p1 = startPointIndex
+                                    cp[sizeof(cp)] = edges[i].i0.x; cp[sizeof(cp)] = y
+                                endif
+                                pointIndex = edges[i].i0.p0
+                                edges[i].managed = true
+                                break
+                            endif
+                        next
+                        pointIndex = (pointIndex + 1)%pcount
+                    until pointIndex = startPointIndex
+                    polygons[sizeof(polygons)] = cp
+                endif
+            next
+            return polygons
+        endfunc
+        
+        ' PolyRemoveBelowY
+        ' ----------------
+        function PolyRemoveBelowY(polygon, y)
+            pcount = sizeof(polygon)/2
+            intersects = []
+            ok = 0
+            for i = 0 to pcount - 1
+                j = (i + 1)%pcount
+                x0 = polygon[i*2]; y0 = polygon[i*2 + 1]; x1 = polygon[j*2]; y1 = polygon[j*2 + 1]
+                if y0 < y and y1 >= y or y1 < y and y0 >= y
+                    intersects[sizeof(intersects)] = [x: x0 + (x1 - x0)*(y - y0)/(y1 - y0), p0: i, p1: j]
+                endif
+                if polygon[i*2 + 1] < y  ok = ok + 1
+            next    
+            if sizeof(intersects) = 0
+                for i = 0 to pcount - 1  if polygon[i*2 + 1] > y  return []
+                return  [polygon]
+            endif
+            qsort(intersects, function(a, b); return a.x - b.x; endfunc)
+            edges = []
+            for i = 0 to sizeof(intersects)/2 - 1
+                if intersects[i*2 + 1].x - intersects[i*2].x <> 0
+                    edges[sizeof(edges)] = [i1: intersects[i*2], i0: intersects[i*2 + 1], managed: false]
+                endif
+            next
+            if not sizeof(edges)
+                if ok > 1 return [polygon]
+                else return []
+            endif
+            polygons = []
+            for edgeIndex = 0 to sizeof(edges) - 1
+                if not edges[edgeIndex].managed
+                    cp = []
+                    cp[sizeof(cp)] = edges[edgeIndex].i0.x; cp[sizeof(cp)] = y
+                    pointIndex = edges[edgeIndex].i0.p1
+                    startPointIndex = pointIndex
+                    do
+                        cp[sizeof(cp)] = polygon[pointIndex*2]; cp[sizeof(cp)] = polygon[pointIndex*2 + 1]
+                        for i = 0 to sizeof(edges) - 1
+                            if edges[i].i1.p0 = pointIndex
+                                cp[sizeof(cp)] = edges[i].i1.x; cp[sizeof(cp)] = y
+                                if not edges[i].i0.p1 = startPointIndex
+                                    cp[sizeof(cp)] = edges[i].i0.x; cp[sizeof(cp)] = y
+                                endif
+                                pointIndex = edges[i].i0.p0
+                                edges[i].managed = true
+                                break
+                            endif
+                        next
+                        pointIndex = (pointIndex + 1)%pcount
+                    until pointIndex = startPointIndex
+                    polygons[sizeof(polygons)] = cp
+                endif
+            next
+            return polygons
+        endfunc
+        
+        ' PolyRemoveRightOfX
+        ' -----------------
+        function PolyRemoveRightOfX(polygon, x)
+            pcount = sizeof(polygon)/2
+            intersects = []
+            ok = 0
+            for i = 0 to pcount - 1
+                j = (i + 1)%pcount
+                x0 = polygon[i*2]; y0 = polygon[i*2 + 1]; x1 = polygon[j*2]; y1 = polygon[j*2 + 1]
+                if x0 <= x and x1 > x or x1 <= x and x0 > x
+                    intersects[sizeof(intersects)] = [y: y0 + (y1 - y0)*(x - x0)/(x1 - x0), p0: i, p1: j]
+                endif
+                if polygon[i*2] < x  ok = ok + 1
+            next    
+            if sizeof(intersects) = 0
+                for i = 0 to pcount - 1  if polygon[i*2] > x  return []
+                return  [polygon]
+            endif
+            qsort(intersects, function(a, b); return a.y - b.y; endfunc)
+            edges = []
+            for i = 0 to sizeof(intersects)/2 - 1
+                if intersects[i*2 + 1].y - intersects[i*2].y <> 0
+                    edges[sizeof(edges)] = [i0: intersects[i*2], i1: intersects[i*2 + 1], managed: false]
+                endif
+            next
+            if not sizeof(edges)
+                if ok > 1  return [polygon]
+                else  return []
+            endif
+            polygons = []
+            for edgeIndex = 0 to sizeof(edges) - 1
+                if not edges[edgeIndex].managed
+                    cp = []
+                    cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[edgeIndex].i0.y
+                    pointIndex = edges[edgeIndex].i0.p1
+                    startPointIndex = pointIndex
+                    do
+                        cp[sizeof(cp)] = polygon[pointIndex*2]; cp[sizeof(cp)] = polygon[pointIndex*2 + 1]
+                        for i = 0 to sizeof(edges) - 1
+                            if edges[i].i1.p0 = pointIndex
+                                cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[i].i1.y
+                                if not edges[i].i0.p1 = startPointIndex
+                                    cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[i].i0.y
+                                endif
+                                pointIndex = edges[i].i0.p0
+                                edges[i].managed = true
+                                break
+                            endif
+                        next
+                        pointIndex = (pointIndex + 1)%pcount
+                    until pointIndex = startPointIndex
+                    polygons[sizeof(polygons)] = cp
+                endif
+            next
+            return polygons
+        endfunc
+        
+        ' PolyRemoveLeftOfX
+        ' ------------------
+        function PolyRemoveLeftOfX(polygon, x)
+            pcount = sizeof(polygon)/2
+            intersects = []
+            ok = 0
+            for i = 0 to pcount - 1
+                j = (i + 1)%pcount
+                x0 = polygon[i*2]; y0 = polygon[i*2 + 1]; x1 = polygon[j*2]; y1 = polygon[j*2 + 1]
+                if x0 < x and x1 >= x or x1 < x and x0 >= x
+                    intersects[sizeof(intersects)] = [y: y0 + (y1 - y0)*(x - x0)/(x1 - x0), p0: i, p1: j]
+                endif
+                if polygon[i*2] > x  ok = ok + 1
+            next    
+            if sizeof(intersects) = 0
+                for i = 0 to pcount - 1  if polygon[i*2] < x  return []
+                return [polygon]
+            endif
+            qsort(intersects, function(a, b); return a.y - b.y; endfunc)
+            edges = []
+            for i = 0 to sizeof(intersects)/2 - 1
+                if intersects[i*2 + 1].y - intersects[i*2].y <> 0
+                    edges[sizeof(edges)] = [i1: intersects[i*2], i0: intersects[i*2 + 1], managed: false]
+                endif
+            next
+            if not sizeof(edges)
+                if ok > 1  return [polygon]
+                else  return []
+            endif
+            polygons = []
+            for edgeIndex = 0 to sizeof(edges) - 1
+                if not edges[edgeIndex].managed
+                    cp = []
+                    cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[edgeIndex].i0.y
+                    pointIndex = edges[edgeIndex].i0.p1
+                    startPointIndex = pointIndex
+                    do
+                        cp[sizeof(cp)] = polygon[pointIndex*2]; cp[sizeof(cp)] = polygon[pointIndex*2 + 1]
+                        for i = 0 to sizeof(edges) - 1
+                            if edges[i].i1.p0 = pointIndex
+                                cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[i].i1.y
+                                if not edges[i].i0.p1 = startPointIndex
+                                    cp[sizeof(cp)] = x; cp[sizeof(cp)] = edges[i].i0.y
+                                endif
+                                pointIndex = edges[i].i0.p0
+                                edges[i].managed = true
+                                break
+                            endif
+                        next
+                        pointIndex = (pointIndex + 1)%pcount
+                    until pointIndex = startPointIndex
+                    polygons[sizeof(polygons)] = cp
+                endif
+            next    
+            return polygons
+        endfunc
+    endfunc
+    
+    ' SplitTilePoly
+    ' -------------
+    function SplitTilePoly(p, tileX, tileZ)
+        pcount = sizeof(p)/2
+        if pcount <= 4  return [p]
+        ' only polygons that contains a tile center point can be concave, and in that case we have
+        ' to split the polygon with the centerpoint as base.
+        startp = 0
+        tileX = tileX + 0.5
+        tileZ = tileZ + 0.5
+        for i = 0 to pcount - 1
+            if |p[i*2] - tileX| < 0.1 and |p[i*2 + 1] - tileZ| < 0.1
+                startp = i
+                break
+            endif
+        next
+        polygons = []
+        i = (startp + 1)%pcount
+        j = (startp + 2)%pcount
+        do
+            polygons[sizeof(polygons)] = [
+                    p[startp*2], p[startp*2 + 1],
+                    p[i*2], p[i*2 + 1],
+                    p[j*2], p[j*2 + 1]]
+            i = j
+            j = (j + 1)%pcount
+        until j = startp
+        return polygons
+    endfunc
+
+
+    ' Normalize
+    ' ---------
+    function Normalize(v)
+        d = 0 
+        for i = 0 to sizeof(v) - 1  d = d + v[i]*v[i]
+        if d > 0
+            k = 1/sqr(d)
+            for i = 0 to sizeof(v) - 1  v[i] = v[i]*k
+        endif
+    endfunc
+
+    ' AddDoor
+    ' -------
+    function AddDoor(sector, portal, textureIndex)
+        ' look for existing door.
+        foreach d in vDoors
+            if portal.s = d.sa and d.v[0] = portal.p[3] and d.v[2] = portal.p[5]
+                d.pb = portal
+                d.sb = sector
+                return d
+            endif
+        next
+        door = []
+        vDoors[sizeof(vDoors)] = door
+        door.id = portal.id ' 2k25
+        door.i = textureIndex ' used by facing
+        door.t = vTextures[textureIndex]
+        door.o = false ' open
+        door.p = 1 ' param 
+        door.v = portal.p ' vertices
+        door.l = true ' Use sector light.
+        door.pa = portal
+        door.sa = sector
+        door.pb = unset
+        door.sb = unset
+        door.x = (door.v[0] + door.v[3])*0.5
+        door.y = (door.v[1] + door.v[7])*0.5
+        door.z = (door.v[2] + door.v[5])*0.5
+        door.cl = EA_AddCLine(door.v[0], door.v[2], door.v[3], door.v[5],
+                door.v[1], door.v[7],
+                EA_DOOR, door)
+        door.Id = function(); return .id; endfunc
+        door.SetId = function(id); .id = id; endfunc
+        door.GetTexture = function(); return .i; endfunc
+        door.Texture = function(); return .i; endfunc
+        door.SetTexture = function(img);
+            .i = img;
+            .t = vTextures[img]
+        endfunc
+        door.SetUseSectorLight = function(value)
+            .l = value
+        endfunc
+        door.UseSectorLight = function(); return .l; endfunc
+        door.X = function(); return .x; endfunc
+        door.Y = function(); return .y; endfunc
+        door.Z = function(); return .z; endfunc
+        door.Open = function()
+                if .o = false and not val(vADoors, this)
+                    .o = true
+                    vADoors[sizeof(vADoors)] = this
+                    return true
+                endif
+                return false
+            endfunc
+        door.Close = function()
+                if .o = true and not val(vADoors, this)
+                    .o = false
+                    vADoors[sizeof(vADoors)] = this
+                    .cl[7] = .v[1]
+                    .cl[8] = .v[7]
+                    return true
+                endif
+                return false
+            endfunc
+        door.SetOpen = function(value)
+                if value
+                    .o = true
+                    .cl[7] = 100000
+                    .cl[8] = 100000
+                    .p = 0
+                else
+                    .o = false
+                    .cl[7] = .v[1]
+                    .cl[8] = .v[7]
+                    .p = 1
+                endif
+            endfunc
+            
+        return door
+    endfunc    
+endfunc
+
+' EA_LineInTile
+' -------------    
+function EA_LineInTile(tileX, tileY, ln)
+    if int(ln[0]) = tileX and int(ln[1]) = tileY or int(ln[0] + ln[2]) = tileX and int(ln[1] + ln[3]) = tileY return true
+    if ln[0] < tileX and ln[0] + ln[2] < tileX or ln[0] > tileX + 1 and ln[0] + ln[2] > tileX + 1  return false
+    if ln[1] < tileY and ln[1] + ln[3] < tileY or ln[1] > tileY + 1 and ln[1] + ln[3] > tileY + 1  return false
+    if ln[4] 
+        for i = 0 to 1
+            k = (tileX + i - ln[0])/ln[4]
+            if k >= 0 and k <= ln[6]
+                y = ln[1] + k*ln[5]
+                if y >= tileY and y <= tileY + 1  return true
+            endif
+        next
+    endif
+    if ln[5]
+        for i = 0 to 1
+            k = (tileY + i - ln[1])/ln[5]
+            if k >= 0 and k <= ln[6]
+                x = ln[0] + k*ln[4]
+                if x >= tileX and x <= tileX + 1  return true
+            endif
+        next
+    endif
+    return false
+endfunc
+
+
+function EA_GenerateSectorPip(s)
+    pcount = sizeof(s.polygon)/2
+    s.xmin = s.polygon[0]; s.xmax = s.polygon[0]
+    s.zmin = s.polygon[1]; s.zmax = s.polygon[1]
+    for i = 1 to pcount - 1
+        x = s.polygon[i*2]; z = s.polygon[i*2 + 1]
+        s.xmin = min(s.xmin, x); s.xmax = max(s.xmax, x)
+        s.zmin = min(s.zmin, z); s.zmax = max(s.zmax, z)
+    next
+    pip = []
+    for i = 0 to pcount - 1
+        j = (i + 1)%pcount
+        x0 = s.polygon[i*2]; z0 = s.polygon[i*2 + 1]
+        x1 = s.polygon[j*2]; z1 = s.polygon[j*2 + 1]
+        pip[sizeof(pip)] = x0
+        pip[sizeof(pip)] = z0
+        pip[sizeof(pip)] = x1 - x0
+        if |z1 - z0| > 0   pip[sizeof(pip)] = 1/(z1 - z0)
+        else  pip[sizeof(pip)] = unset
+    next
+    s.polygon = pip
+endfunc
+
+' EA_Fps
+' ------
+function EA_Fps()
+    return floor(vFps/5)*5
+endfunc
+
+function EA_ApplyCameraTransformation()
+    S3D_RotateX(-vCam.pitch)
+    S3D_RotateY(-vCam.yaw)
+    S3D_Translate(-vCam.x, -vCam.y + vCam.eye , -vCam.z)
+endfunc
+
+' EA_Render
+' ---------
+function EA_Render()
+    set image vTarget
+    
+    set color vFogR, vFogG, vFogB
+    cls
+    
+    if not sizeof(vSectors)  return
+
+    S3D_Clear()
+
+    S3D_RotateX(-vCam.pitch)
+    S3D_RotateY(-vCam.yaw)
+    S3D_Translate(-vCam.x, -vCam.y + vCam.eye , -vCam.z)
+
+    for i = 0 to sizeof(vSectors) - 1
+        vSectors[i].r = false
+        vSectors[i].wr = false
+    next
+    vSectorsRendered = 0
+    if vCam.s  RenderSector(vCam.s, 0, 0, 0, width(vTarget), height(vTarget))
+
+    if vFog  S3D_RenderFog(vFogR, vFogG, vFogB, vFog = EA_RETRO)
+
+    if vDebug
+        set font 0
+        set color 0, 255, 200
+        set caret 0, height(vTarget) - fheight()*5
+        wln "sector:           " + vCam.s.name
+        wln "sectors rendered: " + vSectorsRendered
+        wln "objects:          " + sizeof(vObjects)
+        wln "sector objects:   " + sizeof(vCam.s.eas) + "/" + sizeof(vCam.s.obj)
+        wln "fps:              " + floor(vFps*0.1)*10
+    endif
+    
+    set image primary
+        
+    'set color 255, 255, 255
+    'set caret 0, 0
+    'wln "rendered sectors: " + vSectorsRendered
+    
+    ' RenderSector
+    ' ------------
+    function RenderSector(s, depth, xmin, ymin, xmax, ymax)
+        if s.r  return
+        s.r = true
+        s.wr = true
+        vRendered[vSectorsRendered] = s
+        vSectorsRendered = vSectorsRendered + 1
+        if sizeof(s.portals)
+            for i = 0 to sizeof(s.portals) - 1
+                p = s.portals[i]
+                if not (p.s.r or p.d and p.d.p >= 1)
+                    if Distance(vCam.x, vCam.z, p.p[0], p.p[2], p.p[3], p.p[5]) <= vZMin*2
+                        RenderSector(p.s, depth + 1, xmin, ymin, xmax, ymax)
+                    else     
+                        c = S3D_ProjectFace(vProjPortal, p.p)
+                        if c > 0
+                            xmin2 = width(vTarget); xmax2 = -1
+                            ymin2 = height(vTarget); ymax2 = -1
+                            for j = 0 to c - 1
+                                xmin2 = min(xmin2, vProjPortal[j*3])
+                                xmax2 = max(xmax2, vProjPortal[j*3])
+                                ymin2 = min(ymin2, vProjPortal[j*3 + 1])
+                                ymax2 = max(ymax2, vProjPortal[j*3 + 1])
+                            next
+                            if not (xmin2 >= xmax or xmax2 < xmin or ymin2 >= ymax or ymax2 < ymin)
+                                RenderSector(p.s, depth + 1,
+                                        max(xmin, xmin2), max(ymin, ymin2),
+                                        min(xmax, xmax2), min(ymax, ymax2))
+                            endif
+                        endif
+                    endif
+                endif    
+            next
+        endif
+    
+        c = sizeof(s.subSectors)
+    
+        set clip rect xmin, ymin, xmax - xmin, ymax - ymin
+        S3D_SetSorting(S3D_BACK_TO_FRONT)
+        S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+        S3D_Color(s.lgt_[0], s.lgt_[1], s.lgt_[2])
+        S3D_SetPerspectiveCorrection(S3D_NONE)
+        S3D_Mesh(s.ground, 0)
+        if s.ceiling  S3D_Mesh(s.ceiling, 0)
+        S3D_Render()
+        S3D_SetPerspectiveCorrection(S3D_NORMAL)
+        S3D_Mesh(s.mesh, 0)
+        ' Doors.
+        if sizeof(s.portals)
+            for i = 0 to sizeof(s.portals) - 1
+                d = s.portals[i].d
+                if d and d.p > 0
+                    if d.l then S3D_Color(s.lgt_[0], s.lgt_[1], s.lgt_[2])
+                    else  S3D_Color(255, 255, 255)
+                    v = d.v
+                    S3D_Texture(d.t)
+                    S3D_Begin(S3D_QUADS)
+                    p = d.p
+                    if p >= 1
+                        if d.sa = s
+                            S3D_Vertex(v[0], v[1], v[2], 0, 0)
+                            S3D_Vertex(v[3], v[4], v[5], 1, 0)
+                            S3D_Vertex(v[6], v[7], v[8], 1, 1)
+                            S3D_Vertex(v[9], v[10], v[11], 0, 1)
+                        else
+                            S3D_Vertex(v[3], v[4], v[5], 0, 0)
+                            S3D_Vertex(v[0], v[1], v[2], 1, 0)
+                            S3D_Vertex(v[9], v[10], v[11], 1, 1)
+                            S3D_Vertex(v[6], v[7], v[8], 0, 1)
+                        endif
+                    else
+                        select vDoorMode
+                            case EA_SLIDE_UP
+                                y = v[1] + (v[7] - v[1])*p
+                                if d.sa = s
+                                    S3D_Vertex(v[0], v[1], v[2], 0, 1 - p)
+                                    S3D_Vertex(v[3], v[4], v[5], 1, 1 - p)
+                                    S3D_Vertex(v[6], y, v[8], 1, 1)
+                                    S3D_Vertex(v[9], y, v[11], 0, 1)
+                                else
+                                    S3D_Vertex(v[3], v[4], v[5], 0, 1 - p)
+                                    S3D_Vertex(v[0], v[1], v[2], 1, 1 - p)
+                                    S3D_Vertex(v[9], y, v[11], 1, 1)
+                                    S3D_Vertex(v[6], y, v[8], 0, 1)
+                                endif
+                            case EA_SLIDE_DOWN
+                                y = v[7] - (v[7] - v[1])*p
+                                if d.sa = s
+                                    S3D_Vertex(v[0], y, v[2], 0, 0)
+                                    S3D_Vertex(v[3], y, v[5], 1, 0)
+                                    S3D_Vertex(v[6], v[7], v[8], 1, p)
+                                    S3D_Vertex(v[9], v[10], v[11], 0, p)
+                                else
+                                    S3D_Vertex(v[3], y, v[5], 0, 0)
+                                    S3D_Vertex(v[0], y, v[2], 1, 0)
+                                    S3D_Vertex(v[9], v[10], v[11], 1, p)
+                                    S3D_Vertex(v[6], v[7], v[8], 0, p)
+                                endif
+                            case EA_SLIDE_SIDE
+                                x = v[0] + (v[3] - v[0])*p
+                                z = v[2] + (v[5] - v[2])*p
+                                if d.sa = s
+                                    S3D_Vertex(v[0], v[1], v[2], 1 - p, 0)
+                                    S3D_Vertex(x, v[4], z, 1, 0)
+                                    S3D_Vertex(x, v[7], z, 1, 1)
+                                    S3D_Vertex(v[9], v[10], v[11], 1 - p, 1)
+                                else
+                                    S3D_Vertex(x, v[4], z, 0, 0)
+                                    S3D_Vertex(v[0], v[1], v[2], p, 0)
+                                    S3D_Vertex(v[9], v[10], v[11], p, 1)
+                                    S3D_Vertex(x, v[7], z, 0, 1)
+                                endif
+                        endsel
+                    endif
+                    S3D_End()
+                endif
+            next
+        endif
+        S3D_Render()
+        ' Any sub-sectors? Try drawing things the same time as sector.
+        S3D_Color(s.lgt_[0], s.lgt_[1], s.lgt_[2])
+        S3D_SetSorting(S3D_NONE)
+        S3D_SetDepthBuffer(S3D_Z_BUFFER)
+        if sizeof(s.subSectors)
+            for i = 0 to sizeof(s.subSectors) - 1
+                ss = s.subSectors[i]
+                S3D_SetPerspectiveCorrection(S3D_NONE)
+                if ss.ground  S3D_Mesh(ss.ground, 0)
+                if ss.ceiling S3D_Mesh(ss.ceiling, 0)
+                S3D_SetPerspectiveCorrection(S3D_NORMAL)
+                if ss.mesh  S3D_Mesh(ss.mesh, 0)
+            next
+        endif
+        if sizeof(s.eas)
+            for i = 0 to sizeof(s.obj) - 1
+                o = s.obj[i]
+                if o.ea_.lfx then S3D_Color(s.lgt_[0], s.lgt_[1], s.lgt_[2])
+                else  S3D_Color(255, 255, 255)
+                if typeof(o.Render)  o.Render()
+                else o.ea_.Render()
+            next
+        endif
+        clear clip rect
+        s.r = false
+
+        ' Distance
+        ' --------        
+        function Distance(x, y, x0, y0, x1, y1)
+            dx = x1 - x0; dy = y1 - y0
+            l2 = dx*dx + dy*dy
+            if l2 = 0
+                dx = x - x0
+                dy = y - y0
+                return sqr(dx*dx + dy*dy)
+            endif
+            t = max(0, min(1, ((x - x0)*(x1 - x0) + (y - y0)*(y1 - y0))/l2))
+            px = x0 + t*(x1 - x0)
+            py = y0 + t*(y1 - y0)
+            dx = px - x
+            dy = py - y
+            return sqr(dx*dx + dy*dy)
+        endfunc
+    endfunc
+endfunc
+
+function EA_PushOut(spr, tests, leap)
+    x = spr.x; z = spr.z; r = spr.r
+    ybtm = spr.y - leap
+    ytop = spr.y - spr.h
+    xmin = floor(x - r); xmax = floor(x + r)
+    zmin = floor(z - r); zmax = floor(z + r)
+    if xmin >= sizeof(vCGrid) or xmax < 0 or zmin >= sizeof(vCGrid[0]) or zmax < 0
+        return false
+    endif
+    rsqr = r*r
+    anyCol = false
+    for t = 1 to tests
+        col = false
+        for tz = zmin to zmax  for tx = xmin to xmax
+            g = vCGrid[tx][tz]
+            if g and sizeof(g)
+                for i = 0 to sizeof(g) - 1
+                    ln = g[i]
+                    if not (ytop >= ln[8] or ybtm <= ln[7]) 
+                        dp = max(0, min(ln[6], (x - ln[0])*ln[4] + (z - ln[1])*ln[5]))
+                        px = ln[0] + dp*ln[4]; py = ln[1] + dp*ln[5]
+                        dx = x - px; dy = z - py
+                        d = dx*dx + dy*dy
+                        if d > 0 and d < rsqr
+                            k = 1/sqr(d)
+                            x = px + dx*k*r
+                            z = py + dy*k*r
+                            col = true
+                            anyCol = true
+                        endif
+                    endif
+                next
+            endif
+        next
+        if not col  break
+    next
+    spr.x = x
+    spr.z = z
+    return anyCol
+endfunc
+
+function EA_PushOutOne(spr, leap)
+    x = spr.x; z = spr.z; r = spr.r
+    ybtm = spr.y - leap
+    ytop = spr.y - spr.h
+    xmin = floor(x - r); xmax = floor(x + r)
+    zmin = floor(z - r); zmax = floor(z + r)
+    if xmin >= sizeof(vCGrid) or xmax < 0 or zmin >= sizeof(vCGrid[0]) or zmax < 0
+        return false
+    endif
+    rsqr = r*r
+    anyCol = false
+
+    mind = unset
+    minln = unset
+    for tz = zmin to zmax  for tx = xmin to xmax
+        if vCGrid[tx][tz] and sizeof(vCGrid[tx][tz])
+            for i = 0 to sizeof(vCGrid[tx][tz]) - 1
+                ln = vCGrid[tx][tz][i]
+                if not (ytop >= ln[8] or ybtm <= ln[7]) 
+                    dp = max(0, min(ln[6], (x - ln[0])*ln[4] + (z - ln[1])*ln[5]))
+                    px = ln[0] + dp*ln[4]; py = ln[1] + dp*ln[5]
+                    dx = x - px; dy = z - py
+                    d = dx*dx + dy*dy
+                    if d > 0 and d < rsqr
+                        if mind = unset or d < mind
+                            mind = d
+                            mindx = dx
+                            mindy = dy
+                            minpx = px
+                            minpy = py
+                            minln = ln
+                        endif
+                    endif
+                endif
+            next
+        endif
+    next
+    if typeof(mind)
+        mind = sqr(mind)
+        k = 1/mind
+        x = minpx + mindx*k*r
+        z = minpy + mindy*k*r
+        vPushout.type = minln[9]
+        vPushout.data = minln[10]
+        vPushout.dist = mind
+        vPushout.dx = mindx*k
+        vPushout.dz = mindy*k
+        anyCol = true
+    endif
+    spr.x = x
+    spr.z = z
+    return anyCol
+endfunc
+
+function EA_Facing(x, y, z, dx, dy, dz)
+    tx = floor(x); tz = floor(z)
+    do
+        if tx < 0 or tx >= 100 or tz < 0 or tz >= 100  return unset
+        t = vCGrid[tx][tz]
+        if t
+            mind = unset
+            minw = unset
+            for i = 0 to sizeof(t) - 1
+                w = t[i]
+                d = EA_RayLineIntersect(x, z, dx, dz, w[0], w[1], w[2], w[3])
+                if d >= 0 and (mind = unset or d < mind)
+                    yc = y + dy*d
+                    if yc >= w[7] and yc <= w[8]
+                        mind = d
+                        minw = w
+                    endif
+                endif
+            next
+            if typeof(mind)
+                vFacing.type = minw[9]
+                vFacing.data = minw[10]
+                vFacing.dist = mind
+                return vFacing
+            endif
+        endif
+        px = unset; pz = unset
+        if dx < 0  px = (tx - x)/dx
+        elseif dx > 0  px = (tx + 1 - x)/dx
+        if dz < 0  pz = (tz - z)/dz
+        elseif dz > 0  pz = (tz + 1 - z)/dz
+        if typeof(px) and typeof(pz)
+            if px < pz
+                if dx < 0  tx = tx - 1
+                else  tx = tx + 1
+            else
+                if dz < 0  tz = tz - 1
+                else  tz = tz + 1
+            endif
+        elseif typeof(px)
+            if dx < 0  tx = tx - 1
+            else  tx = tx + 1
+        else
+            if dz < 0  tz = tz - 1
+            else  tz = tz + 1
+        endif
+    loop
+    
+    return unset
+    
+endfunc
+
+function EA_RayLineIntersect(rx, ry, rdx, rdy, lx, ly, ldx, ldy)
+    dx = rx - lx
+    dy = ry - ly
+    d = rdx*ldy - rdy*ldx
+    if d = 0.0 then return -1
+    u = (dy*rdx - dx*rdy)/d
+    if u < 0.0 or u > 1.0 then return -1
+    v = (dy*ldx - dx*ldy)/d
+    if v < 0.0 then return -1
+    return v
+endfunc
+
+
+function EA_SectorAt(x, z)
+    'foreach s in vSectors  if EA_Pip(s.polygon, x, z) return s
+    if sizeof(vSectors)
+        for i = 0 to sizeof(vSectors) - 1
+            s = vSectors[i]
+            if EA_Pip(s, x, z)  return s
+        next
+    endif
+    return unset
+endfunc
+
+function EA_SectorLimitsY(s, x, z)
+    if not s  return unset
+    btm = s.floory
+    top = s.ceily 
+    if sizeof(s.subSectors)
+        for i = 0 to sizeof(s.subSectors) - 1
+            ss = s.subSectors[i]
+            if EA_Pip(ss, x, z)
+                if ss.type = 2
+                    btm = min(btm, ss.ceily)
+                elseif ss.type = 3
+                    top = max(top, ss.floory)
+                endif 
+            endif
+        next
+    endif
+    vSectorY.c = top
+    vSectorY.f = btm
+    return vSectorY
+endfunc
+
+function EA_AddObject(obj)
+    vObjects[sizeof(vObjects)] = obj
+endfunc
+
+' EA_StaticObject
+' ---------------
+' Decoration mesh or sprite, can't move once added.
+function EA_StaticObject()
+    dec = EA_Object()
+    dec.ea_.added = false
+    dec.ea_.p = unset
+    dec.ea_.cl = []
+    free dec.SetCollisionMode
+    free dec.Move
+    dec.SetPos = function(x, y, z)
+        assert not .ea_.added, "StaticObject.SetPos: Already added"
+        .ea_.x = x; .ea_.y = y; .ea_.z = z
+    endfunc
+    dec.SetColPoly = function(p)
+        .ea_.p = p
+    endfunc
+
+    return dec
+endfunc
+
+function EA_AddStaticObject(dec)
+    dec.ea_.s = EA_SectorAt(dec.ea_.x, dec.ea_.z)
+    assert dec.ea_.s, "EA_AddStaticObject: No sector at " + dec.ea_.x + ", " + dec.ea_.z
+    if not typeof(dec.ea_.y)
+        dec.ea_.y = EA_SectorLimitsY(dec.ea_.s, dec.ea_.x, dec.ea_.z).f
+    endif
+    if typeof(dec.ea_.p)
+        pcount = sizeof(dec.ea_.p)/2
+        btm = dec.ea_.y
+        ' if height not defined, block.
+        if typeof(dec.ea_.h) top = btm - dec.ea_.h
+        else  top = -100000
+        dec.ea_.xmin = dec.ea_.x + dec.ea_.p[0]; dec.ea_.xmax = dec.ea_.x + dec.ea_.p[0]
+        dec.ea_.zmin = dec.ea_.z + dec.ea_.p[1]; dec.ea_.zmax = dec.ea_.z + dec.ea_.p[1]
+        for i = 0 to pcount - 1
+            dec.ea_.xmin = min(dec.ea_.xmin, dec.ea_.x + dec.ea_.p[i*2])
+            dec.ea_.xmax = max(dec.ea_.xmax, dec.ea_.x + dec.ea_.p[i*2])
+            dec.ea_.zmin = min(dec.ea_.zmin, dec.ea_.z + dec.ea_.p[i*2 + 1])
+            dec.ea_.zmax = max(dec.ea_.zmax, dec.ea_.z + dec.ea_.p[i*2 + 1])
+            j = (i + 1)%pcount
+            dec.ea_.cl[sizeof(dec.ea_.cl)] = EA_AddCLine(
+                    dec.ea_.x + dec.ea_.p[i*2], dec.ea_.z + dec.ea_.p[i*2 + 1],
+                    dec.ea_.x + dec.ea_.p[j*2], dec.ea_.z + dec.ea_.p[j*2 + 1],
+                    top, btm,
+                    EA_OBJECT, dec)
+        next
+        ' create dummy sub-sector.
+        if typeof(dec.ea_.h)
+            p = copy(dec.ea_.p)
+            for i = 0 to pcount - 1
+                p[i*2] = dec.ea_.x + p[i*2]; p[i*2 + 1] = dec.ea_.z + p[i*2 + 1]
+            next
+            ss = [
+                mesh: unset,
+                ground: unset,
+                ceiling: unset,
+                polygon: p,
+                type: 2,
+                wallh: dec.ea_.h,
+                floory: dec.ea_.y,
+                ceily: dec.ea_.y - dec.ea_.h]
+            EA_GenerateSectorPip(ss)
+            dec.ea_.ss = ss
+            dec.ea_.s.subSectors[sizeof(dec.ea_.s.subSectors)] = ss
+        endif
+    endif
+    dec.ea_.s.eas[sizeof(dec.ea_.s.eas)] = dec.ea_
+    dec.ea_.s.obj[sizeof(dec.ea_.s.obj)] = dec
+    if dec.Update or dec.ea_.Update
+        vObjects[sizeof(vObjects)] = dec
+    endif
+    dec.ea_.added = true    
+endfunc
+
+function EA_RemoveObject(obj)
+    if not val(vRemoveList, obj)  vRemoveList[sizeof(vRemoveList)] = obj
+endfunc
+
+' EA_Object
+' ---------
+function EA_Object()
+    obj = []
+    
+    obj.ea_ = [
+        obj: obj,                   ' Wrapper.
+        x: 0, y: 0, z: 0,           ' Position.
+        pos: fill(0, 3),
+        yaw: 0, pitch: 0,           ' Angles.
+        dir: [sin(0), 0, cos(0)],   ' Yaw/pitch based direction.
+        h: 0, r: 0, rsq: 0, eye: 0, ' Height and radius.
+        col: EA_FAST,               ' Collision test mode.
+        mesh: unset,                ' Mesh.
+        mf1: 0,                     ' Mesh frame 1.
+        mf2: unset,                 ' Mesh frame 2.
+        mfp: unset,                 ' Mesh frame param.
+        spr: unset, cel: 0,         ' Image and cel.
+        s: unset,                   ' Current sector.
+        lfx: true,                  ' Use sector light effect.
+        ' Collision result.
+        cres: [
+                w: false, g: false, c: false, any: false,
+                dx: 0, dy: 0, dz: 0],
+
+        ' For internal extensions.
+        Run: unset,                 ' Called on EA_Run or when object is added if in loop.
+        Stop: unset,                ' Called when leaving loop.
+        Update: unset,              ' Called once per frame.
+        Pause: unset,               ' Called when loop is paused.
+        Resume: unset,              ' Called when loop is resumed.
+        Render: EA_ObjRender        ' Render.
+    ]
+    obj.id = unset ' I just assume this will be used a lot, not used here
+    obj.ea_.UpdateSector = function()
+        if not (.s and EA_Pip(.s, .x, .z))
+            s = EA_SectorAt(.x, .z)
+            if s <> .s
+                if .s
+                    free val .s.eas, this
+                    free val .s.obj, .obj
+                endif
+                if s
+                    s.eas[sizeof(s.eas)] = this
+                    s.obj[sizeof(s.obj)] = .obj
+                endif
+                .s = s
+                return true
+            else
+                return false
+            endif
+        else
+            return false
+        endif
+    endfunc
+        
+    ' External.
+    obj.Run = unset
+    obj.Stop = unset
+    obj.Update = unset
+    obj.Pause = unset
+    obj.Resume = unset
+    obj.Render = unset
+    obj.RenderDef = function()
+        .ea_.Render()
+    endfunc
+
+
+    obj.SetMesh = function(mesh)
+        .ea_.mesh = mesh
+        .ea_.mf1 = 0
+        .ea_.mf2 = unset
+        .ea_.mfp = 0
+        .ea_.spr = unset
+    endfunc
+
+    obj.Mesh = function()
+        return .ea_.mesh
+    endfunc
+    
+    obj.SetFrame = function(f)
+        .ea_.mf1 = f
+        .ea_.mf2 = unset
+        .ea_.mfp = 0
+    endfunc
+    
+    obj.SetFrames = function(f1, f2, p)
+        .ea_.mf1 = f1
+        .ea_.mf2 = f2
+        .ea_.mfp = p
+    endfunc
+    
+    obj.Frame = function()
+        return .ea_.mf1
+    endfunc
+    
+    obj.Frame2 = function()
+        return .ea_.mf1
+    endfunc
+    
+    obj.Blend = function()
+        return .ea_.mfp
+    endfunc
+   
+    obj.SetSprite = function(img, cel, onlyYaw)
+        .ea_.spr = img
+        .ea_.sprx = not onlyYaw
+        .ea_.mesh = unset
+        .SetCel(cel)    
+    endfunc
+    
+    obj.Sprite = function()
+        return .ea_.spr
+    endfunc
+    
+    obj.SetCel = function(value)
+        value = int(value)
+        assert value >= 0 and value <= cels(.ea_.spr), "Object.SetCel: Invalid value"
+        .ea_.cel = value
+        i = .ea_.spr
+        w = width(i)*cols(i)
+        h = height(i)*rows(i)
+        cw = width(i)
+        ch = height(i)
+        col = value%cols(i); row = int(value/cols(i))
+        .ea_.u0 = (col*cw + 0.1)/w
+        .ea_.u1 = (col*cw + cw - 0.1)/w
+        .ea_.v0 = (row*ch + 0.1)/h
+        .ea_.v1 = (row*ch + ch - 0.1)/h
+    endfunc
+    
+    obj.Cel = function()
+        return .ea_.cel
+    endfunc
+    
+    obj.SetUseSectorLight = function(value)
+        .ea_.lfx = value
+    endfunc
+    
+    obj.UseSectorLight = function()
+        return .ea_.lfx
+    endfunc
+
+    obj.SetHeight = function(value)
+        .ea_.h = value
+    endfunc
+    
+    obj.Height = function()
+        return .ea_.h
+    endfunc
+
+    obj.SetEye = function(eye)
+        .ea_.eye = eye
+    endfunc
+    
+    obj.Eye = function()
+        return .ea_.eye
+    endfunc
+            
+    obj.SetRadius = function(value)
+        .ea_.r = value
+        .ea_.rsq = value*value
+    endfunc
+    
+    obj.Radius = function()
+        return .ea_.r
+    endfunc
+            
+    obj.SetYaw = function(yaw)
+        .ea_.yaw = yaw
+        cp = cos(.ea_.pitch)
+        .ea_.dir[0] = sin(yaw)*cp
+        .ea_.dir[2] = cos(yaw)*cp        
+    endfunc
+    
+    obj.Yaw = function()
+        return .ea_.yaw
+    endfunc
+
+    obj.SetPitch = function(pitch)
+        .ea_.pitch = pitch
+        .ea_.dir[1] = -sin(pitch)
+        cp = cos(.ea_.pitch)
+        .ea_.dir[0] = sin(.ea_.yaw)*cp
+        .ea_.dir[2] = cos(.ea_.yaw)*cp
+    endfunc
+    
+    obj.Pitch = function()
+        return .ea_.pitch
+    endfunc
+    
+    obj.DX = function()
+        return .ea_.dir[0]
+    endfunc
+
+    obj.DY = function()
+        return .ea_.dir[1]
+    endfunc
+
+    obj.DZ = function()
+        return .ea_.dir[2]
+    endfunc
+
+    obj.Dir = function()
+        return .ea_.dir
+    endfunc
+        
+    obj.Facing = function()
+        return EA_Facing(.ea_.x, .ea_.y - .ea_.eye, .ea_.z, .ea_.dir[0], .ea_.dir[1], .ea_.dir[2])
+    endfunc
+    
+    obj.Visible = function(o)
+        dx = o.ea_.x - .ea_.x
+        dy = (o.ea_.y - o.ea_.h*0.75) - (.ea_.y - .ea_.h*0.75)
+        dz = o.ea_.z - .ea_.z
+        d = dx*dx + dy*dy + dz*dz
+        if d > 0
+            d = sqr(d)
+            dx = dx/d; dy = dy/d; dz = dz/d
+            res = EA_Facing(.ea_.x, .ea_.y - .ea_.h*0.5, .ea_.z, dx, dy, dz)
+            return res and res.dist > d or not res
+        else
+            return true
+        endif
+    endfunc
+
+    obj.SetPos = function(x, y, z)
+        .ea_.x = x
+        .ea_.z = z
+        if .ea_.UpdateSector()
+            if typeof(y) then .ea_.y = y
+            else  .ea_.y = EA_SectorLimitsY(.ea_.s, x, z).f
+            .ea_.og = true
+        endif
+    endfunc
+    
+    obj.X = function()
+        return .ea_.x
+    endfunc
+
+    obj.Y = function()
+        return .ea_.y
+    endfunc
+
+    obj.Z = function()
+        return .ea_.z
+    endfunc
+    
+    obj.Pos = function()
+        .ea_.pos[0] = .ea_.x
+        .ea_.pos[1] = .ea_.y
+        .ea_.pos[2] = .ea_.z
+        return .ea_.pos
+    endfunc
+    
+    obj.SetCollisionMode = function(value)
+        assert value = EA_FAST or value = EA_NORMAL, "Object.SetCollisionMode: Invalud value"
+        .ea_.col = value
+    endfunc
+    
+    obj.Move = function(dx, dy, dz, leap)
+        ea = .ea_
+        
+        cres = ea.cres
+        cres.w = false; cres.g = false; cres.c = false; cres.any = false
+        cres.dx = 0; cres.dy = 0; cres.dz = 0
+        cres.info = unset        
+        ' Start by moving in xz plane. 
+        ea.x = ea.x + dx
+        ea.z = ea.z + dz
+        if EA_PushOutOne(ea, leap)
+            cres.info = vPushout
+            cres.w = true
+            cres.dx = vPushout.dx
+            cres.dz = vPushout.dz
+            cres.any = true
+            if ea.col = EA_NORMAL EA_PushOut(ea, 3, leap)
+        endif
+       
+        ' Update sector and fetch limits.
+        ea.UpdateSector()
+        lim = EA_SectorLimitsY(ea.s, ea.x, ea.z)
+
+        ' Move in y.
+        ea.y = ea.y + dy
+        if lim
+            if ea.y - ea.h < lim.c
+                ea.y = lim.c + ea.h
+                cres.c = true
+                cres.dy = 1
+                cres.any = true
+            endif
+            if ea.y > lim.f
+                ea.y = max(min(ea.y - 4*vDeltaTime, lim.f + leap), lim.f)
+                cres.g = true
+                cres.dy = -1
+                cres.any = true
+            endif
+        endif        
+        
+        return cres 
+    endfunc
+    
+    obj.Sector = function()
+        return .ea_.s
+    endfunc
+    
+    obj.SectorObjects = function()
+        if .ea_.s
+            return .ea_.s.obj
+        else
+            return unset
+        endif
+    endfunc
+    
+    obj.CollidesWith = function(o)
+        if .ea_.s = o.ea_.s
+            dx = o.ea_.x - .ea_.x; dz = o.ea_.z - .ea_.z
+            if dx*dx + dz*dz < o.ea_.rsq + .ea_.rsq
+                return .ea_.y - .ea_.h < o.ea_.y and .ea_.y > o.ea_.y - o.ea_.h
+            endif
+        endif
+        return false
+    endfunc
+    
+    obj.DistanceTo = function(o)
+        dx = o.ea_.x - .ea_.x; dy = o.ea_.y - .ea_.y; dz = o.ea_.z - .ea_.z
+        return sqr(dx*dx + dy*dy + dz*dz)
+    endfunc
+    
+    obj.SqrDistanceTo = function(o)
+        dx = o.ea_.x - .ea_.x; dy = o.ea_.y - .ea_.y; dz = o.ea_.z - .ea_.z
+        return dx*dx + dy*dy + dz*dz
+    endfunc
+    
+    obj.PlaySound = function(snd, vol)
+        EA_PlaySound(snd, vol, .ea_.x, .ea_.y, .ea_.z)
+    endfunc
+    
+    obj.SetHeight(0.5)
+    obj.SetEye(0.5)
+    obj.SetRadius(0.25)
+       
+    return obj
+endfunc
+
+function EA_FpsPlayer()
+    obj = EA_Object()
+
+    obj.ea_.mhid = false
+    obj.ea_.ms = 0.005
+    obj.ea_.mhide = false
+    obj.ea_.kyf = KEY_W
+    obj.ea_.kyb = KEY_S
+    obj.ea_.kyl = KEY_A
+    obj.ea_.kyr = KEY_D
+    obj.ea_.kyj = KEY_SPACE
+    obj.ea_.kyrl = unset
+    obj.ea_.kyrr = unset
+    obj.ea_.kys = unset
+    obj.ea_.eye = 0.5
+    obj.ea_.dx = 0
+    obj.ea_.dz = 0
+    obj.ea_.dy = 0
+    obj.ea_.og = false
+    obj.ea_.spd = 1
+    obj.ea_.macc = unset
+    obj.ea_.rspd = PI*0.5
+    obj.ea_.maxp = PI*0.35
+    obj.ea_.leap = 0
+    obj.ea_.usePitch = true
+    obj.ea_.jmp = 5
+    obj.ea_.jmps = false
+    obj.ea_.mov = false
+    obj.ea_.col = EA_NORMAL
+
+    obj.ea_.Run = function()
+        if typeof(.ms)
+            if not .mhid
+                .mhid = true
+                set mouse off
+            endif
+            set mouse width(primary)/2, height(primary)/2
+        endif
+    endfunc
+   
+    obj.ea_.Pause = function()
+        if typeof(.ms)
+            if .mhid
+                .mhid = false
+                set mouse on
+            endif
+        endif
+    endfunc
+   
+    obj.ea_.Resume = function()
+        if typeof(.ms)
+            if not .mhid
+                .mhid = true
+                set mouse off
+            endif
+            set mouse width(primary)/2, height(primary)/2
+        endif
+    endfunc
+   
+    obj.ea_.Stop = function()
+        if typeof(.ms)
+            if .mhid
+                .mhid = false
+                set mouse on
+            endif
+        endif
+    endfunc
+
+    obj.ea_.Update = function(dt)
+        if typeof(.ms)
+            mdx = mouserelx()
+            mdy = mouserely()
+            set mouse width(primary)/2, height(primary)/2
+            .obj.SetYaw(.yaw + .ms*mdx*vFov)
+            if .usePitch  then .obj.SetPitch(max(-.maxp, min(.maxp, .pitch - .ms*mdy*vFov)))
+        endif
+
+        mdx = .dx*dt*0.5
+        mdz = .dz*dt*0.5
+
+        dx = 0; dz = 0; .mov = false
+        if keydown(.kyrl)
+            if keydown(.kys)
+                dx = dx - .dir[2]
+                dz = dz + .dir[0]
+            else
+                .obj.SetYaw(.yaw - dt*.rspd)
+            endif
+        endif
+        if keydown(.kyrr)
+            if keydown(.kys)
+                dx = dx + .dir[2]
+                dz = dz - .dir[0]
+            else
+                .obj.SetYaw(.yaw + dt*.rspd)
+            endif
+        endif
+
+        if keydown(.kyf)
+            dx = dx + .dir[0]
+            dz = dz + .dir[2]
+        endif
+        if keydown(.kyb)
+            dx = dx - .dir[0]
+            dz = dz - .dir[2]
+        endif
+        if keydown(.kyl)
+            dx = dx - .dir[2]
+            dz = dz + .dir[0]
+        endif
+        if keydown(.kyr)
+            dx = dx + .dir[2]
+            dz = dz - .dir[0]
+        endif
+       
+        if dx or dz
+            .mov = true
+            k = .spd/sqr(dx*dx + dz*dz)
+            dx = k*dx
+            dz = k*dz
+        endif
+       
+        if .og
+            if .macc
+                m = dt*.macc
+                .dx = .dx*(1 - m) + dx*m
+                .dz = .dz*(1 - m) + dz*m
+            else
+                .dx = dx
+                .dz = dz
+            endif
+        endif
+       
+        mdx = mdx + .dx*dt*0.5
+        mdz = mdz + .dz*dt*0.5
+       
+        if .og
+            res = .obj.Move(mdx, 0.1*dt, mdz, .leap)
+        else
+            res = .obj.Move(mdx, .dy*dt + dt*(EA_G + EA_G*dt)/2, mdz, .leap)
+        endif
+        .og = res.g
+        if res.c and .dy < 0 then .dy = 0
+        if res.g
+            .dy = 0
+            .jmps = false
+            if .jmp and keydown(.kyj, true)
+                .jmps = true
+                .dy = -.jmp
+                .y = .y + .dy*dt + dt*(EA_G + EA_G*dt)/2
+            endif
+        else
+            .dy = .dy + EA_G*dt
+        endif
+    endfunc
+   
+    obj.Jump = function(force)
+        .ea_.jmps = true
+        .ea_.dy = -force
+        .ea_.y = .ea_.y + .ea_.dy*vDeltaTime + vDeltaTime*(EA_G + EA_G*vDeltaTime)/2
+    endfunc
+   
+    obj.Walking = function()
+        return .ea_.mov
+    endfunc
+    
+    obj.Jumping = function(unflag)
+        if .ea_.jmps
+            if unflag then .ea_.jmps = false
+            return true
+        else
+            return false
+        endif
+    endfunc
+   
+    obj.OnGround = function()
+        return .ea_.og
+    endfunc
+
+    obj.SetForwardKey = function(value)
+        .ea_.kyf = value
+    endfunc
+   
+    obj.ForwardKey = function()
+        return .ea_.kyf
+    endfunc
+   
+    obj.SetBackwardKey = function(value)
+        .ea_.kyb = value
+    endfunc
+   
+    obj.BackwardKey = function()
+        return .ea_.kyb
+    endfunc
+
+    obj.SetStrafeLeftKey = function(value)
+        .ea_.kyl = value
+    endfunc
+
+    obj.StrafeLeftKey = function()
+        return .ea_.kyl
+    endfunc
+   
+    obj.SetStrafeRightKey = function(value)
+        .ea_.kyr = value
+    endfunc
+
+    obj.StrafeRightKey = function()
+        return .ea_.kyr
+    endfunc
+   
+    obj.SetStrafeKey = function(value)
+        .ea_.kys = value
+    endfunc
+   
+    obj.StrafeKey = function(value)
+        return .ea_.kys
+    endfunc
+   
+    obj.SetRotateLeftKey = function(value)
+        .ea_.kyrl = value
+    endfunc
+
+    obj.RotateLeftKey = function()
+        return .ea_.kyrl
+    endfunc
+   
+    obj.SetRotateRightKey = function(value)
+        .ea_.kyrr = value
+    endfunc
+
+    obj.RotateRightKey = function()
+        return .ea_.kyrr
+    endfunc
+   
+    obj.SetJumpKey = function(value)
+        .ea_.kyj = value
+    endfunc
+
+    obj.JumpKey = function()
+        return .ea_.kyj
+    endfunc
+   
+    obj.SetMouseSens = function(s)
+        .ea_.ms = s*0.005 ' idk
+    endfunc
+   
+    obj.MouseSens = function()
+        'return .ea_.ms/0.005
+        return .ea_.ms*200
+    endfunc
+  
+    obj.SetMoveSpeed = function(speed)
+        .ea_.spd = speed
+    endfunc
+   
+    obj.SetAcceleration = function(acc)
+        .ea_.macc = acc
+    endfunc
+   
+    obj.MoveSpeed = function()
+        return .ea_.spd
+    endfunc
+   
+    obj.SetRotateSpeed = function(value)
+        .ea_.rspd = value
+    endfunc
+   
+    obj.RotateSpeed = function()
+        return .ea_.rspd
+    endfunc
+   
+    obj.SetMaxPitch = function(pitch)
+        .ea_.maxp = pitch
+    endfunc
+
+    obj.MaxPitch = function()
+        return .ea_.maxp
+    endfunc
+
+    obj.SetLeap = function(value)
+        .ea_.leap = value
+    endfunc
+   
+    obj.Leap = function()
+        return .ea_.leap
+    endfunc
+   
+    obj.SetUsePitch = function(value)
+        .ea_.usePitch = value
+    endfunc
+   
+    obj.UsePitch = function()
+        return .ea_.usePitch
+    endfunc
+   
+    obj.SetJumpForce = function(value)
+        .ea_.jmp = max(value, 0)
+    endfunc
+   
+    obj.JumpForce = function()
+        return .ea_.jmp
+    endfunc
+
+    return obj   
+endfunc
+
+' EA_ObjRender
+' ------------
+' Render function for objects.    
+function EA_ObjRender()
+    if .mesh
+        S3D_Push()
+        S3D_Translate(.x, .y, .z)
+        S3D_RotateY(.yaw)
+        S3D_RotateX(.pitch)
+        if typeof(.mf2)  S3D_BlendMesh(.mesh, .mf1, .mf2, .mfp)
+        else  S3D_Mesh(.mesh, .mf1)
+        S3D_Pop()
+    elseif .spr
+        t = -.h
+        r = .r
+        S3D_Push()
+        S3D_Translate(.x, .y, .z)
+        S3D_RotateY(vCam.yaw)
+        if .sprx  S3D_RotateX(vCam.pitch)
+        S3D_Begin(S3D_QUADS)
+        S3D_Texture(.spr)
+        S3D_Vertex(-r, t, 0, .u0, .v0)
+        S3D_Vertex(r, t, 0, .u1, .v0)
+        S3D_Vertex(r, 0, 0, .u1, .v1)
+        S3D_Vertex(-r, 0, 0, .u0, .v1)
+        S3D_End()
+        S3D_Pop()
+    endif
+endfunc
+
+function EA_Pip(s, pointx, pointy)
+    if pointx < s.xmin or pointx > s.xmax or pointy < s.zmin or pointy > s.zmax  return false
+    xcount = 0
+    p = s.polygon
+    pcount = sizeof(p)/4
+    for i = 0 to pcount - 1
+        j = (i + 1)%pcount
+        x0 = p[i*4]; y0 = p[i*4 + 1]
+        x1 = p[j*4]; y1 = p[j*4 + 1]
+        if y0 <= pointy and y1 > pointy or y1 <= pointy and y0 > pointy
+            k = (pointy - y0)*p[i*4 + 3]
+            if x0 + k*p[i*4 + 2] > pointx  xcount = xcount + 1
+        endif
+    next
+    return xcount%2 = 1
+endfunc
+
+function EA_SetSoundMaxDist(value)
+    vSndMaxZ = value
+    vSndMaxZSqr = value*value
+endfunc
+
+function EA_PlaySound(snd, vol, x, y, z)
+    if vCam
+        ' ye, might need to switch the negs here.
+        ' modify vol if something blocking?
+        edx = vCam.dir[2]
+        edz = -vCam.dir[0]
+        dx = x - vCam.x
+        dy = y - vCam.y
+        dz = z - vCam.z
+        d = dx*dx + dy*dy + dz*dz
+        if d >= vSndMaxZSqr  return
+        if d > 0
+            d = sqr(d)
+            k = 1.0/d
+            dx = dx*k
+            dy = dy*k
+            dz = dz*k
+            d = (vSndMaxZ - min(vSndMaxZ, d))/vSndMaxZ
+            pan = (edx*dx + edz*dz)*0.9
+        else
+            d = 1
+            pan = 0
+        endif
+        play sound snd, vol*d, pan
+    endif
+endfunc

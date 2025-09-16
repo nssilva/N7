@@ -1,0 +1,21 @@
+' randomize, rnd
+' --------------
+
+' Use 'randomize x' to set the seed value used by the random number generator to x. Usually you
+' want to do this once at the beginning of your code to prevent getting the exact same sequence of
+' random numbers every time your program runs. You can use the result of the 'time' function (number
+' of seconds since epoch) as seed.
+randomize time()
+
+' The 'rnd' function comes in a couple of versions.
+
+' 'rnd(n)' returns a number in the range [0..n - 1].
+pln "rnd(10) = " + rnd(10)
+
+' 'rnd(n, m)' returns a number in the range [n..m].
+pln "rnd(10, 20) = " + rnd(10, 20)
+
+' 'rnd()' returns a number in the range [0..1].
+pln "rnd() = " + rnd()
+
+system "pause"

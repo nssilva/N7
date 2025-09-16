@@ -1,0 +1,9 @@
+' round
+' ----
+
+' 'round(x)' returns the integer value that is closest to x.
+pln "round(5.27) = " + round(5.27)
+pln "round(5) = " + round(5)
+pln "round(4.68) = " + round(4.68)
+
+system "pause"

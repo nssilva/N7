@@ -1,0 +1,367 @@
+' Breakthrough - step 5
+' ---------------------
+' The more advanced powerups.
+'
+' Graphics by pudman: https://opengameart.org/content/arkanoid-assets
+
+
+include "tilemap.n7"
+
+#win32
+
+' Powerup types.
+constant BIG_PADDLE = 1, SMALL_PADDLE = 2, MULTI_BALL = 3, CANNONS = 4
+
+' An array of power up sprites, spawned in the BreakBrick function.
+visible vPowerups = []
+
+' Images.
+visible vBallImage
+visible vBulletImage
+visible vPowerupBigPaddleImage, vPowerupSmallPaddleImage, vPowerupMultiBallImage,
+        vPowerupCannonsImage
+
+' Create a window with a weird size.
+set window "Breakthrough", 737, 737*9/16
+set redraw off
+
+' Load images.
+smallPaddleImage = loadimage("assets/small_paddle.png")
+mediumPaddleImage = loadimage("assets/paddle.png")
+largePaddleImage = loadimage("assets/large_paddle.png")
+cannonImage = loadimage("assets/cannon.png")
+
+vBallImage = loadimage("assets/ball.png")
+vBulletImage = loadimage("assets/bullet.png")
+vPowerupBigPaddleImage = loadimage("assets/powerup_big.png")
+vPowerupSmallPaddleImage = loadimage("assets/powerup_small.png")
+vPowerupMultiBallImage = loadimage("assets/powerup_multiball.png")
+vPowerupCannonsImage = loadimage("assets/powerup_cannons.png")
+
+' Create and set a font.
+set font createfont("arial", 28, true, false, false, true)
+
+' Load a map created with the tilemap editor.
+if not TM_LoadMap("assets/level1.txt")  end
+
+' Tell the library that the bottom of the map should not be treated as an obstacle. When the ball
+' leaves the screen, we exit the game loop (for now).
+TM_SetBorder(true, true, true, false)
+
+' Set up the rendering view for the library. Usually this is what you want, the top left corner of
+' the window (0, 0) and the same width and height.
+TM_SetView(0, 0, width(primary), height(primary))
+
+' Start with medium paddle.
+paddleImage = mediumPaddleImage
+
+' Y-coordinate of paddle.
+paddleY = height(primary) - height(paddleImage)*3
+
+' Create a ball sprite.
+balls = []
+balls[0] = Ball((width(primary) - width(vBallImage))/2, paddleY - height(vBallImage), 330, 4)
+
+' An empty list for bullets.
+bullets = []
+' Number of bullets left to shoot.
+bulletsLeft = 0 
+
+' A list where we put items that should be removed from other lists.
+remove = []
+
+' Loop until escape key is pressed or all balls are lost.
+while not (keydown(KEY_ESCAPE, true) or sizeof(balls) = 0)
+    ' Update center x coordinate of paddle.
+    paddleX = mousex() - width(paddleImage)/2
+    
+    ' Shoot?
+    if bulletsLeft and mousebutton(0, true)
+        ' Add one bullet at the left cannon and one at the right.
+        bullets[sizeof(bullets)] = Bullet(paddleX + 24, paddleY - height(cannonImage))
+        bullets[sizeof(bullets)] = Bullet(paddleX + width(paddleImage) - 24,
+                paddleY - height(cannonImage))
+        bulletsLeft = bulletsLeft - 1
+    endif
+
+    ' Update all balls.
+    clear remove
+    foreach ball in balls
+        if ball.Update()
+            ' Check if ball and paddle overlap if ball is on its way down.
+            if ball.dy > 0 and TM_ImagesCollide(ball.img, ball.x, ball.y,
+                    paddleImage, paddleX, paddleY)
+                ' Calculate a new direction based on the horizontal distance betwen the ball and the
+                ' centre of the paddle.
+                dx = ball.x + ball.w/2 - (paddleX + width(paddleImage)/2)
+                ' Divide with half the width of the paddle + the width of the ball to get a dx value
+                ' in the range [-1..1].
+                dx = 2*dx/(width(paddleImage) + width(vBallImage))
+                ' You can play with the dy value set here, to modify the allowed "slope" of the new
+                ' direction.
+                dy = -0.5
+                ' Normalize the vector (dx dy) to the size 1 - the speed is controlled by the spd
+                ' field of the ball.
+                k = 1/sqr(dx*dx + dy*dy)
+                ball.dx = k*dx
+                ball.dy = k*dy
+            endif
+        else
+            remove[sizeof(remove)] = ball
+        endif
+    next
+    ' Remove lost balls.
+    foreach ball in remove  free val balls, ball
+
+    ' Update powerups.
+    clear remove
+    foreach p in vPowerups
+        if p.Update()
+            if TM_ImagesCollide(p.img, p.x, p.y, paddleImage, paddleX, paddleY)
+                ' Check type.
+                select p.type
+                    case BIG_PADDLE
+                        ' Change paddle image.
+                        if paddleImage = smallPaddleImage  paddleImage = mediumPaddleImage
+                        else paddleImage = largePaddleImage
+                        ' Update position
+                        paddleX = mousex() - width(paddleImage)/2
+                    case SMALL_PADDLE
+                        if paddleImage = largePaddleImage  paddleImage = mediumPaddleImage
+                        else paddleImage = smallPaddleImage
+                        paddleX = mousex() - width(paddleImage)/2
+                    case MULTI_BALL
+                        ' Spawn one new ball for each existing one.
+                        foreach ball in balls
+                            a = deg(atan2(ball.dy, ball.dx))
+                            ball.dx = cos(rad(a - 22.5))
+                            ball.dy = sin(rad(a - 22.5))
+                            balls[sizeof(balls)] = Ball(ball.x, ball.y, a + 22.5, ball.spd)
+                        next
+                    case CANNONS
+                        ' Increase bullets left.
+                        bulletsLeft = bulletsLeft + 5
+                endsel
+                remove[sizeof(remove)] = p
+            endif
+        else
+            remove[sizeof(remove)] = p
+        endif
+    next
+    ' Remove powerups that have been put in the remove list.
+    foreach p in remove  free val vPowerups, p 
+
+    ' Update bullets.
+    clear remove
+    foreach b in bullets  if not b.Update()  remove[sizeof(remove)] = b
+    ' Remove bullets that has hit something.
+    foreach b in remove  free val bullets, b
+
+    ' Clear screen.
+    set color 95, 95, 95
+    cls
+
+    ' Render the tilemap.
+    TM_Render()
+
+    ' Draw paddle.
+    draw image paddleImage, paddleX, paddleY
+    
+    ' Draw bullets.
+    foreach b in bullets  b.Draw()
+    
+    ' Draw cannon if the player has any bullets left.
+    if bulletsLeft
+        draw image cannonImage, paddleX + 24 - width(cannonImage)/2, paddleY - height(cannonImage)
+        draw image cannonImage, paddleX + width(paddleImage) - 24 - width(cannonImage)/2,
+                paddleY - height(cannonImage)
+    endif
+
+    ' Draw powerups.
+    foreach p in vPowerups  p.Draw()
+
+    ' Draw balls.
+    foreach ball in balls  ball.Draw()
+
+    ' Write a warning.
+    set caret width(primary)/2, height(primary) - fheight()*1.5
+    center "If you drop the ball, it's all over ..."
+
+    ' Update window content.
+    redraw
+
+    fwait 60
+wend
+
+' Ball
+' ----
+' Return a new ball.
+function Ball(x, y, angle, speed)
+    return [
+        ' Image.
+        img: vBallImage,
+        ' Position.
+        x: x, y: y,
+        ' Size.
+        w: width(vBallImage), h: height(vBallImage),
+        ' Direction.
+        dx: cos(rad(angle)), dy: sin(rad(angle)),
+        ' Speed.
+        spd: speed,
+        
+        ' Update, return true if still alive.
+        Update: function()
+            ' Move.
+            TM_MoveSprite(this, this.dx*this.spd, this.dy*this.spd)
+            ' Bounce and break bricks on collision.
+            if TM_CollisionUp()
+                ' Call BreakBrick (defined below the game loop) to check if there's a brick at the
+                ' top left and top right corners of the ball.
+                BreakBrick(this.x, this.y + this.dy)
+                BreakBrick(this.x + this.w, this.y + this.dy)
+                ' Invert y direction.
+                this.dy = -this.dy
+            elseif TM_CollisionDown()
+                ' Break bricks bottom left/right.
+                BreakBrick(this.x, this.y + this.h + this.dy)
+                BreakBrick(this.x + this.w, this.y + this.h + this.dy)
+                this.dy = -this.dy
+            endif
+            if TM_CollisionLeft()
+                ' Break bricks top/bottom left.
+                BreakBrick(this.x + this.dx, this.y)
+                BreakBrick(this.x + this.dx, this.y + this.h)
+                this.dx = -this.dx
+            elseif TM_CollisionRight()
+                ' Break bricks top/bottom right.
+                BreakBrick(this.x + this.w + this.dx, this.y)
+                BreakBrick(this.x + this.w + this.dx, this.y + this.h)
+                this.dx = -this.dx
+            endif
+            
+            return this.y < height(primary)   
+        endfunc,
+        
+        ' Draw.
+        Draw: function()
+            draw image this.img, this.x, this.y
+        endfunc]
+endfunc
+
+' Bullet
+' ------
+' Return a new bullet.
+function Bullet(x, y)
+    return [
+        ' Image.
+        img: vBulletImage,
+        ' Position.
+        x: x - width(vBulletImage)/2, y: y,
+        ' Size.
+        w: width(vBulletImage), h: height(vBulletImage),
+        
+        ' Update, return true if still alive.
+        Update: function()
+            ' Move.
+            TM_MoveSprite(this, 0, -8)
+            if TM_CollisionUp()
+                ' Break bricks.
+                BreakBrick(this.x, this.y - 1)
+                BreakBrick(this.x + this.w, this.y - 1)
+                return false
+            else
+                return true
+            endif
+        endfunc,
+        
+        ' Draw.
+        Draw: function()
+            draw image this.img, this.x, this.y
+        endfunc]
+endfunc
+
+' BreakBrick
+' ----------
+' Remove any brick at the specified position.
+function BreakBrick(x, y)
+    ' Convert to map (tile) coordinates.
+    x = TM_ToMapX(x)
+    y = TM_ToMapY(y)
+    ' Remove cel (set to -1) if there's a brick.
+    if TM_GetCel(x, y) >= 0 TM_SetCel(x, y, -1)
+
+    ' Check if there's a game flag set for this brick.
+    flag = TM_GetFlag(x, y)
+    if flag
+        TM_SetFlag(x, y, unset)
+        AddPowerup(flag, x, y)
+    endif
+endfunc
+
+' AddPowerup
+' ----------
+' Add power up based on the flag.
+function AddPowerup(flag, tileX, tileY)
+    ' You can see that game flags are set for some tiles in tilemap editor.
+    select flag
+        case "big"
+            type = BIG_PADDLE
+            img = vPowerupBigPaddleImage
+        case "small"
+            type = SMALL_PADDLE
+            img = vPowerupSmallPaddleImage
+        case "ball"
+            type = MULTI_BALL
+            img = vPowerupMultiBallImage
+        case "cannons"
+            type = CANNONS
+            img = vPowerupCannonsImage
+        ' Will add more later.
+        default
+            type = 0
+    endsel
+
+    if type
+        ' Angle, for the powerup's direction.
+        a = rad(225 + rnd(90))
+        ' Put at the end of the array.
+        vPowerups[sizeof(vPowerups)] = [
+            ' Type and image.
+            type: type,
+            img: img,
+            ' Position.
+            x: (tileX + 0.5)*TM_TileWidth() - width(img)/2,
+            y: (tileY + 0.5)*TM_TileHeight() - height(img)/2,
+            ' Size.
+            w: width(img), h: height(img),
+            ' X and y speed.
+            dx: cos(a)*2, dy: sin(a)*2,
+
+            ' Update, return true if still alive.
+            Update: function()
+                ' Move and apply gravity.
+                this.x = this.x + this.dx
+                this.y = this.y + this.dy
+                this.dy = min(this.dy + 0.1, 4.0)
+                ' Still within screen?
+                if this.y < height(primary)
+                    ' Bounce on screen edges.
+                    if this.x < 0
+                        this.x = 0
+                        this.dx = -this.dx*0.5
+                    elseif this.x + this.w > width(primary)
+                        this.x = width(primary) - this.w
+                        this.dx = -this.dx*0.5
+                    endif
+                    return true
+                else
+                    return false
+                endif
+            endfunc,
+            
+            ' Draw
+            Draw: function()
+                draw image this.img, this.x, this.y
+            endfunc]
+    endif
+endfunc

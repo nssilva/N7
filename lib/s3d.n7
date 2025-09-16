@@ -1,0 +1,493 @@
+' s3d.n7
+' ------
+' Most functions are implemented in n7/source/s3d.c.
+'
+' 20250913: Added S3D_Color3, S3D_Color4, S3D_Additive, S3D_Vertex3 and S3D_Vertex5. S3D_Color and
+'           S3D_Vertex still works as before.
+
+include "file.n7"
+
+' Generic none.
+constant S3D_NONE = 0
+
+' Perspective correction.
+constant S3D_NORMAL = 1
+constant S3D_FAST = 2
+constant S3D_NICE = 3
+
+' Primitive types.
+constant S3D_TRIANGLES = 1
+constant S3D_QUADS = 2
+
+' Sorting.
+constant S3D_BACK_TO_FRONT = 1
+constant S3D_FRONT_TO_BACK = 2
+
+' Depth buffer modes.
+constant S3D_Z_BUFFER_READ = 1
+constant S3D_Z_BUFFER_WRITE = 2
+constant S3D_Z_BUFFER = 3
+
+' C functions.
+visible cSetView =              LOAD_FUNCTION("s3d_set_view")
+visible cSetPersp =             LOAD_FUNCTION("s3d_set_perspective_correction")
+visible cSetDepthBuffer =       LOAD_FUNCTION("s3d_set_depth_buffer")
+visible cSetSorting =           LOAD_FUNCTION("s3d_set_sorting")
+visible cClear =                LOAD_FUNCTION("s3d_clear")
+visible cClearTransformation =  LOAD_FUNCTION("s3d_clear_transformation")
+visible cClearDepthBuffer =     LOAD_FUNCTION("s3d_clear_depth_buffer")
+visible cTranslate =            LOAD_FUNCTION("s3d_translate")
+visible cRotateX =              LOAD_FUNCTION("s3d_rotate_x")
+visible cRotateY =              LOAD_FUNCTION("s3d_rotate_y")
+visible cRotateZ =              LOAD_FUNCTION("s3d_rotate_z")
+visible cScale =                LOAD_FUNCTION("s3d_scale")
+visible cPush =                 LOAD_FUNCTION("s3d_push")
+visible cPop =                  LOAD_FUNCTION("s3d_pop")
+visible cBegin =                LOAD_FUNCTION("s3d_begin")
+visible cEnd =                  LOAD_FUNCTION("s3d_end")
+visible cTexture =              LOAD_FUNCTION("s3d_texture")
+visible cColor =                LOAD_FUNCTION("s3d_color")
+visible cAdditive =             LOAD_FUNCTION("s3d_additive")
+visible cVertex =               LOAD_FUNCTION("s3d_vertex")
+visible cRender =               LOAD_FUNCTION("s3d_render")
+visible cCreateMesh =           LOAD_FUNCTION("s3d_create_mesh")
+visible cAddMeshFrame =         LOAD_FUNCTION("s3d_add_mesh_frame")
+visible cBeginMesh =            LOAD_FUNCTION("s3d_begin_mesh")
+visible cEndMesh =              LOAD_FUNCTION("s3d_end_mesh")
+visible cFreeMesh =             LOAD_FUNCTION("s3d_free_mesh")
+visible cMesh =                 LOAD_FUNCTION("s3d_mesh")
+visible cBlendMesh =            LOAD_FUNCTION("s3d_blend_mesh")
+visible cRenderFog =            LOAD_FUNCTION("s3d_render_fog")
+visible cTransformVector =      LOAD_FUNCTION("s3d_transform_vector")
+visible cProjectVector =        LOAD_FUNCTION("s3d_project_vector")
+visible cProjectFace =          LOAD_FUNCTION("s3d_project_face");
+
+' A table to keep track of meshes and their textures.
+visible vMeshes = []
+
+' S3D_SetView
+' -----------
+function S3D_SetView(img, fov, zmin, zmax)
+    CALL cSetView, img, fov, zmin, zmax
+endfunc
+
+' S3D_SetPerspectiveCorrection
+' ----------------------------
+function S3D_SetPerspectiveCorrection(mode)
+    if mode = S3D_NONE  CALL cSetPersp, 1
+    elseif mode = S3D_FAST  CALL cSetPersp, 16
+    elseif mode = S3D_NORMAL  CALL cSetPersp, 32
+    elseif mode = S3D_NICE  CALL cSetPersp, 64
+endfunc
+
+' S3D_SetDepthBuffer
+' ------------------
+function S3D_SetDepthBuffer(value)
+    CALL cSetDepthBuffer, value
+endfunc
+
+' S3D_SetSorting
+' --------------
+function S3D_SetSorting(value)
+    CALL cSetSorting
+endfunc
+
+' S3D_Clear
+' ---------
+function S3D_Clear()
+    CALL cClear
+endfunc
+
+' S3D_ClearTransformation
+' -----------------------
+function S3D_ClearTransformation()
+    CALL cClearTransformation
+endfunc
+
+' S3D_ClearDepthBuffer
+' --------------------
+function S3D_ClearDepthBuffer()
+    CALL cClearDepthBuffer
+endfunc
+
+' S3D_Translate
+' -------------    
+function S3D_Translate(x, y, z)
+    CALL cTranslate, x, y, z
+endfunc
+
+' S3D_RotateX
+' -----------
+function S3D_RotateX(a)
+    CALL cRotateX, a
+endfunc 
+
+' S3D_RotateY
+' -----------
+function S3D_RotateY(a)
+    CALL cRotateY, a
+endfunc
+
+' S3D_RotateZ
+' -----------
+function S3D_RotateZ(a)
+    CALL cRotateZ, a
+endfunc
+
+' S3D_Scale
+' ---------
+function S3D_Scale(x, y, z)
+    CALL cScale, x, y, z
+endfunc
+
+' S3D_Push
+' --------    
+function S3D_Push()
+    CALL cPush
+endfunc
+
+' S3D_Pop
+' -------   
+function S3D_Pop()
+    CALL cPop
+endfunc
+
+' S3D_Begin
+' ---------
+function S3D_Begin(type)
+    CALL cBegin, type
+endfunc
+
+' S3D_End
+' -------
+function S3D_End()
+    CALL cEnd
+endfunc
+
+' S3D_Texture
+' -----------
+function S3D_Texture(img)
+    CALL cTexture, img
+endfunc
+
+' S3D_Color
+' ---------
+function S3D_Color(r, g, b)
+    CALL cColor, r, g, b
+endfunc
+
+' S3D_Color3
+' ----------
+function S3D_Color3(r, g, b)
+    CALL cColor, r, g, b
+endfunc
+
+' S3D_Color4
+' ----------
+function S3D_Color4(r, g, b, a)
+    CALL cColor, r, g, b, a
+endfunc
+
+' S3D_Additive
+' ------------
+function S3D_Additive(value)
+    CALL cAdditive, value
+endfunc
+
+' S3D_Vertex
+' ----------
+function S3D_Vertex(x, y, z, tu, tv)
+    CALL cVertex, x, y, z, tu, tv
+endfunc
+
+' S3D_Vertex3
+' -----------
+function S3D_Vertex3(x, y, z)
+    CALL cVertex, x, y, z, 0, 0
+endfunc
+
+' S3D_Vertex5
+' -----------
+function S3D_Vertex5(x, y, z, tu, tv)
+    CALL cVertex, x, y, z, tu, tv
+endfunc
+
+' S3D_Render
+' ----------
+function S3D_Render()
+    CALL cRender
+endfunc
+
+' S3D_RenderFog
+' -------------
+function S3D_RenderFog(r, g, b, retro)
+    CALL cRenderFog, r, g, b, retro
+endfunc
+
+' S3D_CreateMesh
+' --------------
+function S3D_CreateMesh(vertexList, uvList, materialList, faceList)
+    return CALL(cCreateMesh, vertexList, uvList, materialList, faceList)
+endfunc
+
+' S3D_BeginMesh
+' -------------
+function S3D_BeginMesh()
+    return CALL(cBeginMesh)
+endfunc
+
+' S3D_EndMesh
+' -----------
+function S3D_EndMesh()
+    CALL cEndMesh
+endfunc
+
+' S3D_FreeMesh
+' ------------
+function S3D_FreeMesh(id)
+    CALL cFreeMesh, id
+    if key(vMeshes, id)
+        foreach img in vMeshes[id]  free image img
+        free vMeshes[id]
+    endif
+endfunc
+
+' S3D_Mesh
+' --------
+function S3D_Mesh(id, frame)
+    CALL cMesh, id, frame
+endfunc
+
+' S3D_BlendMesh
+' -------------
+function S3D_BlendMesh(id, frame0, frame1, blend)
+    CALL cBlendMesh, id, frame0, frame1, blend
+endfunc
+
+' S3D_LoadMesh
+' ------------
+function S3D_LoadMesh(filename, sx, sy, sz, invertFaces)
+    type = lower(right(filename, len(filename) - 4))
+    select type
+        case ".obj"  return S3D_LoadOBJ(filename, sx, sy, sz, invertFaces)
+        default
+            return unset
+    endsel
+endfunc
+
+' S3D_LoadMeshFrame
+' ----------------
+function S3D_LoadMeshFrame(mesh, filename, sx, sy, sz)
+    if not typeof(mesh)  return false
+    
+    type = lower(right(filename, len(filename) - 4))
+    select type
+        case ".obj"  verts = S3D_LoadOBJVertices(filename, sx, sy, sz)
+        default
+            verts = unset
+    endsel
+    if verts
+        ' Will cause runtime error on failure, no worries.
+        CALL cAddMeshFrame, mesh, verts
+        return true
+    else
+        return false
+    endif    
+endfunc
+
+' S3D_AddMeshFrame
+' ----------------
+function S3D_AddMeshFrame(mesh, vertices)
+    CALL cAddMeshFrame, mesh, vertices
+endfunc
+
+' S3D_LoadOBJ
+' -----------
+function S3D_LoadOBJ(filename, sx, sy, sz, invertFaces)
+    f = openfile(filename)
+    if file(f)
+        mtlibs = []
+        verts = []
+        uvs = []
+        faces = []
+        curMat = unset
+        ln = frln(f)
+        while typeof(ln)
+            ln = replace(ln, chr(9), " ")
+            ' Remove comments.
+            i = instr(ln, "#")
+            if i >= 0  ln = left(ln, i)
+            data = split(ln, " ")
+            if sizeof(data)
+                ' Vertex coordinates?
+                if data[0] = "v"
+                    vert = [float(data[1])*sx, float(data[2])*sy, float(data[3])*sz]
+                    verts[sizeof(verts)] = vert
+                ' Texture coordinates?
+                elseif data[0] = "vt"
+                    free key data, 0
+                    if sizeof(data) >= 2
+                        uvs[sizeof(uvs)] = [
+                                min(max(float(data[0]), 0), 1),
+                                min(max(1 - float(data[1]), 0), 1)]
+                    else
+                        uvs[sizeof(uvs)] = [min(max(float(data[0]), 0), 1), 0]
+                    endif
+                ' Material file?
+                elseif data[0] = "mtllib"
+                    mtlibs[sizeof(mtlibs)] = data[1]
+                ' Material?
+                elseif data[0] = "usemtl"
+                    curMat = data[1]
+                ' Face?
+                elseif data[0] = "f"
+                    free key data, 0
+                    face = []
+                    faces[sizeof(faces)] = face
+                    n = CharCount(data[0], "/") + 1 ' Data per point, vertex/uv/norm
+                    pointCount = sizeof(data)
+                    assert pointCount >= 3 and pointCount <= 4, "S3D_LoadMesh: Only triangles and quads are supported"
+                    face[pointCount*2] = curMat
+                    for i = 0 to pointCount - 1 ' For each point
+                        if invertFaces  s = split(data[pointCount - 1 - i], "/")
+                        else  s = split(data[i], "/")
+                        if n = 3
+                            if sizeof(s) = 3
+                                face[i] = int(s[0]) - 1
+                                face[i + pointCount] = int(s[1]) - 1
+                            elseif sizeof(s) = 2
+                                face[i] = int(s[0]) - 1
+                                face[i + pointCount] = unset
+                            else
+                                face[i] = int(s[0]) - 1
+                                face[i + pointCount] = unset
+                            endif
+                        elseif n = 2
+                            if sizeof(s) = 2
+                                face[i] = int(s[0]) - 1
+                                face[i + pointCount] = int(s[1]) - 1
+                            else
+                                face[i] = int(s[0]) - 1
+                                face[i + pointCount] = unset
+                            endif
+                        else
+                            face[i] = int(s[0]) - 1
+                            face[i + pointCount] = unset
+                        endif
+                    next
+                endif    
+            endif
+            ln = frln(f)
+        wend
+        if sizeof(uvs) = 0  uvs[0] = [0, 0]
+        free file f
+        
+        ' Load materials from mtlibs.
+        if sizeof(mtlibs)
+            path = GetPath(filename)
+            mats = []
+            foreach fn in mtlibs
+                f = openfile(GetPathCombined(path, fn))
+                assert file(f), "S3D_LoadMesh: Could not load mtlib " + fn
+                ln = frln(f)
+                mat = unset
+                while typeof(ln)
+                    ln = replace(ln, chr(9), " ")
+                    ' Remove comments.
+                    i = instr(ln, "#")
+                    if i >= 0  ln = left(ln, i)
+                    data = split(ln, " ")
+                    if sizeof(data)
+                        ' New material?
+                        if data[0] = "newmtl"
+                            mat = [unset, unset, data[1]]
+                            mats[sizeof(mats)] = mat
+                        elseif mat
+                            ' Color.
+                            if data[0] = "Kd"
+                                mat[0] = [float(data[1])*255, float(data[2])*255, float(data[3])*255]
+                            elseif data[0] = "map_Kd"
+                                ' Needs to be stored so that it's deleted in S3D_FreeMesh.
+                                mat[1] = loadimage(GetPathCombined(path, data[1]))
+                                assert image(mat[1]), "S3D_LoadMesh: Could not load texture " + data[1]
+                            endif
+                        endif
+                    endif
+                    ln = frln(f)
+                wend
+                free file f
+            next
+        else
+            mats = unset
+        endif
+        
+        for i = 0 to sizeof(faces) - 1
+            face = faces[i]
+            mat = face[sizeof(face) - 1]
+            if typeof(mat)
+                for j = 0 to sizeof(mats) - 1  if mats[j][2] = mat break
+                assert j < sizeof(mats), "S3D_LoadMesh: Unknown material " + mat
+                face[sizeof(face) - 1] = j
+            endif
+        next
+        mesh = S3D_CreateMesh(verts, uvs, mats, faces)
+        if mesh
+            if typeof(mats)
+                tlist = []
+                foreach m in mats  if typeof(m[1]) tlist[sizeof(tlist)] = m[1]
+                vMeshes[mesh] = tlist
+            endif
+        endif
+        return mesh
+    else
+        return unset
+    endif
+    
+    function CharCount(txt, c)
+        count = 0
+        if len(txt)  for i = 0 to len(txt) - 1  count = count + (mid(txt, i) = c)
+        return count
+    endfunc
+endfunc
+
+' S3D_LoadOBJVertices
+' -------------------
+function S3D_LoadOBJVertices(filename, sx, sy, sz)
+    f = openfile(filename)
+    if file(f)
+        verts = []
+        ln = frln(f)
+        while typeof(ln)
+            ln = replace(ln, chr(9), " ")
+            i = instr(ln, "#")
+            if i >= 0  ln = left(ln, i)
+            data = split(ln, " ")
+            if sizeof(data) and data[0] = "v"
+                verts[sizeof(verts)] = [float(data[1])*sx, float(data[2])*sy, float(data[3])*sz]
+            endif
+            ln = frln(f)
+        wend
+        free file f
+        return verts
+    else
+        return unset
+    endif
+endfunc
+
+' S3D_TransformVector
+' -------------------
+function S3D_TransformVector(dst, src)
+    return CALL(cTransformVector, dst, src)
+endfunc
+
+' S3D_ProjectVector
+' -----------------
+function S3D_ProjectVector(dst, src)
+    return CALL(cProjectVector, dst, src)
+endfunc
+
+' S3D_ProjectFace
+' ---------------
+function S3D_ProjectFace(dst, src)
+    return CALL(cProjectFace, dst, src)
+endfunc

@@ -1,0 +1,86 @@
+' sfx_rnd_sound_generator
+' -----------------------
+' By Marcus.
+
+
+#win32
+' This programs eats and spits lots of memory, so I'm giving the garbage collector some bigger
+' buckets to play with.
+#mem32000000
+
+include "sfx.n7"
+
+set window "Sound data", 640, 480
+set redraw off
+
+set caret 320, 400
+center "RETURN - Generate and play a random sound effect"
+center "SPACE - Play the last generated sound effect"
+center "S - Save sound as WAV file"
+
+sfx = SFX()
+snd = unset
+
+randomize time()
+snd = unset
+while not keydown(KEY_ESCAPE, true)
+    if keydown(KEY_RETURN, true)
+        ' Generate random sound.
+        freqPointCount = 2 + rnd(3)
+        volPointCount = 2 + rnd(3)
+        freq = []
+        for i = 0 to freqPointCount - 1  freq[i] = rnd()*1500
+        vol = []
+        for i = 0 to volPointCount - 2   vol[i] = rnd()
+        vol[volPointCount - 1] = 0
+        dur = 0.05 + rnd()*0.75
+        sfx.SetEcho(rnd(3), 0.1*dur + rnd()*dur*0.8, rnd()*0.5, 0)
+        type = rnd(3)
+        select type
+            ' SineWaveData, SquareWaveData and NoiseData works like SineWave, SquareWave and Noise
+            ' but returns the sound data instead of actually creating a sound effect. The sound data
+            ' is returned as an array containing two arrays, where the first one contains the data
+            ' for the left speaker and the second one the data for the right speaker.
+            case 0  soundData = sfx.SineWaveData(dur, freq, vol)
+            case 1  soundData = sfx.SquareWaveData(dur, freq, vol)
+            case 2  soundData = sfx.NoiseData(dur, freq, vol)
+        endsel
+        if typeof(snd)  free sound snd
+        ' Create a sound effect from the data with 'createsound'.
+        snd = createsound(soundData[0], soundData[1], sfx.GetSampleRate())
+        ' Display sound data.
+        set color 0, 0, 0
+        draw rect 0, 0, 640, 400, true
+        delta = sizeof(soundData[0])/640
+        index = 0
+        set color 0, 200, 0
+        draw pixel 0, 240 + soundData[0][0]*100
+        for i = 1 to 639
+            draw line to i, 240 + soundData[0][index]*100
+            index = index + delta
+        next
+        set color 255, 255, 255, 128
+        draw line 0, 240, 640, 240
+        play sound snd
+    ' Already have a sound effect?
+    elseif typeof(snd)
+        ' Play sound?
+        if keydown(KEY_SPACE, true)
+            play sound snd
+        ' Save sound?
+        elseif keydown(KEY_S, true)
+            filename = savefiledialog("wav")
+            if filename
+                if instr(filename, ".wav") < 0  filename = filename + ".wav"
+                select type
+                    case 0  sfx.SaveSineWave(filename, dur, freq, vol)
+                    case 1  sfx.SaveSquareWave(filename, dur, freq, vol)
+                    case 2  sfx.SaveNoise(filename, dur, freq, vol)
+                endsel
+            endif
+        endif
+    endif
+    
+    redraw
+    fwait 60
+wend

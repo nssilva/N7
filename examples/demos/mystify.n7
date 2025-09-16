@@ -1,0 +1,78 @@
+' By johnno56: https://naalaa.com/forum/thread-202.html
+
+set window "Mystify '95 Style", 640, 480, false
+set redraw off
+
+#win32
+
+randomize clock()
+
+visible black, yellow, cyan
+visible x1, y1, x2, y2
+visible xv1, yv1, xv2, yv2
+ 
+visible x1b, y1b, x2b, y2b
+visible xv1b, yv1b, xv2b, yv2b
+
+black = [0, 0, 0]
+yellow = [255, 255, 0]
+cyan = [0, 255, 255]
+
+x1 = rnd(width(primary))
+y1 = rnd(height(primary))
+x2 = rnd(width(primary))
+y2 = rnd(height(primary))
+
+x1b = rnd(width(primary))
+y1b = rnd(height(primary))
+x2b = rnd(width(primary))
+y2b = rnd(height(primary))
+
+xv1 = 5 - rnd(10)
+yv1 = 5 - rnd(10)
+xv2 = 5 - rnd(10)
+yv2 = 5 - rnd(10)
+ 
+xv1b = 5 - rnd(10)
+yv1b = 5 - rnd(10)
+xv2b = 5 - rnd(10)
+yv2b = 5 - rnd(10)
+
+'   -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+function update()
+    set color 0, 0, 0, 5
+    draw rect 0, 0, width(primary), height(primary), true
+    
+    x1 = x1 + xv1
+    y1 = y1 + yv1
+    x2 = x2 + xv2
+    y2 = y2 + yv2
+    
+    x1b = x1b + xv1b
+    y1b = y1b + yv1b
+    x2b = x2b + xv2b
+    y2b = y2b + yv2b
+
+    if x1 < 0 or x1 > width(primary) xv1 = xv1 * -1
+    if y1 < 0 or y1 > height(primary) yv1 = yv1 * -1
+    if x2 < 0 or x2 > width(primary) xv2 = xv2 * -1
+    if y2 < 0 or y2 > height(primary) yv2 = yv2 * -1
+
+    if x1b < 0 or x1b > width(primary) xv1b = xv1b * -1
+    if y1b < 0 or y1b > height(primary) yv1b = yv1b * -1
+    if x2b < 0 or x2b > width(primary) xv2b = xv2b * -1
+    if y2b < 0 or y2b > height(primary) yv2b = yv2b * -1
+
+    set color cyan
+    draw line x1, y1, x2, y2    
+
+    set color yellow
+    draw line x1b, y1b, x2b, y2b    
+endfunc
+'   -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+do
+    update()
+    redraw
+    fwait 30
+until keydown(KEY_ESCAPE, true)

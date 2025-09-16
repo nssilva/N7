@@ -1,0 +1,18 @@
+' end
+' ---
+
+' Loop until the user enters the magic word.
+do
+    write "Enter the magic word to leave this program: "
+    a = rln()
+    if a = "the magic word"
+        ' 'end' terminates the program. Note that the program is also terminated if there are no
+        ' more statements to be executed.
+        end
+    else
+        pln "That's not what I asked for!"
+        pln
+    endif
+loop
+
+wln "This line will never be written :("

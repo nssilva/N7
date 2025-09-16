@@ -1,0 +1,51 @@
+' create file, createfile, wln file, write file, free file
+' --------------------------------------------------------
+
+' 'create file file_id, filename[, binary = false]' creates file filename for writing through
+' identifier file_id. 'createfile(filename[, binary = false])' does the same thing as the command
+' 'create file' but auto-generates and returns an identifier.  The 'create file' command is for
+' backward compability with n6, the preferred way of creating a file for writing is through the
+' 'createfile' function. If binary is set to true, the file is created in binary mode, in which case
+' writing is handled a bit differently.
+f = createfile("assets/my_file.txt")
+
+' 'file(file_id)' returns true if file file_id has been opened.
+if not file(f)
+    pln "Could not create file!"
+    system "pause"
+    end
+endif
+
+' 'wln file file_id, s' write the string s followed by a line break to file file_id.
+wln file f, "a line of text"
+
+' 'write file file_id, s' write string s to file file_id.
+write file f, "a fan"
+write file f, "tastic number is " + 42
+
+' 'write file file_id, number[, size[, signed = true]]' writes a number to a file created in
+' binary mode. size (in bytes) can be 8, 16 or 32 for integer values, and in that case signed
+' decides whether to write a signed or unsigned value. If size is set to 64, a
+' double (floating point) value is written in case signed is true and a 32 bit floating point
+' value is written if signed is false (makes perfect sense).
+
+' 'free file file_id' closes file file_id.
+free file f
+
+' Read the content of the file we just created, one line at a time.
+f = openfile("assets/my_file.txt")
+if not file(f)
+    pln "Could not open file!"
+    system "pause"
+    end
+endif
+
+s = frln(f)
+while s
+    wln s
+    s = frln(f)
+wend
+
+free file f
+
+system "pause"

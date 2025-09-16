@@ -1,0 +1,13 @@
+' pow
+' ---
+
+' 'pow(x, y)' returns x raised to the power of y.
+pln "pow(2, 8) = " + pow(2, 8)
+pln "pow(10, -3) = " + pow(10, -3)
+
+' You can use the ^ operator instead of 'pow'.
+pln "5^3 = " + 5^3
+pln "10^-2 = " + 10^-2
+
+
+system "pause"

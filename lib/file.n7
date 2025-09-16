@@ -1,0 +1,131 @@
+' File
+' ----
+' Work in progress ...
+
+
+' GetPath
+' -------
+' Returns the path part of filename.
+function GetPath(filename)
+    if len(filename)
+        for i = len(filename) - 1 to 0  if mid(filename, i) = "\" or mid(filename, i) = "/"  break
+        return left(filename, i)
+    else
+        return unset
+    endif
+endfunc
+
+' GetFilename
+' -----------
+' Returns filename part of path.
+function GetFilename(path, withExtension)
+    if len(path)
+        for i = len(path) - 1 to 0  if mid(path, i) = "\" or mid(path, i) = "/"  break
+        filename = right(path, i + 1)
+        if len(filename) and not withExtension
+            for i = len(filename) - 1 to 0  if mid(filename, i) = "." break
+            if i >= 0  filename = left(filename, i)
+        endif
+        return filename
+    else
+        return unset
+    endif
+endfunc
+
+' GetPathCombined
+' ---------------
+' Returns path1 combined with path2.
+function GetPathCombined(path1, path2)
+    if path1  return path1 + "\" + path2
+    else  return path2
+endfunc
+
+' GetFiles
+' --------
+' Returns all files in path, directories excluded.
+function GetFiles(path)
+    if path  pathq = " " + chr(34) + path + chr(34)
+    else  pathq = ""
+    sysResult = system("dir /b /a-d" + pathq + " 2> nul")
+    if sysResult
+        list = split(sysResult, chr(10))
+        result = []
+        if sizeof(list)  for i = 0 to sizeof(list) - 1
+            if list[i]  result[sizeof(result)] = GetPathCombined(path, list[i])
+        next
+        return result
+    else
+        return unset
+    endif
+endfunc
+
+' GetDirectories
+' --------------
+' Returns all directories in path, files excluded.
+function GetDirectories(path)
+    if path  pathq = " " + chr(34) + path + chr(34)
+    else  pathq = ""
+    sysResult = system("dir /b /ad" + pathq)
+    if sysResult
+        list = split(sysResult, chr(10))
+        result = []
+        if sizeof(list)  for i = 0 to sizeof(list) - 1
+            if list[i]  result[sizeof(result)] = GetPathCombined(path, list[i])
+        next
+        return result
+    else
+        return unset
+    endif
+endfunc
+
+' GetAppDataDirectory
+' -------------------
+' Returns the user's app data directory.
+function GetAppDataDirectory()
+    return replace(system("echo %APPDATA%"), chr(10), "")
+endfunc
+
+' GetUserDirectory
+' ----------------
+' Returns the user's directory.
+function GetUserDirectory()
+    return replace(system("echo %USERPROFILE%"), chr(10), "")
+endfunc
+
+' CreateDirectory
+' ---------------
+' Create directory, should work with multiple new levels.
+function CreateDirectory(path)
+    return system("mkdir " + chr(34) + path + chr(34) + " > nul 2> nul")
+endfunc
+
+' ReadAllLines
+'-------------
+' Returns string array with all lines from file filename.
+function ReadAllLines(filename)
+    f = openfile(filename)
+    if not file(f) return unset
+    lines = []
+    ln = frln(f)
+    while typeof(ln)
+        lines[sizeof(lines)] = ln
+        ln = frln(f)
+    wend
+    free file f
+    return lines
+endfunc
+
+' ReadAllText
+' -----------
+' Returns string with all text from file filename.
+function ReadAllText(filename)
+    lines = ReadAllLines(filename)
+    if not typeof(lines)  return unset
+    result = ""
+    e = sizeof(lines) - 1
+    for i = 0 to e
+        if i < e  result = result + lines[i] + chr(10)
+        else  result = result + lines[i]
+    next
+    return result
+endfunc

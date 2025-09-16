@@ -1,0 +1,48 @@
+' active
+' ------
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "active", 640, 480
+set redraw off
+
+' Create som stars.
+stars = []
+for i = 0 to 499
+    stars[i] = [x: rnd(640), y: rnd(480), dx: 0.5 + rnd()*4.5]
+next
+
+while not keydown(KEY_ESCAPE)
+    ' 'active()' returns true if the window has focus. If it returns false, we can pause our program
+    ' and wait for the window to regain focus.
+    if not active()
+        ' Make the window content a bit gray and print a pause message.
+        set color 128, 128, 128, 32
+        cls
+        set color 255, 255, 255
+        set caret 320, 232
+        center "P A U S E D"
+        redraw
+        ' Wait for window to become active again.
+        while not active()  wait 250
+    endif
+
+    ' Clear screen and update and draw the stars.
+    set color 0, 0, 0
+    cls
+    foreach star in stars
+        star.x = star.x - star.dx
+        if star.x < 0  star.x = star.x + 640
+        i = 255*star.dx/5
+        set color i, i, i
+        draw pixel star.x, star.y
+    next
+    
+    ' Write instructions.
+    set caret 320, 8
+    set color 255, 255, 255
+    center "Remove focus from the window to pause"
+    center "Press Esc to exit ..."    
+    
+    redraw
+    fwait 60
+wend

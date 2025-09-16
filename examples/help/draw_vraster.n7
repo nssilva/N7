@@ -1,0 +1,85 @@
+' draw vraster
+' ------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480 and turn off automatic redraw.
+set window "draw vraster", 640, 480
+set redraw off
+
+' Load a naalaa logo image.
+img = loadimage("assets/logo.png")
+
+' Draw the logo normally.
+draw image img, 160, 80
+
+' Calculate width and height of the image scaled by 1.5.
+w = width(img)*1.5
+h = height(img)*1.4
+' Calculate position for centering the image horizontally.
+dstX = 320 - w/2
+dstY = 320 - h/2
+
+' 'draw vraster' and 'draw hraster' were added to naalaa for making raycasting and mode-7 games
+' faster. Games using these techniques often have fog effects. Therefor the color set with 'set
+' color' applies differently to these commands. The red, green and blue values represent the color
+' of the fog, but the alpha value is the opacity of the fog. An alpha value of 0 means no fog, and
+' an alpha value of 255 means that the fog is completely solid. We don't want any fog effect for
+' this example.
+set color 255, 255, 255, 0
+for x = 0 to w - 1
+    u = x/w
+    ' 'draw vraster image_id, x, y_1, y_2, u_1, v_1, u_2, v_2' draws a vertical line from x, y_1 to
+    ' x, y_2 using image image_id as texture. The texture coordinates, u_1, v_1, u_2 and v_2, should
+    ' be in the range [0..1].
+    draw vraster img, dstX + x, dstY, dstY + h - 1, u, 0, u, 1
+next
+
+' Write some text.
+set color 255, 255, 255
+set caret 320, 56
+center "original"
+set caret 320, 448
+center "Press spacebar to continue ..."
+
+' Update window content and loop until spacebar is pressed.
+redraw
+while not keydown(KEY_SPACE)  fwait 60
+
+' Turn off automatic redraw.
+set redraw off
+
+' Calculate base y-coordinate, use the same x and scale.
+dstY = 240 - h/2
+
+' Starting angle for a sine curve effect.
+angle = 0
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)
+    ' Increase and loop angle.
+    angle = (angle - 3)%360
+
+    ' Clear screen.
+    set color 0, 0, 0
+    cls
+    
+    ' Draw the logo with a sine curve effect.
+    for x = 0 to w - 1
+        u = x/w
+        ' Full fog effect on the left and right.
+        set color 0, 0, 0, 255 - sin(u*PI)*255
+        ' Full sine curve effect at the center.
+        offset = sin(u*PI)*sin(rad(angle + x*2))*32
+        draw vraster img, dstX + x, dstY - offset, dstY + h + offset - 1, u, 0, u, 1
+    next
+
+    set color 255, 255, 255
+    set caret 320, 448
+    center "Press Esc to quit ..."
+
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend

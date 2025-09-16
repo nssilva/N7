@@ -1,0 +1,21 @@
+' Cannabis curve
+' --------------
+
+set window "Cannabis curve", 640, 480
+set redraw off
+
+points = []
+for a = 0 to PI*2 - 0.01 step 0.01
+    points[sizeof(points)] = 320 + 100*(sin(a) + 1)*cos(a)*(9*cos(8*a)/10 + 1)*(cos(24*a)/10 + 1)*
+            (cos(200*a)/10 + 9/10)
+    points[sizeof(points)] = 64 + 100*sin(a)*(sin(a) + 1)*(9*cos(8*a)/10 + 1)*(cos(24*a)/10 + 1)*
+            (cos(200*a)/10 + 9/10)
+next
+
+set color 0, 128, 0
+draw poly points, true
+set color 0, 255, 0
+draw poly points
+redraw
+
+while not keydown(KEY_ESCAPE)  fwait 60

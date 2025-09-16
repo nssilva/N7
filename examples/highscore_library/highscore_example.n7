@@ -1,0 +1,68 @@
+' Highscore example
+' -----------------
+' Converted to n7 by Marcus, original n6 version by jsm. 
+
+
+include "highscore.n7"
+
+#win32
+
+filename = "my_highscorelist.txt"
+
+' Init list if one cannot be loaded.
+if not HS_Load(filename)  HS_Init(10, "Eggplant", 100000)
+
+set window "Highscore example", 640, 480
+
+' Display list.
+DisplayList()
+
+' Ask for name and score (yes, just like in a real game).
+set caret 0, 0
+write "Please enter your name:  "
+name = rln(10)
+write "Please enter your score: "
+score = rln(7, TYPE_NUMBER)
+
+' Does the user qualify for the list?
+if HS_AddEntry(name, score)
+    wln "Great job, you made it!"
+    wln "Press spacebar to continue ..."
+    WaitKey(KEY_SPACE)
+    ' Submit score and redisplay list.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    DisplayList()
+    set caret 0, 0
+    wln "Press escape to save list and exit ..."
+    WaitKey(KEY_ESCAPE)
+    if not HS_Save(filename)
+        wln "Oops, something went wrong!"
+        wln "Press escape to exit ..."
+        WaitKey(KEY_ESCAPE)
+    endif
+else
+    wln "Sorry, but that wasn't good enough. Better luck next time!"
+    wln "Press escape to exit ..."
+    WaitKey(KEY_ESCAPE)
+endif
+
+
+' Display list.
+function DisplayList()
+    entries = HS_GetEntries()
+    for i = 0 to sizeof(entries) - 1
+        set caret 0, 96 + i*16
+        write entries[i].name
+        set caret 160, 96 + i*16
+        set justification right
+        write entries[i].score
+        set justification left
+    next
+endfunc
+
+' Wait for key to be pressed.
+function WaitKey(k)
+    while not keydown(k, true)  wait 16
+endfunc

@@ -1,0 +1,8 @@
+' sqr
+' ---
+
+' 'sqr(x)' returns the square root of x.
+pln "sqr(9) = " + sqr(9)
+pln "sqr(PI) = " + sqr(PI)
+
+system "pause"

@@ -1,0 +1,18 @@
+' screenw, screenh
+' ----------------
+
+' 'screenw()' returns the width of the screen in pixels, and 'screenh()' returns the height.
+pln "Screen size = " + screenw() + "x" + screenh()
+
+system "pause"
+
+' We can use 'screenw' and 'screenh' to create a window in fullscreen mode with the same aspect
+' ratio as the screen. Here we base the size on the height 240.
+set window "screen size", 240*screenw()/screenh(), 240, true
+' 'primary' is the id of the image that represents the window content.
+wln "Window size = " + width(primary) + "x" + height(primary)
+wln
+wln "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

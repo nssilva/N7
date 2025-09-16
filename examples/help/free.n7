@@ -1,0 +1,20 @@
+' free
+' ----
+
+' Create an array, print its size and elements.
+a = [13, 9, 56, 28]
+pln "Size of a = " + sizeof(a)
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+
+' 'free v' removes a variable v from its parent, which can be a table, program memory or a
+' function's local memory. No form of re-indexing occurs if you use 'free' with a numeric index.
+' You will most likely NEVER need to use this command. It's only useful if you work with "sparse
+' arrays" where you want and need index "holes" and can't use 'free key' or 'free val'.
+free a[1]
+' Print again, but now we better use foreach since there's a mismatch between the array size and
+' its indexes.
+pln "Size of a after removing index 1 = " + sizeof(a)
+foreach k, v in a  pln "  a[" + k + "] = " + v
+
+system "pause"
+

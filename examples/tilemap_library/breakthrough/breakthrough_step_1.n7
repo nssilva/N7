@@ -1,0 +1,46 @@
+' Breakthrough - step 1
+' ---------------------
+' Load and display a map and control a paddle.
+'
+' Graphics by pudman: https://opengameart.org/content/arkanoid-assets
+
+
+include "tilemap.n7"
+
+' Create a window with a weird size.
+set window "Breakthrough", 737, 737*9/16
+set redraw off
+
+' Load paddle image.
+paddleImage = loadimage("assets/paddle.png")
+
+' Load a map created with the tilemap editor.
+if not TM_LoadMap("assets/level1.txt")  end
+
+' Set up the rendering view for the library. Usually this is what you want, the top left corner of
+' the window (0, 0) and the same width and height.
+TM_SetView(0, 0, width(primary), height(primary))
+
+' Y-coordinate of paddle.
+paddleY = height(primary) - height(paddleImage)*3
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Update center x coordinate of paddle.
+    paddleX = mousex() - width(paddleImage)/2
+
+    ' Clear screen.
+    set color 95, 95, 95
+    cls
+
+    ' Render the tilemap.
+    TM_Render()
+
+    ' Draw paddle.
+    draw image paddleImage, paddleX, paddleY
+
+    ' Update window content.
+    redraw
+
+    fwait 60
+wend

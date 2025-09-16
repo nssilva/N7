@@ -1,0 +1,123 @@
+' ex7_lots_of_cubes.n7
+' --------------------
+
+include "s3d.n7"
+
+#win32
+
+' Display settings.
+constant RES = 240          ' Vertical resolution.
+constant SCALE = 2          ' Window scale.
+constant FULLSCREEN = 0     ' Fullscreen if 1
+constant DISPLAY_FPS = 1    ' Display fps if 1.
+constant FOV = 45           ' Vertical field of view in degrees.
+
+' Fog color.
+constant FOG_R = 32, FOG_G = 32, FOG_B = 64
+
+' For delta time.
+visible vLastTick = 0
+
+' Create window.
+set window "Lots of cubes", RES*screenw()/screenh(), RES, FULLSCREEN, SCALE
+set redraw off
+
+' Init s3d with the window as render target, a field of view of FOV degrees, near clip plane at
+' distance 0.1 and far clip plane at distance 10.
+S3D_SetView(primary, rad(FOV), 0.1, 10)
+
+' Load an image to be used as texture for all sides of a cube.
+texture = loadimage("assets/n7.png")
+
+' Load a cube.
+cubeMesh = S3D_LoadMesh("assets/cube.obj", 1, -1, 1, false)
+
+' Rotation angles.
+ay = 0
+ax = 0
+az = 0
+ai = 0
+
+' Loop until user presses esc.
+while not keydown(KEY_ESCAPE, true)
+    ' Get time passed since last frame.
+    dt = DeltaTime()
+
+    ' Update angles.
+    ay = ay + 45*dt*0.5
+    ax = ax + 22.5*dt*0.5
+    az = az + 11.25*dt*0.5
+    ai = ai + 22.5*dt*0.25
+
+    ' Fill screen with the fog color.
+    set color FOG_R, FOG_G, FOG_B
+    cls
+
+    ' Clear transformations.
+    S3D_Clear()
+
+    ' The cubes can be sorted and rendered correctly without the use of a depth buffer. But in
+    ' order to render a fog effect we have to write to the depth buffer (no need to read).
+    S3D_SetSorting(S3D_BACK_TO_FRONT)
+    S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+
+    ' Translate into the screen and rotate.
+    S3D_Translate(0, 0, 9)
+    S3D_RotateY(rad(ay))
+    S3D_RotateX(rad(ax))
+    S3D_RotateZ(rad(az))
+
+    ' Draw lots of cubes.
+    S3D_Texture(texture)
+    for z = -3 to 2  for x = -3 to 2  for y = -3 to 2
+        S3D_Push()
+        S3D_Translate((x + 0.5)*1.75, (y + 0.5)*1.75, (z + 0.5)*1.75)
+        d = sqr((z + 0.5)^2 + (x + 0.5)^2 + (y + 0.5)^2)
+        S3D_RotateY(rad(d*ai))
+        S3D_RotateZ(rad(d*ai*0.5))
+        S3D_RotateX(rad(d*ai*0.75))
+        S3D_Mesh(cubeMesh, 0)
+        S3D_Pop()    
+    next    
+
+    ' Render.
+    S3D_Render()
+    ' Apply fog effect based on depth values in the depth buffer. Set the last parameter to true
+    ' for a more retro fog effect.
+    S3D_RenderFog(FOG_R, FOG_G, FOG_B, false)
+    
+    ' Write information and instructions.
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "Press Esc to quit"
+
+    ' Display.
+    DisplayFps(dt)
+    
+    ' Update window.
+    redraw
+    wait 1
+wend
+
+' DeltaTime
+' ---------
+' Return delta time in seconds since last call.
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' DisplayFps
+' ----------
+' Display number of frames per second in bottom right corner based on delta time in seconds.
+function DisplayFps(dt)
+    if DISPLAY_FPS
+        set caret width(primary) - fwidth(" "), height(primary) - fheight()
+        set justification right
+        set color 0, 255, 0
+        write "FPS: " + str(round(1/dt))
+        set justification left
+    endif
+endfunc

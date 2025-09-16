@@ -1,0 +1,108 @@
+' ex4_loading_a_mesh.n7
+' ----------------------
+' Display a loaded mesh.
+
+include "s3d.n7"
+
+#win32
+
+' Display settings.
+constant RES = 480          ' Vertical resolution.
+constant SCALE = 1          ' Window scale.
+constant FULLSCREEN = 0     ' Fullscreen if 1
+constant DISPLAY_FPS = 1    ' Display fps if 1.
+constant FOV = 45           ' Vertical field of view in degrees.
+constant MOUSE_SENS = 1     ' Mouse sensitivity.
+
+' For delta time.
+visible vLastTick = 0
+
+' Create window.
+set window "Loading a mesh", RES*screenw()/screenh(), RES, FULLSCREEN, SCALE
+set redraw off
+
+' Load a mesh. Invert its y axis and scale by 3.
+model = S3D_LoadMesh("assets/funchum/funchum.obj", 3, -3, 3, false)
+
+' Init s3d with the window as render target, a field of view of FOV degrees, near clip plane at
+' distance 0.1 and far clip plane at 10.
+S3D_SetView(primary, rad(FOV), 0.1, 10)
+
+' Rotation angle for the mesh.
+rotY = 225
+distance = 2
+dragging = false
+lastMouseX = 0
+lastMouseY = 0
+' Loop until user presses esc.
+while not keydown(KEY_ESCAPE, true)
+    ' Get time passed since last frame.
+    dt = DeltaTime()
+
+    ' Rotate and zoom when left mouse button is pressed.
+    if mousebutton(0)
+        if dragging
+            mx = mousex()
+            my = mousey()
+            rotY = rotY - (mx - lastMouseX)*MOUSE_SENS
+            distance = min(max(distance + 0.05*(my - lastMouseY)*MOUSE_SENS, 0.5), 10)
+            lastMouseX = mx
+            lastMouseY = my
+        else
+            dragging = true
+            lastMouseX = mousex()
+            lastMouseY = mousey()            
+        endif
+    else
+        dragging = false
+    endif
+
+    ' Dark blueish background.
+    set color 32, 32, 64
+    cls
+    
+    ' Clear transformation and depth buffer.
+    S3D_Clear()
+
+    ' Translate and rotate.
+    S3D_Translate(0, 0.5, distance)
+    S3D_RotateY(rad(rotY))
+    S3D_Mesh(model, 0)    
+
+    ' Write information and instructions.
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "Rotate and zoom by moving the mouse while holding down left mouse button"
+    wln
+    wln "Press Esc to quit"
+
+    ' Display.
+    DisplayFps(dt)
+    
+    ' Update window.
+    redraw
+    wait 1
+wend
+
+' DeltaTime
+' ---------
+' Return delta time in seconds since last call.
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' DisplayFps
+' ----------
+' Display number of frames per second in bottom right corner based on delta time in seconds.
+function DisplayFps(dt)
+    if DISPLAY_FPS
+        set caret width(primary) - fwidth(" "), height(primary) - fheight()
+        set justification right
+        set color 0, 255, 0
+        write "FPS: " + str(round(1/dt), 3)
+        set justification left
+    endif
+endfunc

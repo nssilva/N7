@@ -1,0 +1,70 @@
+' draw image xform
+' ----------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw image", 640, 480
+set redraw off
+
+' Load an image of a smiley.
+smileyImage = loadimage("assets/smiley.png")
+
+' Load an image with six smileys in a uniform grid with 3 columns and 2 rows.
+smileysImage = loadimage("assets/smileys.png", 3, 2)
+
+' An angle for rotation.
+smileyAngle = 0
+' A cel index for animation.
+smileyFrame = 0
+
+' Loop until escape is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Increase angle and animation frame.
+    smileyAngle = (smileyAngle + 1)%360
+    smileyFrame = (smileyFrame + 0.05)%cels(smileysImage)
+
+    ' Clear screen.
+    set color 64, 64, 96
+    cls
+    set color 255, 255, 255
+
+    ' Draw original image and image grid at top left corner.
+    draw image smileyImage, 0, 0
+    draw image smileysImage, width(smileyImage) + 16, 0
+
+    ' 'draw image xform image_id, x, y, scale_x, scale_y, angle, pivot_x, pivot_y' draws image
+    ' image_id at position x, y. Its original width and height is multiplied by scale_x and scale_y,
+    ' and it is rotated angle radians. pivot_x and pivot_y specifies around which point (in image
+    ' space) the image is scaled and rotated. Here we scale the image's width and height by 4 and
+    ' rotate it smileyAngle degrees. We do so around the center of the image. 
+    draw image xform smileyImage, 320, 240, 4, 4, rad(smileyAngle),
+            width(smileyImage)/2, height(smileyImage)/2
+
+    ' 'draw image xform image_id, x, y, scale_x, scale_y, angle, pivot_x, pivot_y, cel' works like
+    ' the above function but draws the image cel cel (see 'set image grid'). Here we scale the image
+    ' based on sin and cos of smileyAngle, and we set the pivot to the top center of the image.
+    draw image xform smileysImage, 100, 240,
+            3 + cos(rad(smileyAngle)), 3 + sin(rad(smileyAngle*2)),
+            -rad(smileyAngle),
+            width(smileysImage)/2, 0,
+            smileyFrame
+            
+    ' 'draw image xform image_id, x, y, scale_x, scale_y, angle, pivot_x, pivot_y, src_x, src_y,
+    ' src_w, src_h' works like the first version of the function. But it draws a sub image of
+    ' image_id defined by the point src_x, src_y and the width and height src_w, src_h. Here we draw
+    ' the top left 32x32 pixels of smileyImage scaled by 5 and rotated 45 degrees. For the sake of
+    ' it, we also colorize it semi-transparent orange.
+    set color 255, 128, 0, 128
+    draw image xform smileyImage, 540, 240, 5, 5, rad(45), 16, 16, 0, 0, 32, 32
+
+    ' Write some text.
+    set color 255, 255, 255
+    set caret 320, 448
+    center "Press escape to quit ..."
+    
+    ' Update the window content and cap the fps at 60.
+    redraw
+    fwait 60
+wend  

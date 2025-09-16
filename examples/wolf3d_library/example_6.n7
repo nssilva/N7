@@ -1,0 +1,363 @@
+' Wolf3D - Example 6
+' ------------------
+' Here we set textures for individual sides of some walls. We also use delta time for smoother
+' animation and display the number of frames per second at the bottom of the screen. These are the
+' new functions:
+'   SetWestWall(x, z, texture)
+'   SetEastWall(x, z, texture)
+'   SetNorthWall(x, z, texture)
+'   SetSouthWall(x, z, texture)
+
+' Include the library.
+include "wolf3d.n7"
+
+' Hide console window.
+#win32
+
+' The only function in the library is Wolf3D(). It returns an object (table) that contains all the
+' functions and data we need.
+w3d = Wolf3D()
+
+' Create window and turn off automatic redraw.
+set window "Wolf3D", 320, 240, false, 3
+set redraw off
+
+' Load two different wall images.
+brickWallImage = loadimage("assets/brick_wall.png")
+smileyWallImage = loadimage("assets/brick_wall_smiley.png")
+floorImage = loadimage("assets/floor.png")
+manholeImage = loadimage("assets/manhole.png")
+ceilingImage = loadimage("assets/ceiling.png")
+crucifixImage = loadimage("assets/crucifix.png")
+vineImage = loadimage("assets/vine.png")
+bulletImage = loadimage("assets/fire_ball.png")
+doorImage = loadimage("assets/door.png")
+doorSlideImage = loadimage("assets/door_slide.png")
+eyeImage = loadimage("assets/eye.png")
+
+' Currently, there is no map editor for the library. So here we let a 2D array define a map. The
+' rows in the array represent the x-axis (west to east), and the columns the z-axis (north to
+' south). This is what the numbers in the array mean:
+'   0 - Empty
+'   1 - Brick wall (brickWallImage)
+'   2 - Brick wall with a smiley painted on it (smileyWallImage).
+'   3 - Floor with a manhole (manholeImage)
+'   4 - Crucifix sprite (crucifixImage)
+'   5 - Vine sprite (vineImage)
+'   6 - Door along the x axis
+'   7 - Door along the z axis
+'   8 - Eye sprite
+'   9 - The player's starting position
+map = [
+    [1, 1, 1, 1, 1, 1, 2, 1, 1],
+    [1, 5, 0, 0, 1, 5, 0, 4, 1],
+    [2, 0, 9, 0, 7, 0, 3, 0, 1],
+    [1, 0, 4, 5, 1, 0, 4, 5, 1],
+    [1, 1, 6, 1, 1, 1, 1, 6, 1],
+    [1, 5, 0, 4, 2, 4, 0, 5, 1],
+    [1, 0, 3, 0, 1, 0, 8, 4, 2],
+    [1, 4, 0, 4, 7, 0, 0, 0, 1],
+    [1, 2, 1, 1, 1, 1, 1, 1, 1]]
+    
+' Now we initialize a map in our w3d object using the function InitMap(map_x_size, map_z_size).
+w3d.InitMap(9, 9)
+' The library has now created its internal representation of a map containing 9x9 cubes in the XZ
+' plane. Each cube has the width, height and depth 1. To each cube we can assign a wall texture,
+' floor texture and a ceiling texture. If we assign a wall texture to a cube, the cube becomes a
+' solid obstacle with the texture applied to all its faces. If we assign a floor texture,
+' the texture is painted on the ground under the cube. And if we assign a ceiling texture, it is
+' painted on the ceiling above the cube. Of course, if a cube has a wall texture, you can't see the
+' its floor or ceiling texture.
+'    Wee can use SetFloorTexture(texture) and SetCeilingTexture(texture) to cover the entire floor
+' and ceiling with a texture.
+w3d.SetFloorTexture(floorImage)
+w3d.SetCeilingTexture(ceilingImage)
+' Now, use our map array to set up the map in the w3d object. This time we store all crucifix
+' sprites in an array, so that we can let the player pick them up.
+crucifixes = []
+for z = 0 to 8
+    for x = 0 to 8
+        ' Use 'select' to handle the differnt values in our map array.
+        select map[z][x]
+            case 1 ' Brick wall.
+                ' Use SetWall(x, z, texture) to set the wall texture of a cube.
+                w3d.SetWall(x, z, brickWallImage)
+                ' You can use SetWestWall(x, z, texture) to set the texture of a wall's west side.
+                ' Here we use it to mark the walls that the doors are connected to (and slide into).
+                ' West is the negative direction along the x axis.
+                if x > 0 and map[z][x - 1] = 6
+                    w3d.SetWestWall(x, z, doorSlideImage)
+                endif
+                ' SetEastWall, SetNorthWall and SetSouthWall works the same way as SetWestWall.
+                ' North is the negative direction along the z axis and 
+                if x < 8 and map[z][x + 1] = 6
+                    w3d.SetEastWall(x, z, doorSlideImage)
+                endif
+                if z > 0 and map[z - 1][x] = 7
+                    w3d.SetNorthWall(x, z, doorSlideImage)
+                endif
+                if z < 8 and map[z + 1][x] = 7
+                    w3d.SetSouthWall(x, z, doorSlideImage)
+                endif
+            case 2 ' Brick wall with a smiley painted on it.
+                w3d.SetWall(x, z, smileyWallImage)
+            case 3 ' Floor with a manhole.
+                ' Use SetFloorTextureAt(x, y, texture) to set the floor texture of a cube. There is
+                ' also a SetCeilingTextureAt function for setting the ceiling texture.
+                w3d.SetFloorTextureAt(x, z, manholeImage)
+            case 4 ' Crucifix sprite.
+                ' AddFloorSprite(center_x, center_y, texture, height) adds a sprite on the floor at
+                ' the position (center_x, center_y). A height value of 1 is the height of a wall.
+                '    Both AddFloorSprite and AddCeilingSprite returns a sprite object (a table) that
+                ' we can use to modify or remove the sprite. Let's put the returned sprite at the
+                ' end of our crucifixes array.
+                crucifixes[sizeof(crucifixes)] = w3d.AddFloorSprite(x + 0.5, z + 0.5,
+                        crucifixImage, 0.4)
+            case 5 ' Vine sprite.
+                ' AddCeilingSprite(center_x, center_y, texture, height) works like AddFloorSprite
+                ' but the sprite will hang from the ceiling.
+                w3d.AddCeilingSprite(x + 0.5, z + 0.5, vineImage, 0.6)
+            case 6 ' Door along the x axis.
+                ' Use SetDoor(x, z, texture, axis) to put a door at the center of the cube at 
+                ' (x, z). If axis is W3D_X_AXIS, the door will be aligned with the x axis. The door
+                ' has the same size as a wall.
+                w3d.SetDoor(x, z, doorImage, W3D_X_AXIS)
+            case 7 ' Door along the z axis.
+                ' Set axis to W3D_Z_AXIS to align the door with the Z_AXIS.
+                w3d.SetDoor(x, z, doorImage, W3D_Z_AXIS)
+            case 8 ' Eye sprite.
+                eye = w3d.AddSprite(x + 0.5, 0.0, z + 0.5, eyeImage, 0.58, 0.58)
+                ' Add a field a to the sprite, an angle that we'll use to make the eye move slowly
+                ' up an down.
+                eye.a = 0
+            case 9 ' The player's starting position.
+                ' Add 0.5 to the x and z coordinates to put the player at the center of the cube.
+                playerX = x + 0.5
+                playerZ = z + 0.5
+        endsel
+    next
+next
+
+' Before we enter the game loop, we have to call SetView(x, y, w, h, fov) to set the rendering area
+' and the fov (field of view). In most cases, like now, we want the rendering area to be the entire
+' window. A "good" fov is 70 degrees, but SetView expects the angle in radians, so we use the rad
+' function for the conversion.
+w3d.SetView(0, 0, width(primary), height(primary), rad(70))
+
+' SetFog(min_d, max_d, r, g, b) creates a fog effect with the color r, g, b. min_d is the distance,
+' from the view point, where the fog starts. max_d is the distance at which nothing can be seen but
+' the fog color. max_d also serves as a clipping plane - beyond that distance nothing will be
+' rendered.
+w3d.SetFog(1.5, 4, 16, 32, 24)
+
+' The user will be able to turn around using the arrow keys, so we store the current viewing angle
+' in playerAngle.
+playerAngle = 0
+
+' This is the number of crucifixes that the player has collected.
+playerCrucifixes = 0
+
+' This array will be used to store all active bullets.
+bullets = []
+' Used for limiting how often the player can shoot a new bullet.
+shootTimer = 0
+
+' For delta times.
+lastTime = clock()
+' Now we're ready to go. Let's loop until the user presses the escape key.
+while not keydown(KEY_ESCAPE)
+    ' Measure time passed in seconds since last time we were here.
+    t = clock()
+    dt = (t - lastTime)/1000
+    lastTime = t
+    
+    ' Wanted player movement.
+    dx = 0
+    dz = 0
+
+    ' Is control pressed?
+    if keydown(KEY_CONTROL)
+        ' Strafe with the arrow left and right keys.
+        if keydown(KEY_LEFT)
+            ' To strafe left, subtract 90 degrees from the angle
+            dx = dx + cos(rad(playerAngle - 90))
+            dz = dz + sin(rad(playerAngle - 90))
+        endif
+        if keydown(KEY_RIGHT)
+            ' To strafe right, add 90 degrees to the angle
+            dx = dx + cos(rad(playerAngle + 90))
+            dz = dz + sin(rad(playerAngle + 90))
+        endif
+    else
+        ' Rotate view using the arrow left and right keys, use %360 to keep playerAngle in the range
+        ' [0..360].
+        if keydown(KEY_LEFT)  playerAngle = (playerAngle - 135*dt)%360
+        if keydown(KEY_RIGHT) playerAngle = (playerAngle + 135*dt)%360
+    endif
+    
+    ' Move forward with the arrow up key.
+    if keydown(KEY_UP)
+        ' Use cos of playerAngle to calculate the wanted direction along the x axis and sin for the
+        ' z axis. 
+        dx = dx + cos(rad(playerAngle))
+        dz = dz + sin(rad(playerAngle))
+    endif
+    ' Move backward with the arrow down key, just use the negative cos and sin values compared to
+    ' when moving forward.
+    if keydown(KEY_DOWN)
+        dx = dx - cos(rad(playerAngle))
+        dz = dz - sin(rad(playerAngle))
+    endif
+
+    ' Calculate the length of the vector (dx dz).
+    d = sqr(dx*dx + dz*dz)
+    ' Any movement?
+    if d > 0
+        ' Normalize the movement vector (make its length 1) by dividing it with its length.
+        dx = dx/d
+        dz = dz/d
+        ' Let the player move 3 cube side lengths per second
+        dx = dx*3*dt
+        dz = dz*3*dt
+        
+        ' The Move(x, z, dx, dz, min_distance) tries to move a point at the position (x, z) to a new
+        ' position (x + dz, z + dz). The function handles collisions with walls and returns the new
+        ' position in an object (table) with the fields x and z. min_distance is the minimum allowed
+        ' distance to a wall (the point will be "pushed out" this far during collision). 0.25 is a
+        ' good min_distance value for the player
+        result = w3d.Move(playerX, playerZ, dx, dz, 0.25)
+        playerX = result.x
+        playerZ = result.z
+    endif
+    
+    ' Check for collision with crucifixes. We use a while loop, since it makes it easier to remove
+    ' items from the crucifixes array.
+    i = 0
+    while i < sizeof(crucifixes)
+        ' The sprite that was returned from AddFloorSprite has the following fields that we may
+        ' modify whenever we want:
+        '   x - Center x coordinate
+        '   y - Center y coordinate
+        '   z - Center z coordinate
+        '   t - Texture
+        ' Right now we're only interested in the x and z coordinates. Let's use them to calculate
+        ' the square distance between the player and the crucifix.
+        c = crucifixes[i]
+        d = (c.x - playerX)^2 + (c.z - playerZ)^2
+        ' If the square distance between the player and the sprite is less than 0.25, it should be
+        ' picked up.
+        if d < 0.25
+            ' Use RemoveSprite(sprite) to remove the sprite from the Wolf3D system.
+            w3d.RemoveSprite(c)
+            ' Now remove it from our own list. This decreases the size of our crucifixes array, and
+            ' we do not need to increment i.
+            free val crucifixes, c
+            ' Increase playerCrucifixes. We will display it on the screen.
+            playerCrucifixes = playerCrucifixes + 1
+        else
+            i = i + 1
+        endif
+    wend
+    
+    ' Decrease shootTimer. and Shoot with space bar if the shootTimer allows it.
+    shootTimer = max(shootTimer - dt, 0)
+    ' Space bar is used both for shooting and opening doors.
+    if keydown(KEY_SPACE)
+        ' Facing(x, z, angle) returns a table with lots of information about the wall or door
+        ' closest to the position (x, z) in the specified angle. The fields of the table are:
+        '   door     - true if the closest thing is a door, false for a regular wall
+        '   distance - distance to the wall/door.
+        '   mapx     - map x coordinate (integer) of the wall/door
+        '   mapz     - map z coordinate (integer) of the wall/door
+        '   x        - exact x coordinate where the line of sight hit the wall/door
+        '   z        - exact z coordinate where the line of sight hit the wall/door
+        '   texture  - texture of the wall/door
+        '   dir      - the direction in which the wall/door is facing: S3D_NORTH, S3D_SOUTH,
+        '              S3D_WEST or S3D_EAST
+        '   u        - texture u coordinate (0..1) where the line of sight hit the wall/door
+        res = w3d.Facing(playerX, playerZ, rad(playerAngle))
+        ' We want to know if the player is facing a door. If the player does face a door and it is
+        ' close enough it should be opened. OpenDoor(x, z) returns true if there's a door at
+        ' (x, z) AND it's not already open. It there's a door to open, it triggers an opening
+        ' animation. If there's no door, or if the door is open, space bar should be used for
+        ' shooting instead.
+        '    CloseDoor(x, z) works like OpenDoor but tries to close a door instead.
+        if res.door and res.distance < 1.0 and w3d.OpenDoor(res.mapx, res.mapz)
+            ' Call keydown with unflag set to true, so that the player doesn't shoot every time it
+            ' opens a door.
+            dummy = keydown(KEY_SPACE, true)
+        elseif shootTimer = 0
+            ' Use AddSprite(center_x, center_y, center_z, texture, width, height) to add a
+            ' sprite somewhere on the map. The ceiling is located at the y coordinate -0.5, and
+            ' the floor at 0.5.
+            bullet = w3d.AddSprite(playerX, 0.2, playerZ, bulletImage, 0.29, 0.29)
+            ' We can add some fields of our own to the sprite. What we need to add is its speed in the
+            ' form of a vector (dx dz). Let's make it move in the direction that the player is looking
+            ' at the speed 8 cube side lenghts per second.
+            bullet.dx = 8*cos(rad(playerAngle))
+            bullet.dz = 8*sin(rad(playerAngle))
+            ' Add the bullet to our own array.
+            bullets[sizeof(bullets)] = bullet
+            ' Set to shoot timer to 0.5 seconds
+            shootTimer = 0.25
+        endif
+    endif
+    
+    ' Update bullets
+    i = 0
+    while i < sizeof(bullets)
+        b = bullets[i]
+        ' MoveSprite(sprite, dx, dz, min_distance) works like Move, but it assumes that sprite
+        ' contains the fields x and z and sets them directly. This function returns true if any
+        ' collision has occurred. You can also use AnyCollision() to check if any collision occurred
+        ' during the last call to Move or MoveSprite.
+        w3d.MoveSprite(b, b.dx*dt, b.dz*dt, 0.1)
+        if w3d.AnyCollision()
+            w3d.RemoveSprite(b)
+            free val bullets, b
+        else
+            i = i + 1
+        endif
+    wend
+    
+    ' Make the eye sprite move slowly up and down.
+    eye.a = (eye.a + 90*dt)%360
+    eye.y = 0.1*sin(rad(eye.a))
+    ' For the sake of it, let's mess with its width and height too.
+    eye.w = 0.58 + sin(rad(eye.a*2))*0.05
+    eye.h = 0.58 - sin(rad(eye.a*2))*0.05
+
+    ' The function Render(view_x, view_z, view_angle) renders the "world" as seen from the position
+    ' (view_x, view_z) looking in the angle view_angle in the XZ plane. The function expects the
+    ' angle to be in radians.
+    w3d.Render(playerX, playerZ, rad(playerAngle))
+
+    ' Write instructions
+    set color 255, 255, 255
+    set caret width(primary)/2, 4
+    center "Move and turn with the arrow keys"
+    center "Hold Ctrl to strafe instead of turning"
+    center "Shoot and open doors with space bar"
+    center "Press Esc to quit"
+    
+    ' Display number of collected crucifixes.
+    draw image crucifixImage, 4, height(primary) - 4 - height(crucifixImage)
+    set caret 17, height(primary) - 15
+    write playerCrucifixes
+    
+    ' Display an eye icon if the player is in the line of sight of the eye sprite. The function
+    ' InLOS(x1, z1, x2, z2) returns true if there's a free line of sight between the two points
+    ' (x1, z1) and (x2, z2). It can be useful when programming enemies.
+    if w3d.InLOS(playerX, playerZ, eye.x, eye.z)
+        draw image eyeImage, width(primary) - 4 - width(eyeImage),
+                height(primary) - 4 - height(eyeImage)
+    endif
+
+    ' Display at the bottom center of the screen.
+    set caret width(primary)/2, height(primary) - 15
+    center "FPS: " + round(1/dt)
+
+    ' Update the window.
+    redraw
+    wait 1
+wend

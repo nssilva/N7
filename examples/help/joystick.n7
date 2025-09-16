@@ -1,0 +1,42 @@
+' joyx, joyy, joybutton
+' ---------------------
+
+#win32
+
+set window "joystick", 640, 480
+set redraw off
+
+playerX = 320
+playerY = 240
+
+while not keydown(KEY_ESCAPE, true)
+    ' 'joyx' return the joystick direction along the x axis as a value in the range [-1..1]. For a
+    ' digital joystick, the value will be 0, -1 or 1. 'joyy' works the same way but along the
+    ' vertical axis.
+    playerX = playerX + joyx()*4
+    playerY = playerY + joyy()*4
+
+    ' Clear screen and draw player (a square).
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    draw rect playerX - 16, playerY - 16, 32, 32, true
+
+    ' Print directional values.
+    set caret 0, 0
+    wln "joyx: " + joyx()
+    wln "joyy: " + joyy()
+    wln
+
+    ' 'joybutton([id = 0[, unflag = false])' returns true if button 'id' is held down. If 'unflag'
+    ' is true, the function will not return true for the button until it has been released and
+    ' pressed down again. 'id' should be in the range [0..4], where 0 means ANY button and [1..3]
+    ' is a specific button - yes, only four buttons are supported.
+    if joybutton(0) wln "Some button is pressed."
+    for i = 1 to 4
+        if joybutton(i) wln "Button " + i + " is pressed."
+    next
+
+    redraw
+    fwait 60
+wend

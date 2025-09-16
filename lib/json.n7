@@ -1,0 +1,255 @@
+' JSON library
+' ------------
+' By Marcus.
+
+constant JPARSER_ERROR = 0,
+         JPARSER_NUMBER = 1,
+         JPARSER_STRING = 2,
+         JPARSER_CHAR = 3,
+         JPARSER_NULL = 4,
+         JPARSER_END = 5
+
+visible vString, vPos
+visible vType, vValue
+visible vTypes = ["error", "number", "string", "char", "null", "end"]
+
+
+' JSON_ToString
+' -------------
+function JSON_ToString(v)
+    select typeof(v)
+        case TYPE_NUMBER
+            txt = str(v)
+        case TYPE_STRING
+            txt = chr(34) + v + chr(34)
+        case TYPE_TABLE
+            if key(v, 0)
+                txt = "["
+                if sizeof(v)
+                    for i = 0 to sizeof(v) - 1
+                        txt = txt + JSON_ToString(v[i])
+                        if i < sizeof(v) - 1  txt = txt + ","
+                    next
+                endif
+                txt = txt + "]"
+            else
+                txt = "{"
+                if sizeof(v)
+                    i = 1
+                    foreach ky, va in v
+                        txt = txt + chr(34) + ky + chr(34) + ":" + JSON_ToString(va)
+                        if i < sizeof(v)  txt = txt + ","
+                        i = i + 1
+                    next 
+                endif
+                txt = txt + "}" 
+            endif            
+        default
+            txt = "null"
+    endsel
+    return txt
+endfunc
+
+' JSON_FromFile
+' -------------
+function JSON_FromFile(filename)
+    f = openfile(filename)
+    if not typeof(f) return unset
+    json = ""
+    s = frln(f)
+    while typeof(s)
+        json = json + s
+        s = frln(f)
+    wend
+    free file f
+    return JSON_FromString(json)
+endfunc
+
+' JSON_FromString
+' ---------------
+function JSON_FromString(txt)
+    vString = txt
+    vPos = 0
+    GetNext()
+    
+    if vType = JPARSER_CHAR and vValue = 123
+        return ParseObject()
+    elseif vType = JPARSER_CHAR and vValue = 91
+        return ParseArray()
+    elseif vType = JPARSER_NUMBER or vType = JPARSER_STRING or vType = JPARSER_NULL
+        return vValue
+    else
+        return unset
+    endif
+    
+    ' ParseObject
+    ' -----------
+    function ParseObject()
+        ExpectChar(123)
+        obj = []
+        if not (vType = JPARSER_CHAR and vValue = 125)
+            do
+                ExpectType(JPARSER_STRING)
+                name = vValue
+                GetNext()
+                ExpectChar(58)
+                select vType
+                    case JPARSER_STRING
+                        obj[name] = vValue
+                        GetNext()
+                    case JPARSER_NUMBER
+                        obj[name] = vValue
+                        GetNext()
+                    case JPARSER_NULL
+                        obj[name] = vValue
+                        GetNext()
+                    case JPARSER_CHAR
+                        select vValue
+                            case 123  obj[name] = ParseObject()
+                            case 91  obj[name] = ParseArray()
+                            default  assert "JSON: Unexpected char " + chr(vValue)
+                        endsel
+                    default
+                        assert "JSON: Error"
+                endsel
+            until not CouldGetChar(44)
+        endif
+        ExpectChar(125)
+        return obj
+    endfunc
+    
+    ' ParseArray
+    ' ----------
+    function ParseArray()
+        ExpectChar(91)
+        arr = []
+        if not (vType = JPARSER_CHAR and vValue = 93)
+            do
+                select vType
+                    case JPARSER_STRING
+                        arr[sizeof(arr)] = vValue
+                        GetNext()
+                    case JPARSER_NUMBER
+                        arr[sizeof(arr)] = vValue
+                        GetNext()
+                    case JPARSER_NULL
+                        arr[sizeof(arr)] = vValue
+                        GetNext()
+                    case JPARSER_CHAR
+                        select vValue
+                            case 123  arr[sizeof(arr)] = ParseObject()
+                            case 91  arr[sizeof(arr)] = ParseArray()
+                            default  assert "JSON: Unexpected char " + chr(vValue)
+                        endsel
+                    default
+                        assert "JSON: Error"
+                endsel
+            until not CouldGetChar(44)
+        endif
+        ExpectChar(93)
+        return arr    
+    endfunc
+    
+    ' CouldGetChar
+    ' ------------
+    function CouldGetChar(value)
+        if vType = JPARSER_CHAR and vValue = value
+            GetNext()
+            return true
+        else
+            return false
+        endif
+    endfunc
+    
+    ' ExpectChar
+    ' ----------
+    function ExpectChar(value)
+        assert vType = JPARSER_CHAR and vValue = value, "JSON: Expected " + chr(value)
+        GetNext()
+    endfunc
+    
+    ' ExpectType
+    ' ----------
+    function ExpectType(type)
+        assert vType = type, "JSON: Expected " + vTypes[type]
+    endfunc
+    
+    ' GetNext
+    ' -------
+    function GetNext()
+        c = asc(mid(vString, vPos))
+        vPos = vPos + 1
+        if c = 0
+            vType = JPARSER_END
+            return
+        endif
+        while c = 32 or c = 9 or c = 10 or c = 13
+            c = asc(mid(vString, vPos))
+            vPos = vPos + 1
+        wend
+        if c = 34
+            tmp = ""
+            c = asc(mid(vString, vPos))
+            vPos = vPos + 1
+            while c <> 34
+                tmp = tmp + chr(c)
+                c = asc(mid(vString, vPos))
+                vPos = vPos + 1
+            wend
+            vType = JPARSER_STRING
+            vValue = tmp
+        elseif IsDigit(c) or c = 45
+            tmp = chr(c)
+            dot = false
+            c = asc(mid(vString, vPos))
+            vPos = vPos + 1
+            while IsDigit(c) or (c = 46 and not dot)
+                tmp = tmp + chr(c)
+                if c = 46  dot = true
+                c = asc(mid(vString, vPos))
+                vPos = vPos + 1
+            wend
+            vPos = vPos - 1
+            vType = JPARSER_NUMBER
+            vValue = float(tmp)
+        elseif IsAlpha(c)
+            tmp = chr(c)
+            c = asc(mid(vString, vPos))
+            vPos = vPos + 1
+            while IsAlpha(c)
+                tmp = tmp + chr(c)
+                c = asc(mid(vString, vPos))
+                vPos = vPos + 1
+            wend
+            vPos = vPos - 1
+            select tmp
+                case "null"
+                    vType = JPARSER_NULL
+                    vValue = unset
+                case "true"
+                    vType = JPARSER_NUMBER
+                    vValue = 1
+                case "false"
+                    vType = JPARSER_NUMBER
+                    vValue = 0
+                default
+                    assert "JSON: Unexpected " + tmp
+            endsel
+        else
+            vType = JPARSER_CHAR
+            vValue = c
+        endif 
+    endfunc
+
+    ' IsDigit
+    ' -------    
+    function IsDigit(c)
+        return c >= 48 and c <= 57
+    endfunc
+    
+    ' IsAlpha
+    ' -------
+    function IsAlpha(c)
+        return c >= 65 and c <= 90 or c >= 97 and c <= 122
+    endfunc
+endfunc

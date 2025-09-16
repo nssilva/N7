@@ -1,0 +1,685 @@
+' A version of the n6 game Blocks but with 3d graphics.
+
+include "tilemap.n7"
+' 3D: include s3d for 3d rendering.
+include "s3d.n7"
+
+#win32
+
+' Images.
+visible vBricksImage
+visible vSmallPaddleImage, vMediumPaddleImage, vLargePaddleImage
+visible vBallsImage
+visible vTitleImage
+
+' Sound effects.
+visible vPaddleSound, vBrickSound, vWallSound
+
+' Top score filename.
+constant TOP_SCORE_FILENAME = "assets/secret_file.txt"
+
+'visible:
+' Paddle position.
+visible paddleX
+visible paddleY
+' Paddle image.
+visible paddleImg
+' 3D: current paddle mesh
+visible paddleMesh
+' True if ball has not been launched.
+visible paddleHasBall
+
+' Ball position, direction and speed.
+visible ballX
+visible ballY
+visible ballDX
+visible ballDY
+visible ballSpeed
+    
+' Level, lives, score and bricks left.
+visible level = 3
+visible lives
+visible score
+visible bricksLeft
+
+' 3D: bricks meshes, one mesh per brick color.
+visible brickMeshes = []
+' 3D: put brick image cels in different images just because it makes dealing with texture
+'     coordinates easier and we can get rid of the image transparency.
+visible brickTextures = []
+' 3D: paddle meshes.
+visible smallPaddleMesh, mediumPaddleMesh, largePaddleMesh
+' 3D: border mesh.
+visible borderMesh
+' 3D: use 3d rendering
+visible use3d = true
+
+'hidden:
+
+' Create window and turn off automatic redraw.
+set window "Blocks", 640, 480
+set redraw off
+
+' Load assets.
+LoadAssets()
+
+'set mouse on
+
+do
+
+' Show title screen, where the player can select which level to start at.
+level = TitleScreen(level)
+if level = 0 then end
+' Init game.
+lives = 3
+score = 0
+
+'set mouse off
+
+do
+
+CreateLevel(level)
+ShowMessage("LEVEL " + str(level), 3)
+
+S3D_SetView(primary, rad(60), 10, 10000)
+prevTime = clock()
+fps = 0
+do
+    ' Update ---------------------------------------------------------------
+    t = clock()
+    dt = (min(t - prevTime, 66))/1000
+    prevTime = t
+    if dt  fps = fps*0.95 + 0.05/dt
+
+    if keydown(KEY_ESCAPE, true) then end
+    
+    ' 3D: switch between 2d and 3d
+    if keydown(KEY_SPACE, true) then use3d = not use3d
+
+    ' Update paddle position.
+    paddleX = mousex()
+    if paddleY > 400 then paddleY = max(paddleY - 2, 400)
+
+    ' Ball on paddle?
+    if paddleHasBall
+        ballX = paddleX - width(vBallsImage)/2
+        ballY = paddleY - height(vBallsImage)
+        ' Launch?
+        if mousebutton(0, true)
+            paddleHasBall = false
+            ballDX = 0.0
+            ballDY = -1.0
+        endif
+    ' Ball in air.
+    else
+        for i = 1 to ballSpeed
+            ' Let the Tilemap library handle brick collisions.
+            result = TM_Move(vBallsImage, ballX, ballY, ballDX, ballDY)
+            ballX = result.x  'result[TM_X]
+            ballY = result.y  'result[TM_Y]
+            ' Check for collisions in all directions.
+            anyCollision = false
+            bricks = 0
+            if TM_CollisionUp()
+                ballDY = abs(ballDY)
+                anyCollision = true
+                bricks = bricks + TryRemoveBrick(ballX, ballY - 8.0)
+                bricks = bricks + TryRemoveBrick(ballX + width(vBallsImage), ballY - 8.0)
+            endif
+            if TM_CollisionDown()
+                ballDY = -abs(ballDY)
+                anyCollision = true
+                bricks = bricks + TryRemoveBrick(ballX, ballY + height(vBallsImage) + 8.0)
+                bricks = bricks + TryRemoveBrick(ballX + width(vBallsImage), ballY + height(vBallsImage) + 8.0)
+            endif
+            if TM_CollisionLeft()
+                ballDX = abs(ballDX)
+                anyCollision = true
+                bricks = bricks + TryRemoveBrick(ballX - 8.0, ballY)
+                bricks = bricks + TryRemoveBrick(ballX - 8.0, ballY + height(vBallsImage))
+            endif
+            if TM_CollisionRight()
+                ballDX = -abs(ballDX)
+                anyCollision = true
+                bricks = bricks + TryRemoveBrick(ballX + width(vBallsImage) + 8.0, ballY)
+                bricks = bricks + TryRemoveBrick(ballX + width(vBallsImage) + 8.0, ballY + height(vBallsImage))
+            endif
+            ' Play brick or wall hit?
+            if anyCollision
+                if bricks > 0
+                    score = score + bricks*10
+                    play sound vBrickSound
+                else
+                    play sound vWallSound
+                endif
+            endif
+
+            ' Check for collision with paddle.
+            if ballDY > 0
+                ' Check for simple image overlap.
+                if TM_ImagesCollide(vBallsImage, ballX, ballY, paddleImg, paddleX - width(paddleImg)/2, paddleY)
+                    ' Calculate the balls new angle.
+                    dx = ballX + width(vBallsImage)/2 - float(paddleX)
+                    dx = dx/(width(paddleImg)/2)
+                    dy = -0.75
+                    k = 1/sqr(dx*dx + dy*dy)
+                    ballDX = dx*k
+                    ballDY = dy*k
+                    play sound vPaddleSound
+                endif
+            endif
+        next
+        ' Check if the ball is lost.
+        if ballY > 480
+            lives = lives - 1
+            paddleHasBall = true
+        endif
+    endif
+
+    ' Draw -----------------------------------------------------------------
+
+    ' Background.
+    set color 0, 64, 96
+    cls
+    ' 3D: render in 3d?
+    if use3d
+        S3D_Clear()
+        ' Camera transformation, scroll a little to the left and right to follow the paddle.
+        centerX = TM_WorldWidth()/2
+        dx = (paddleX - centerX)*0.25
+        ' 30 degree tilt.
+        S3D_RotateX(-rad(30))
+        S3D_Translate(-centerX - dx, -16*32, 425)
+        ' Border.
+        S3D_SetDepthBuffer(S3D_NONE)
+        S3D_Texture(unset)
+        S3D_Mesh(borderMesh, 0)
+        S3D_SetDepthBuffer(S3D_Z_BUFFER)
+        ' Bricks.
+        S3D_Color(255, 255, 255)
+        w = width(vBricksImage);  h = height(vBricksImage)
+        for y = 0 to TM_MapHeight() - 1  for x = 0 to TM_MapWidth() - 1
+            c = TM_GetCel(x, y)
+            if c >= 0
+                S3D_Push()
+                    S3D_Translate(x*w, y*h, 0)
+                    S3D_Mesh(brickMeshes[c], 0)
+                S3D_Pop()
+            endif
+        next
+        ' Paddle.
+        S3D_Push()
+            S3D_Translate(paddleX - width(paddleImg)/2, paddleY, 0)
+            S3D_Mesh(paddleMesh, 0)
+        S3D_Pop()
+        ' Ball.
+        S3D_Push()
+            w = width(vBallsImage)/2;  h = height(vBallsImage)/2
+            S3D_Translate(ballX + w, ballY + h, -h)
+            ' Let sprite face the camera.
+            S3D_RotateX(rad(30))
+            S3D_Texture(vBallsImage)
+            S3D_Begin(S3D_QUADS)
+                S3D_Vertex( w, -h, 0, 0.245, 0)
+                S3D_Vertex( w,  h, 0, 0.245, 1)
+                S3D_Vertex(-w,  h, 0, 0,     1)
+                S3D_Vertex(-w, -h, 0, 0,     0)
+            S3D_End()
+        S3D_Pop()
+    else
+        ' Bricks.
+        TM_Render()
+        ' Paddle and ball.
+        set color 255, 255, 255
+        draw image paddleImg, paddleX - width(paddleImg)/2, paddleY
+        draw image vBallsImage, ballX, ballY, 0
+    endif
+    ' Level.
+    set caret 8, 432
+    set color 0, 255, 0
+    wln "LEVEL"
+    set color 255, 255, 255
+    wln level
+    ' Lives.
+    set justification right
+    set caret 632, 432
+    set color 0, 255, 0
+    wln "BALLS"
+    set color 255, 255, 255
+    wln max(lives, 0)
+    set justification left
+    ' Score.
+    set caret 320, 432
+    set color 0, 255, 0
+    center "SCORE"
+    set color 255, 255, 255
+    center score
+    
+    ' Fps.
+    'set caret 2, 2
+    'write "FPS: " + str(fps, 3)
+    set caret 320, 2
+    center "Press spacebar to toggle 3D"
+
+    redraw
+    fwait 60  '_SPD_HoldFrame 60
+until bricksLeft = 0 or lives < 0
+
+' Game over?
+if lives < 0
+    UpdateTopScore(score)
+    ShowMessage("GAME OVER", 3)
+    break
+' Increase level.
+else
+    level = level + 1
+endif
+
+loop
+
+loop
+
+' ==============================================================================
+' Load assets.
+' ==============================================================================
+function LoadAssets()
+    ' Images.
+    vBricksImage = loadimage("assets/bricks.png", 4, 2)
+    vSmallPaddleImage = loadimage("assets/paddle_small.png")
+    vMediumPaddleImage = loadimage("assets/paddle_medium.png")
+    vLargePaddleImage = loadimage("assets/paddle_large.png")
+    vBallsImage = loadimage("assets/balls.png", 4, 1)
+    vTitleImage = loadimage("assets/title.png")
+    ' Sound effects.
+    vPaddleSound = loadsound("assets/paddle.wav")
+    vBrickSound = loadsound("assets/brick.wav")
+    vWallSound = loadsound("assets/wall.wav")
+    ' A font.
+    set font loadfont("assets/impact_24")
+    
+    ' 3D: create separate images for brick image cels, get rid of transparency using an offset.
+    offs = 2
+    set color 255, 255, 255
+    for i = 0 to cels(vBricksImage) - 1
+        brickTextures[i] = createimage(width(vBricksImage) - offs*2, height(vBricksImage) - offs*2)
+        set image brickTextures[i]
+        draw image vBricksImage, -offs, -offs, i 
+        set image primary
+    next
+    ' 3D: create separate meshes for the different brick types. We use the same scale for the 2d and
+    '     3d coordinate systems, meaning that a brick with the size 64x32 pixels has the size 64x32
+    '     units in 3d space too. 
+    w = width(vBricksImage);  h = height(vBricksImage)
+    for i = 0 to cels(vBricksImage) - 1
+        brickMeshes[i] = S3D_BeginMesh()
+            S3D_Texture(brickTextures[i])
+            S3D_Begin(S3D_QUADS)
+                ' Top.
+                S3D_Color(255, 255, 255)
+                S3D_Vertex(0, 0, -h, 0, 0)
+                S3D_Vertex(w, 0, -h, 1, 0)
+                S3D_Vertex(w, h, -h, 1, 1)
+                S3D_Vertex(0, h, -h, 0, 1)
+                ' Front.
+                S3D_Color(128, 128, 128)
+                S3D_Vertex(0, h, -h, 0, 0)
+                S3D_Vertex(w, h, -h, 1, 0)
+                S3D_Vertex(w, h,  0, 1, 1)
+                S3D_Vertex(0, h,  0, 0, 1)
+                ' Left.
+                S3D_Color(192, 192, 192)
+                S3D_Vertex(0, 0, -h, 0, 0)
+                S3D_Vertex(0, h, -h, 1, 0)
+                S3D_Vertex(0, h,  0, 1, 1)
+                S3D_Vertex(0, 0,  0, 0, 1)
+                ' Right.
+                S3D_Color(192, 192, 192)
+                S3D_Vertex(w, h, -h, 0, 0)
+                S3D_Vertex(w, 0, -h, 1, 0)
+                S3D_Vertex(w, 0,  0, 1, 1)
+                S3D_Vertex(w, h,  0, 0, 1)
+            S3D_End()
+        S3D_EndMesh()
+    next
+    ' 3D: small paddle mesh.
+    w = width(vSmallPaddleImage);  h = height(vSmallPaddleImage)
+    smallPaddleMesh = S3D_BeginMesh()
+        ' paddle image without transparency.
+        S3D_Texture(loadimage("assets/paddle_small_texture.png"))
+        S3D_Begin(S3D_QUADS)
+            ' Top.
+            S3D_Color(255, 255, 255)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, 1, 0)
+            S3D_Vertex(w, h, -h, 1, 1)
+            S3D_Vertex(0, h, -h, 0, 1)
+            ' Front.
+            S3D_Color(128, 128, 128)
+            S3D_Vertex(0, h, -h, 0, 0)
+            S3D_Vertex(w, h, -h, 1, 0)
+            S3D_Vertex(w, h,  0, 1, 1)
+            S3D_Vertex(0, h,  0, 0, 1)
+            ' Left.
+            u = 20/w;  v = h  ' Use left red square for sides (it's 20x20 pixels).
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(0, h, -h, u, 0)
+            S3D_Vertex(0, h,  0, u, v)
+            S3D_Vertex(0, 0,  0, 0, v)
+            ' Right.
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(w, h, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, u, 0)
+            S3D_Vertex(w, 0,  0, u, v)
+            S3D_Vertex(w, h,  0, 0, v)
+        S3D_End()
+    S3D_EndMesh()    
+    ' 3D: medium paddle mesh. Yeah, I'm just copying and pasting the code from above ...
+    w = width(vMediumPaddleImage);  h = height(vMediumPaddleImage)
+    mediumPaddleMesh = S3D_BeginMesh()
+        S3D_Texture(loadimage("assets/paddle_medium_texture.png"))
+        S3D_Begin(S3D_QUADS)
+            ' Top.
+            S3D_Color(255, 255, 255)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, 1, 0)
+            S3D_Vertex(w, h, -h, 1, 1)
+            S3D_Vertex(0, h, -h, 0, 1)
+            ' Front.
+            S3D_Color(128, 128, 128)
+            S3D_Vertex(0, h, -h, 0, 0)
+            S3D_Vertex(w, h, -h, 1, 0)
+            S3D_Vertex(w, h,  0, 1, 1)
+            S3D_Vertex(0, h,  0, 0, 1)
+            ' Left.
+            u = 20/w;  v = h  ' Use left red square for sides (it's 20x20 pixels).
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(0, h, -h, u, 0)
+            S3D_Vertex(0, h,  0, u, v)
+            S3D_Vertex(0, 0,  0, 0, v)
+            ' Right.
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(w, h, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, u, 0)
+            S3D_Vertex(w, 0,  0, u, v)
+            S3D_Vertex(w, h,  0, 0, v)
+        S3D_End()
+    S3D_EndMesh()    
+    ' 3D: large paddle mesh.
+    w = width(vLargePaddleImage);  h = height(vLargePaddleImage)
+    largePaddleMesh = S3D_BeginMesh()
+        S3D_Texture(loadimage("assets/paddle_large_texture.png"))
+        S3D_Begin(S3D_QUADS)
+            ' Top.
+            S3D_Color(255, 255, 255)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, 1, 0)
+            S3D_Vertex(w, h, -h, 1, 1)
+            S3D_Vertex(0, h, -h, 0, 1)
+            ' Front.
+            S3D_Color(128, 128, 128)
+            S3D_Vertex(0, h, -h, 0, 0)
+            S3D_Vertex(w, h, -h, 1, 0)
+            S3D_Vertex(w, h,  0, 1, 1)
+            S3D_Vertex(0, h,  0, 0, 1)
+            ' Left.
+            u = 20/w;  v = h  ' Use left red square for sides (it's 20x20 pixels).
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(0, 0, -h, 0, 0)
+            S3D_Vertex(0, h, -h, u, 0)
+            S3D_Vertex(0, h,  0, u, v)
+            S3D_Vertex(0, 0,  0, 0, v)
+            ' Right.
+            S3D_Color(192, 192, 192)
+            S3D_Vertex(w, h, -h, 0, 0)
+            S3D_Vertex(w, 0, -h, u, 0)
+            S3D_Vertex(w, 0,  0, u, v)
+            S3D_Vertex(w, h,  0, 0, v)
+        S3D_End()
+    S3D_EndMesh()
+    ' 3D: border mesh.
+    borderMesh = S3D_BeginMesh()
+        w = 640;  h = 400
+        S3D_Texture(unset)
+        S3D_Begin(S3D_QUADS)
+            ' Right.
+            S3D_Color(0, 64*0.75, 96*0.75)
+            S3D_Vertex(w, 0, -32, 0, 0)
+            S3D_Vertex(w, h, -32, 0, 0)
+            S3D_Vertex(w, h,  0, 0, 0)
+            S3D_Vertex(w, 0,  0, 0, 0) 
+            ' Left.
+            S3D_Vertex(0, 0, -32, 0, 0)
+            S3D_Vertex(0, 0,  0,  0, 0) 
+            S3D_Vertex(0, h,  0,  0, 0)
+            S3D_Vertex(0, h, -32, 0, 0)
+            ' Back.
+            S3D_Color(0, 64*0.5, 96*0.5)            
+            S3D_Vertex(0, 0, -32, 0, 0)
+            S3D_Vertex(w, 0, -32, 0, 0)
+            S3D_Vertex(w, 0,  0,  0, 0)
+            S3D_Vertex(0, 0,  0,  0, 0)
+        S3D_End()
+    S3D_EndMesh()
+endfunc
+
+' ==============================================================================
+' Show title screen, return selected level to start at.
+' ==============================================================================
+function TitleScreen(startLevel)
+    ' Create some buttons, using objects and zones.
+    buttons = fill([], 5)  'buttons?[5]
+
+    ' Define buttons.
+    buttons[1].txt = "START AT LEVEL"
+    buttons[1].x = (width(primary) - fwidth("START AT LEVEL"))/2
+    buttons[1].y = 240
+
+    buttons[2].txt = "<"
+    buttons[2].x = width(primary)/2 - 24 - fwidth("<")
+    buttons[2].y = 240 + 32
+
+    buttons[3].txt = ">"
+    buttons[3].x = width(primary)/2 + 24
+    buttons[3].y = 240 + 32
+
+    buttons[4].txt = "EXIT GAME"
+    buttons[4].x = (width(primary) - fwidth("EXIT GAME"))/2
+    buttons[4].y = 240 + 96
+
+    ' Create zones.
+    for i = 1 to 4
+        create zone i, buttons[i].x, buttons[i].y, fwidth(buttons[i].txt), fheight()
+    next
+    
+    ' Load top score.
+    topScore = LoadTopScore()
+
+    do
+        ' Get button event.
+        button = zone()
+
+        ' Increase or decrease starting level.
+        if button = 2 then startLevel = max(startLevel - 1, 1)
+        if button = 3 then startLevel = min(startLevel + 1, 32)
+
+        ' Draw background and title.
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        draw image vTitleImage, (width(primary) - width(vTitleImage))/2, 100
+
+        ' Draw buttons.
+        for i = 1 to 4
+            zoneState = zone(i)
+            if zoneState = 1
+                set color 255, 255, 0
+            elseif zoneState = 2
+                set color 128, 96, 0
+            else
+                set color 255, 255, 255
+            endif
+            set caret buttons[i].x, buttons[i].y
+            write buttons[i].txt
+            draw rect zonex(i) - 2, zoney(i) - 2, zonew(i) + 4, zoneh(i) + 4
+        next
+
+        ' Write selected level number.
+        set color 255, 255, 255
+        set caret width(primary)/2, buttons[2].y
+        center startLevel
+
+        ' Write top score.
+        set caret width(primary)/2, 400
+        center "TOP SCORE: " + topScore
+
+        redraw
+        fwait 60  '_SPD_HoldFrame 60
+    until button = 1 or button = 4
+
+    for i = 1 to 4
+        free zone i
+    next
+    
+
+    ' Exit?
+    if button = 4
+        return 0
+    ' Start at specified level.
+    else
+        return startLevel
+    endif        
+endfunc
+
+' ==============================================================================
+' Load top score.
+' ==============================================================================
+function LoadTopScore()
+    open file 0, TOP_SCORE_FILENAME
+    if file(0)
+        topScore = fread(0)
+        free file 0
+        return topScore
+    else
+        return 0
+    endif
+endfunc
+
+' ==============================================================================
+' Update topscore if newScore is greater than the saved one.
+' ==============================================================================
+function UpdateTopScore(newScore)
+    topScore = LoadTopScore()
+    if newScore > topScore
+        create file 0, TOP_SCORE_FILENAME
+        if file(0)
+            wln file 0, newScore
+            free file 0
+        endif
+    endif
+endfunc
+
+' ==============================================================================
+' Create a random level.
+' ==============================================================================
+function CreateLevel(number)
+    ' Use level number as rnd seed.
+    randomize number
+
+    ' Init map.
+    TM_SetImage(vBricksImage)  ' Moved this one up to prevent a bug in tilemap.n7.
+    TM_InitMap(10, 15)
+    TM_SetBorder(true, true, true, false)
+    TM_SetView(0, 0, 640, 480)
+    TM_SetCamera(0, 0)
+    ' Make all cells obstacles.
+    for i = 0 to 7
+        TM_SetObstacle(i, true)
+    next
+
+    ' Add some random rectangles of bricks.
+    bricksLeft = 0
+    if number >= 10
+        addY = 3
+    else
+        addY = 0
+    endif
+    for i = 0 to 3 + number
+        xPos = rnd(5)
+        yPos = rnd(5 + addY)
+        w = rnd(4)
+        h = rnd(4)
+        c = rnd(8)
+        for y = yPos to min(yPos + h, 11 + addY)
+            for x = xPos to xPos + w
+                TM_SetCel(x, y, c)
+            next
+        next
+    next
+    ' Mirror bricks for symetric levels.
+    for y = 0 to 14
+        for x = 0 to 4
+            c = TM_GetCel(x, y)
+            TM_SetCel(9 - x, y, c)
+            if c >= 0 then bricksLeft = bricksLeft + 2
+        next
+    next
+
+    ' Init paddle.
+    paddleX = mousex()
+    paddleY = 512
+    paddleHasBall = true
+    ' Make paddle smaller on later levels.
+    if number >= 6
+        paddleImg = vSmallPaddleImage
+        paddleMesh = smallPaddleMesh
+    elseif number >= 3
+        paddleImg = vMediumPaddleImage
+        paddleMesh = mediumPaddleMesh
+    else
+        paddleImg = vLargePaddleImage
+        paddleMesh = largePaddleMesh
+    endif
+    ' Increase ball speed on later levels.
+    if number >= 16
+        ballSpeed = 7
+    elseif number >= 8
+        ballSpeed = 6
+    elseif number >= 4
+        ballSpeed = 5
+    else            
+        ballSpeed = 4
+    endif
+endfunc
+
+' ==============================================================================
+' Try remove a brick at position.
+' ==============================================================================
+function TryRemoveBrick(x, y)
+    mapX = int(x/width(vBricksImage))
+    mapY = int(y/height(vBricksImage))
+    if TM_GetCel(mapX, mapY) >= 0
+        bricksLeft = bricksLeft - 1
+        TM_SetCel(mapX, mapY, -1)
+        return true
+    else
+        return false
+    endif
+endfunc
+
+' ==============================================================================
+' Show a message.
+' ==============================================================================
+function ShowMessage(msg, seconds)
+    ticks = seconds*60
+    for i = 1 to ticks
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        set caret 320, 200
+        center msg
+        redraw
+        fwait 60  '_SPD_HoldFrame 60
+    next
+endfunc

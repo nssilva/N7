@@ -1,0 +1,56 @@
+' keydown
+' -------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window and disable automatic redraw.
+set window "keydown", 640, 480
+set redraw off
+
+' Initial position and speed of a circle that the user can move with the arrow keys.
+x = 320
+y = 240
+speed = 2
+
+' 'keydown(key_code, unflag)' returns true if key key_code is being pressed. If the optional unflag
+' is anything but 0, the function won't return true for the key until it has been released and
+' pressed again. Have a look in the documentation for a list of key codes.
+'    Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' Move the circle using the arrow keys.
+    if keydown(KEY_LEFT)  x = x - speed
+    if keydown(KEY_RIGHT)  x = x + speed
+    if keydown(KEY_UP) y = y - speed
+    if keydown(KEY_DOWN) y = y + speed
+    ' Increase and decrase speed with + and - keys (numeric pad).
+    if keydown(KEY_SUBTRACT, true)  speed = max(speed - 1, 0)
+    if keydown(KEY_ADD, true)  speed = min(speed + 1, 8)
+    ' Teleport with T key.
+    if keydown(KEY_T, true)
+        x = rnd(640)
+        y = rnd(480)
+    endif
+    
+    ' Clear screen and draw circle.
+    set color 64, 64, 96
+    cls
+    set color 255, 128, 255
+    draw ellipse x, y, 16, 16, true
+    
+    ' Write instructions.
+    set color 255, 255, 255
+    set caret 320, 8
+    center "Move the circle with the arrow keys"
+    center "Use + and - to increase and decrease the speed"
+    center "Press T to teleport"
+    center
+    center "Current position is " + x + ", " + y
+    center "The speed is " + speed
+    center
+    center "Press Esc to quit ..."
+    
+    ' Update window content and cap fps to 60.
+    redraw
+    fwait 60
+wend

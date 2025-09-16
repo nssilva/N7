@@ -1,0 +1,26 @@
+' wln
+' ---
+
+' 'wln s' writes string s and moves to a new line. If no window has been created 'wln' works just
+' like 'pln' and writes text to the console.
+wln "Written using 'wln'"
+pln "Written using 'pln'"
+
+system "pause"
+
+' Create a window of the size 640x480.
+set window "wln", 640, 480
+
+' If a window has been created, 'wln' writes text to the window, while 'pln' continues to write to
+' the console.
+wln "Hello window!"
+pln "Hello console!"
+
+' Write some text.
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+
+

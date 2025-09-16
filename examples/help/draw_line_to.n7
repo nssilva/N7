@@ -1,0 +1,23 @@
+' draw line to
+' ------------
+
+' Create a window of the size 640x480.
+set window "draw line to", 640, 480
+
+set color 255, 0, 0
+draw pixel 100, 100
+' 'draw line to x, y' draws a line from the last destination coordinate of 'set pixel',
+' 'draw pixel', 'draw line' or 'draw line to' to x, y.
+draw line to 200, 200
+
+set color 0, 255, 0
+draw line 145, 200, 300, 400
+' 'draw line x, y' works just like 'draw line to'.
+draw line 200, 400
+
+set color 255, 255, 255
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

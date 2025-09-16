@@ -1,0 +1,65 @@
+' function, endfunc, return
+' -------------------------
+
+' 'function function_name([p_1, [, p_2 ..[, p_n] .. ]])' defines a function with the name
+' function_name and an optional list of parameters, p_1 .. p_n. Call a function through its name
+' followed by a list of comma-separated aguments, matching the parameter list in the function
+' definition, within parentheses. The function body is defined by the statements between 'function'
+' and end func. When you call a function, these statements are executed.
+
+' Create a function that just prints a message to the console.
+function WelcomeAnyone()
+    pln "Greetings, friend!"
+endfunc
+
+' Call the function. Even if the function lacks a parameter list, you have to end the call with
+' parenthesis.
+WelcomeAnyone()
+
+' Create a function with two parameters that are used to construct a more personal message than the
+' one in the previous function. The parameters and all variables defined inside a function are
+' local to that function and can't be accessed from the outside.
+function WelcomeDudeOrDudette(firstName, lastName)
+    ' Create an unnecessary local variable.
+    fullName = firstName + " " + lastName
+    pln "Welcome, " + fullName + "!"
+endfunc
+
+' Call the function with the two required arguments.
+WelcomeDudeOrDudette("Marcus", "Johansson")
+
+' Create a function that returns a string where the order of the characters is reversed.
+function InvertedString(s)
+    ' Nothing to reverse?
+    if len(s) <= 1  return s
+
+    ' Construct inverted string.
+    r = ""
+    for i = len(s) - 1 to 0  r = r + mid(s, i)
+    
+    ' 'return [v]' leaves the function and optionally returns a value, v, that may be captured by
+    ' the caller.
+    return r    
+endfunc
+
+' Call the function twice. The first time we store the result in a variable, and the second time
+' we just pass it on to 'pln'.
+inverted = InvertedString("Hello world!")
+pln inverted
+pln InvertedString(inverted)
+
+pln
+
+' You can store functions in variables and call them through the variables.
+foo = WelcomeAnyone
+foo()
+
+' You can also create an "anonymous" function by assigning it directly to a variable.
+bar = function(a, b)
+    return a*b
+endfunc
+pln "4x5 = " + bar(4, 5)
+
+pln
+
+system "pause"

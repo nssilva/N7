@@ -1,0 +1,269 @@
+' ex6_heightmap.n7
+' ----------------
+' An s3d example where the user can move around over a mesh based on a heightmap image.
+
+include "s3d.n7"
+
+#win32
+
+' Display settings.
+constant RES = 240          ' Vertical resolution.
+constant SCALE = 2          ' Window scale.
+constant FULLSCREEN = 1     ' Fullscreen if 1
+constant DISPLAY_FPS = 1    ' Display fps if 1.
+constant FOV = 65           ' Vertical field of view in degrees.
+constant MOUSE_SENS = 0.5   ' Mouse sensitivity.
+
+' Fog color.
+constant FOG_R = 128, FOG_G = 144, FOG_B = 128
+
+' For delta time.
+visible vLastTick = 0
+
+' Create window.
+set window "Heightmap", RES*screenw()/screenh(), RES, FULLSCREEN, SCALE
+set redraw off
+
+' Init s3d with the window as render target, a field of view of FOV degrees, near clip plane at
+' distance 0.1 and far clip plane at distance 8.
+S3D_SetView(primary, rad(FOV), 0.1, 8)
+
+' Build a heightmap from an image.
+heightmapImg = loadimage("assets/heightmap.png")
+hm = CreateHeightmap(heightmapImg, 8)
+
+' Load a texture for the ground.
+groundImg = loadimage("assets/ground.png")
+
+' Camera position.
+camX = 32
+camY = 0
+camZ = 32
+' Yaw and pitch for camera rotation.
+camYaw = 0
+camPitch = 0
+' The camera bobs up and down when the user moves.
+camBobAngle = 0
+camBobEffect = 0
+
+' Hide and center mouse cursor.
+set mouse off
+set mouse width(primary)/2, height(primary)/2
+
+' Loop until user presses esc.
+while not keydown(KEY_ESCAPE, true)
+    ' Get time passed since last frame.
+    dt = DeltaTime()
+    
+    ' 'mouserelx' and 'mouserely' returns the mouse coordinates relative to the last position set
+    ' with 'set mouse'. The coordinates are in screen coordinates (scaling and fullscreen doesn't
+    ' affect the values), so this is useful for controls in 3d games. 
+    mdx = mouserelx()
+    mdy = mouserely()
+    ' Center the hidden mouse cursor.
+    set mouse width(primary)/2, height(primary)/2
+    
+    ' Change camera yaw with mdx and pitch with mdy.
+    camYaw = camYaw + mdx*MOUSE_SENS
+    camPitch = min(max(camPitch - mdy*MOUSE_SENS, -60), 60)
+    
+    ' Move with WASD. Moving "diagonally", for example holding down W and A at the same time,
+    ' shouldn't affect the movement speed, so we have to create sums for x and y and normalize them
+    ' as a vector.
+    dx = 0; dz = 0
+    if keydown(KEY_W)
+        dx = dx + sin(rad(camYaw))
+        dz = dz + cos(rad(camYaw))
+    endif
+    if keydown(KEY_S)
+        dx = dx - sin(rad(camYaw))
+        dz = dz - cos(rad(camYaw))
+    endif
+    if keydown(KEY_A)
+        dx = dx + sin(rad(camYaw - 90))
+        dz = dz + cos(rad(camYaw - 90))
+    endif
+    if keydown(KEY_D)
+        dx = dx + sin(rad(camYaw + 90))
+        dz = dz + cos(rad(camYaw + 90))
+    endif
+    if dx or dz
+        camBobAngle = camBobAngle + 500*dt
+        k = dt/sqr(dx*dx + dz*dz)
+        camX = camX + k*dx
+        camZ = camZ + k*dz
+        camBobEffect = min(camBobEffect + 4*dt, 1)
+    else
+        camBobEffect = max(camBobEffect - 4*dt, 0) 
+    endif
+
+    ' Use 'GetY' to get the y coordinate of the heightmap at the x and z coordinates of the camera.
+    ' Subtract -0.5 to place the camera above the ground.
+    camY = hm.GetY(camX, camZ) - 0.5
+
+    ' Fill screen with the fog color.
+    set color FOG_R, FOG_G, FOG_B
+    cls
+
+    ' Clear depth buffer and transformation.
+    S3D_Clear()
+
+    ' The heightmap can be sorted and rendered correctly without the use of a depth buffer. But in
+    ' order to render a fog effect we have to write to the depth buffer (no need to read).
+    S3D_SetSorting(S3D_BACK_TO_FRONT)
+    S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+    
+    ' Perform camera transformations.
+    S3D_RotateX(rad(-camPitch))
+    S3D_RotateY(rad(-camYaw))
+    S3D_Translate(-camX, -camY + 0.04*camBobEffect*sin(rad(camBobAngle)), -camZ)
+
+    ' Send the heightmap's faces to the renderer. They will be sorted and rendered when we call
+    ' S3D_Render.
+    S3D_Texture(groundImg)
+    S3D_Mesh(hm.mesh, 0)
+    
+    ' Render.
+    S3D_Render()
+    ' Apply fog effect based on depth values in the depth buffer. Set the last parameter to true
+    ' for a more retro fog effect.
+    S3D_RenderFog(FOG_R, FOG_G, FOG_B, false)
+    
+    ' Write information and instructions.
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "Position: (" + str(camX, 0, 2) + ", " + str(camY, 0, 2) + ", " + str(camZ, 0, 2) + ")"
+    wln
+    wln "Move with WASD keys"
+    wln "Look around with the mouse"
+    wln
+    wln "Press Esc to quit"
+
+    ' Display.
+    DisplayFps(dt)
+    
+    ' Update window.
+    redraw
+    wait 1
+wend
+
+' CreateHeightmap
+' ---------------
+' Create heightmap mesh and data from image.
+function CreateHeightmap(img, maxHeight)
+    assert image(img), "CreateHeightmap: invalid image"
+
+    ' For heights and normals.
+    data = fill([], width(img), height(img))
+    
+    ' Calculate height for each tile in the xz plane based on the color of the pixels in img.
+    set image img
+    for z = 0 to height(img) - 1
+        for x = 0 to width(img) - 1  data[x][z].h = -maxHeight*pixel(x, z)[0]/255
+    next
+    set image primary
+    
+    ' A tile is represented by two triangles. Calculate the normals of these triangles, as they're
+    ' needed for calculating the y coordinate at any position within a tile.
+    a = dim(3); b = dim(3); c = dim(3); n = dim(3)
+    for z = 0 to sizeof(data[0]) - 2  for x = 0 to sizeof(data) - 2
+        a[0] = 0; a[1] = data[x][z + 1].h - data[x][z].h; a[2] = 1
+        b[0] = 1; b[1] = data[x + 1][z + 1].h - data[x][z].h; b[2] = 1
+        c[0] = 1; c[1] = data[x + 1][z].h - data[x][z].h; c[2] = 0
+        CrossProduct(n, a, b)
+        Normalize(n)
+        data[x][z].nLx = n[0]
+        data[x][z].nLy = n[1]
+        data[x][z].nLz = n[2]
+        CrossProduct(n, b, c)
+        Normalize(n)
+        data[x][z].nRx = n[0]
+        data[x][z].nRy = n[1]
+        data[x][z].nRz = n[2]
+    next
+    
+    ' Build the mesh.
+    mesh = S3D_BeginMesh()
+    S3D_Texture(unset)
+    S3D_Color3(255, 255, 255)
+    S3D_Begin(S3D_TRIANGLES)
+    for z = 0 to height(img) - 2  for x = 0 to width(img) - 2
+        S3D_Vertex5(x, data[x][z].h, z, 0, 0)
+        S3D_Vertex5(x + 1, data[x + 1][z + 1].h, z + 1, 1, 1)
+        S3D_Vertex5(x + 1, data[x + 1][z].h, z, 1, 0)
+        S3D_Vertex5(x, data[x][z].h, z, 0, 0)
+        S3D_Vertex5(x, data[x][z + 1].h, z + 1, 0, 1)
+        S3D_Vertex5(x + 1, data[x + 1][z + 1].h, z + 1, 1, 1)
+    next
+    S3D_End()
+    S3D_EndMesh()
+    
+    ' This is what we return, a table containing the mesh, data and a function that returns the y
+    ' coordinate of any x and z coordinate pair within the heightmap.
+    hm = []
+    hm.mesh = mesh
+    hm.data = data
+    ' GetY
+    ' ----
+    hm.GetY = function(x, z)
+        ' Tile.
+        ix = min(max(floor(x), 0), sizeof(.data) - 2)
+        iz = min(max(floor(z), 0), sizeof(.data[0]) - 2)
+        ' Coordinates within tile.
+        x = x - float(ix)
+        z = z - float(iz)
+        ' Which triangle?
+        if x < z
+            y = .data[ix][iz].h -
+                    (.data[ix][iz].nLx*x + .data[ix][iz].nLz*z)/.data[ix][iz].nLy
+        else
+            x = x - 1
+            z = z - 1
+            y = .data[ix + 1][iz + 1].h -
+                    (.data[ix][iz].nRx*x + .data[ix][iz].nRz*z)/.data[ix][iz].nRy
+        endif
+        return y
+    endfunc
+    
+    return hm
+endfunc
+
+' CrossProduct
+' ------------
+' Set dst to a x b.
+function CrossProduct(dst, a, b)
+    dst[0] = a[1]*b[2] - a[2]*b[1]
+    dst[1] = a[2]*b[0] - a[0]*b[2]
+    dst[2] = a[0]*b[1] - a[1]*b[0]    
+endfunc
+
+' Normalize
+' ---------
+' Normalize vector a.
+function Normalize(a)
+    k = 1/sqr(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
+    a[0] = k*a[0]; a[1] = k*a[1]; a[2] = k*a[2]
+endfunc
+
+' DeltaTime
+' ---------
+' Return delta time in seconds since last call.
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' DisplayFps
+' ----------
+' Display number of frames per second in bottom right corner based on delta time in seconds.
+function DisplayFps(dt)
+    if DISPLAY_FPS
+        set caret width(primary) - fwidth(" "), height(primary) - fheight()
+        set justification right
+        set color 0, 255, 0
+        write "FPS: " + str(round(1/dt))
+        set justification left
+    endif
+endfunc

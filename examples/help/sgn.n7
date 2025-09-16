@@ -1,0 +1,10 @@
+' sgn
+' ---
+
+' The function 'sgn' returns the sign of a number.
+pln "sgn(172) = " + sgn(172)
+pln "sgn(-18) = " + sgn(-18)
+pln "sgn(0)   = " + sgn(0)
+pln
+
+system "pause"

@@ -1,0 +1,48 @@
+' Function may have local functions. A local function is not visible outside its
+' parent function. It's only visible to its parent, sisters, children and its
+' nephews (and to its childrens' children and newphews' children and ...).
+' However, a child may "shadow" any of its relatives by name. As with functions
+' in the main program, it doesn't matter WHERE in a function you define a child
+' - you may use it before it's defined.
+
+' Here's a function that calls one of its children.
+function Parent()
+    ' Call Son.
+    Son()
+
+    function Son()
+        ' Call sister.
+        Daughter()
+    endfunc
+    function Daughter()
+        ' Call Dog.
+        Dog()
+    endfunc
+    function Dog()
+        pln "Woof!"
+    endfunc
+endfunc
+
+' Call 'Parent'.
+Parent()
+
+' You can't call any of 'Parent''s children from outside. The statement below
+' would cause a compiler error.
+' Daughter()
+
+' Here's an example where an outer function is shadowed by a child. But the
+' shadowing could also have occured later in the chain of children. 
+function Shadowed()
+    ' Call 'Shadowed'.
+    Shadowed()
+
+    function Shadowed()
+        pln "I'm the one!"
+    endfunc
+endfunc
+
+Shadowed()
+
+pln
+pln "Press enter to exit"
+tmp = rln()

@@ -1,0 +1,96 @@
+' polar_coordinates_experiment
+' ----------------------------
+' Posted by Rick3137 on the naalaa forum.
+
+visible p2 = PI * 2.0
+set window " butterfly ",700,700
+
+wln "     Hit Escape key to exit"
+set redraw 0
+set color 0,0,255
+angle = p2/30
+'angle = circle/30
+  butterfly(350,350,200,angle)
+  bottomright()
+  topright()
+  bottomleft()
+  topleft()
+
+do
+a = keydown(27)
+if a > 0 then break
+redraw
+fwait 60
+loop
+end
+
+function bottomright()
+       angle2 = 29 * p2/30;  zline(350,350,200,angle2)
+       angle2 = 28 * p2/30;  zline(350,350,200,angle2)
+       angle2 = 27 * p2/30;  zline(350,350,230,angle2)
+       angle2 = 26 * p2/30;  zline(350,350,300,angle2)
+       angle2 = 25 * p2/30;  zline(350,350,300,angle2)
+       angle2 = 24 * p2/30;  zline(350,350,280,angle2)
+endfunc
+
+function bottomleft( )
+      angle2 = 21 * p2/30;  zline(350,350,280,angle2)
+       angle2 = 20 * p2/30;  zline(350,350,300,angle2)
+       angle2 = 19 * p2/30;  zline(350,350,295,angle2)
+       angle2 = 18 * p2/30;  zline(350,350,235,angle2)
+       angle2 = 17 * p2/30;  zline(350,350,205,angle2)
+       angle2 = 16 * p2/30;  zline(350,350,200,angle2)
+   
+endfunc
+
+function topright()
+   angle2 = 31 * p2/30;  zline(350,350,200,angle2)
+   angle2 = 32 * p2/30;  zline(350,350,205,angle2)
+   angle2 = 33 * p2/30;  zline(350,350,250,angle2)
+   angle2 = 34 * p2/30;  zline(350,350,285,angle2)
+   angle2 = 35 * p2/30;  zline(350,350,320,angle2)
+   angle2 = 36 * p2/30;  zline(350,350,280,angle2)
+
+endfunc
+
+function topleft()
+    angle2 = 39 * p2/30;  zline(350,350,280,angle2)
+    angle2 = 40 * p2/30;  zline(350,350,320,angle2)
+    angle2 = 41 * p2/30;  zline(350,350,285,angle2)
+    angle2 = 42 * p2/30;  zline(350,350,250,angle2)
+    angle2 = 43 * p2/30;  zline(350,350,205,angle2)
+    angle2 = 44 * p2/30;  zline(350,350,200,angle2)
+endfunc
+
+function zline(x,y,size,angle)
+        dy = sin (angle) * -1
+        dx = cos (angle)
+        set color 0, 0, 255
+       
+  for cnt = 1 to size
+    draw pixel x + dx*cnt , y + dy*cnt
+  next
+
+endfunc
+
+function  butterfly(x,y,radius,angle)
+     angle2 = 0
+     cnt = 0
+       while angle2 < p2
+        dy = sin (angle2)
+        dx = cos (angle2);
+        x2 =0.0;y2=0.0;y3 = 0; x3 = 0
+            for cnt = 1 to radius
+               set color 255, 255, 255
+               x2 = x2 + dx ; y2 = y2 + dy
+                y3 = sin(x2)* x2
+               draw pixel x+x2+x3,y+y2+ y3
+               set color 0, 0, 255
+               x3 = sin(y2)* y2* 0.01
+               draw pixel x+ x2+ x3,y+ y2+ y3
+            next
+        angle2 = angle2 + angle
+        redrawx3 = 0
+        wend
+
+endfunc

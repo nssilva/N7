@@ -1,0 +1,368 @@
+' Platformer - step 6
+' -------------------
+' Two player split screen mode.
+'
+' Graphics by ansimuz: https://opengameart.org/content/platform-pixel-art-assets
+
+
+#win32
+
+include "tilemap.n7"
+
+' Frame timer, controls when animations tick. We're making it a visible (global) variable this
+' time, since enemies will need to use it from their update functions.
+visible vFrameTimer = 0
+
+' Images.
+visible vPlayerImage, vJewelImage, vBatImage, vSlimeImage
+
+' Sounds.
+visible vJumpSound, vCeilingSound, vJewelSound, vHitSound
+
+' Sprites.
+visible vPlayerOne, vPlayerTwo, vItems, vEnemies
+
+' Create a window with NES screen resolution and 2x scaling, enable double buffering.
+set window "Platformer", 256, 240, false, 2
+set redraw off
+
+' Load an NES:ish font that I created for a game once.
+set font loadfont("assets/font8b")
+
+' Load player sprite image. It has 7x2 cels, where the first row contains images where the figure
+' is turned right and the bottom row images where it's turned left. You should have a look at this
+' image in an image editor/viewer to better understand how the animations works.
+vPlayerImage = loadimage("assets/player.png", 7, 2)
+
+' Load jewel sprite image with 6 cels in one row.
+vJewelImage = loadimage("assets/jewel.png", 6, 1)
+
+' Load bat and slime sprite images with 4x2 cels, top row for right animation, bottom row for left.
+vBatImage = loadimage("assets/bat.png", 4, 2)
+vSlimeImage = loadimage("assets/slime.png", 4, 2)
+
+' Load sound effects.
+vJumpSound = loadsound("assets/jump.wav")
+vCeilingSound = loadsound("assets/ceiling.wav")
+vJewelSound = loadsound("assets/jewel.wav")
+vHitSound = loadsound("assets/hit.wav")
+
+' Load a map created with the tilemap.
+if not TM_LoadMap("assets/map2.txt")  end
+
+' Create two player sprites.
+vPlayerOne = Player(KEY_LEFT, KEY_RIGHT, KEY_UP)
+vPlayerTwo = Player(KEY_A, KEY_D, KEY_W)
+
+' Set up an array for things that the player can pick up (jewels).
+vItems = []
+
+' And an array for enemies.
+vEnemies = []
+
+' Look for the loader flags "player", "jewel", "slime" and "bat".
+foreach lf in TM_GetLoaderFlags()
+    ' Multiply the load flag's x and y values with tile width and height.
+    x = lf.x*TM_TileWidth()
+    y = lf.y*TM_TileHeight()
+    select lf.flag
+        ' Player?
+        case "player"
+            ' Set player one position.
+            vPlayerOne.x = x
+            vPlayerOne.y = y
+            ' Put player two one tile to the left.
+            vPlayerTwo.x = x - TM_TileWidth()
+            vPlayerTwo.y = y
+        ' Jewel?
+        case "jewel"
+            ' Add a jewel to the end of the items array.
+            vItems[sizeof(vItems)] = Jewel(x, y)
+        ' Bat enemy?
+        case "bat"
+            vEnemies[sizeof(vEnemies)] = Bat(x, y)
+        ' Slime enemy?
+        case "slime"
+            vEnemies[sizeof(vEnemies)] = Slime(x, y)
+    endsel
+next
+
+' This array is used in the loop for items that has been marked for removal.
+remove = []
+
+' Loop until escape key is pressed.
+while not keydown(KEY_ESCAPE, true)
+    ' When frameTimer = 0, animations are updated.
+    vFrameTimer = (vFrameTimer + 1)%6
+
+    ' Update player.
+    vPlayerOne.Update()
+    vPlayerTwo.Update()
+
+    ' Update items.
+    clear remove ' Empty the remove array.
+    foreach i in vItems
+        ' Animate.
+        if vFrameTimer = 0  i.cel = (i.cel + 1)%cels(i.img)
+        ' Check for collision with the player.
+        if TM_SpritesCollide(vPlayerOne, i) or TM_SpritesCollide(vPlayerTwo, i)
+            play sound vJewelSound
+            remove[sizeof(remove)] = i
+        endif
+    next
+    ' Remove items that have been put in the remove array.
+    foreach i in remove  free val vItems, i
+
+    ' Update enemies.
+    foreach e in vEnemies
+        e.Update()
+        if TM_SpritesCollide(vPlayerOne, e)  vPlayerOne.Hit()
+        if TM_SpritesCollide(vPlayerTwo, e)  vPlayerTwo.Hit()
+    next
+
+    ' Clear screen with a background color used by the tiles and let TM render the map.
+    set color 2, 23, 33
+    cls
+
+    ' Render two times with different views and camera.
+    h = height(primary)/2 - 1
+    Draw(0, 0, width(primary), h, vPlayerOne.x + vPlayerOne.w/2, vPlayerOne.y + vPlayerOne.h)
+    Draw(0, h + 2, width(primary), h, vPlayerTwo.x + vPlayerTwo.w/2, vPlayerTwo.y + vPlayerTwo.h)
+    set color 255, 255, 255
+    draw rect 0, h, width(primary), 2
+
+    ' Write instructions.
+    set caret width(primary)/2, 2
+    center "Control with arrow keys"
+    set caret width(primary)/2, h + 4
+    center "Control with WASD keys"
+
+    redraw
+    fwait 60
+wend
+
+' Draw
+' ----
+function Draw(viewX, viewY, viewW, viewH, camX, camY)
+    ' Set rendering area for tilemap.
+    TM_SetView(viewX, viewY, viewW, viewH)
+
+    ' Center camera.
+    TM_CenterCamera(camX, camY)
+
+    ' Render tilemap.
+    TM_Render()
+
+    ' Set clip rect.
+    set clip rect viewX, viewY, viewW, viewH
+
+    ' Draw player sprites.
+    vPlayerOne.Draw()
+    vPlayerTwo.Draw()
+
+    ' Draw items.
+    foreach i in vItems  i.Draw()
+
+    ' Draw enemies.
+    foreach e in vEnemies  e.Draw()
+
+    clear clip rect
+endfunc
+
+' Player
+' ------
+' Return a new player.
+function Player(walkLeftKey, walkRightKey, jumpKey)
+    return [
+        ' Image.
+        img: vPlayerImage,
+        ' Position.
+        x: 0, y: 0,
+        ' Size.
+        w: width(vPlayerImage), h: height(vPlayerImage),
+        ' Horizontal and vertical speed.
+        dx: 0, dy: 0,
+        ' Base cel, will be 0 when the sprite is turned right and 7 when it's turned left.
+        baseCel: 0,
+        ' Cel, added to baseCel when drawing. If you look at the player image, you can see that cel
+        ' 4 (and 7 + 4 = 11) is where the figure stands still.
+        cel: 4,
+        ' Player will blink for a while after being hit by an enemy.
+        blink: 0,
+        ' Control keys.
+        walkLeftKey: walkLeftKey,
+        walkRightKey: walkRightKey,
+        jumpKey: jumpKey,
+    
+        ' Update.
+        Update: function()
+            ' Move left?
+            if keydown(this.walkLeftKey)
+                this.dx = max(this.dx - 0.1, -1)
+                this.baseCel = 7
+            ' Move right?
+            elseif keydown(this.walkRightKey)
+                this.dx = min(this.dx + 0.1, 1)
+                this.baseCel = 0
+            ' No horizontal movement.
+            else
+                this.dx = this.dx*0.9
+                if |this.dx| < 0.1
+                    this.cel = 4
+                    this.dx = 0
+                endif
+            endif
+        
+            ' Decrease player blink timer.
+            this.blink = max(this.blink - 1, 0)    
+        
+            ' Only animate if player is moving left or right.
+            if |this.dx| >= 0.1 and vFrameTimer = 0  this.cel = (this.cel + 1)%4
+        
+            ' TM_MoveSprite moves a sprite with collision detection. The function expects a table that
+            ' includes the keys 'x' and 'y' for position and 'w' and 'h' for size.
+            TM_MoveSprite(this, this.dx, this.dy)
+    
+            ' We can use TM_CollisionLeft/Right/Up/Down to check if a collision occurred in any direction
+            ' during the last call to TM_MoveSprite/TM_Move.
+            '    If there was a collision down, the sprite is on the ground.
+            if TM_CollisionDown()
+                ' Jump?
+                if keydown(this.jumpKey, true)
+                    play sound vJumpSound
+                    this.dy = -4
+                else
+                    this.dy = 0
+                endif
+            ' If there was no collision down, apply some "gravity".
+            else
+                this.dy = min(this.dy + 0.15, 4)
+            endif
+    
+            ' If there was a collision up, the sprite has bumped its head against something. If you remove
+            ' this line and jump under a platform, the sprite will "stick" to the platform until "gravity"
+            ' has made player.dy positive.
+            if TM_CollisionUp()
+                play sound vCeilingSound
+                this.dy = 0
+            endif
+        endfunc,
+
+        ' Make player start blinking if hit and not already blinking.
+        Hit: function()
+            if this.blink = 0
+                play sound vHitSound
+                this.blink = 120 ' 120 ticks = 2 seconds.
+            endif
+        endfunc,
+
+        ' Draw.
+        Draw: function()
+            if this.blink%8 < 4
+                ' Use TM_ToScreenX/Y to convert from world coodinates to screen coordinates.
+                draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y),
+                    this.baseCel + this.cel
+            endif
+        endfunc]
+endfunc
+
+' Bat
+' ---
+' Return a new bat enemy.
+function Bat(x, y)
+    return [
+        ' Image.
+        img: vBatImage,
+        ' Position.
+        x: x, y: y,
+        ' Size.
+        w: width(vBatImage), h: height(vBatImage),
+        ' X-speed.
+        dx: 1,
+        ' Base cel, 0 when moving right, 4 when moving left.
+        baseCel: 0,
+        ' Cel.
+        cel: rnd(4),
+
+        ' Update.
+        Update: function()
+            ' Animate.
+            if vFrameTimer = 0  this.cel = (this.cel + 1)%4
+            ' Move.
+            TM_MoveSprite(this, this.dx, 0)
+            ' Turn around when hitting a wall.
+            if TM_CollisionLeft()
+                this.baseCel = 0
+                this.dx = 1
+            elseif TM_CollisionRight()
+                this.baseCel = 4
+                this.dx = -1
+            endif
+        endfunc,
+        
+        ' Draw.
+        Draw: function()
+            draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y), this.baseCel + this.cel
+        endfunc]
+endfunc
+
+' Slime
+' -----
+' Return a new slime enemy
+function Slime(x, y)
+    return [
+        ' Image.
+        img: vSlimeImage,
+        ' Position.
+        x: x, y: y,
+        ' Size.
+        w: width(vSlimeImage), h: height(vSlimeImage),
+        ' X-speed.
+        dx: -0.25, 
+        ' Base cel, 0 when moving right, 4 when moving left.
+        baseCel: 4,
+        ' Cel.
+        cel: rnd(4),
+
+        ' Update.
+        Update: function()
+            ' Animate.
+            if vFrameTimer = 0  this.cel = (this.cel + 1)%4
+            ' Move.
+            TM_MoveSprite(this, this.dx, 0)
+            ' Turn around when hitting a wall or when in front of a hole.
+            if TM_CollisionLeft() or not TM_ObstacleAt(this.x, this.y + this.h)
+                this.baseCel = 0
+                this.dx = 0.25
+            elseif TM_CollisionRight() or
+                    not TM_ObstacleAt(this.x + this.w, this.y + this.h)
+                this.baseCel = 4
+                this.dx = -0.25
+            endif
+        endfunc,
+
+        ' Draw.
+        Draw: function()
+            draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y), this.baseCel + this.cel
+        endfunc]
+endfunc
+
+' Jewel
+' -----
+' Return a new jewel.
+function Jewel(x, y)
+    return [
+        ' Image.
+        img: vJewelImage,
+        ' Position.
+        x: x, y: y,
+        ' Size.
+        w: width(vJewelImage), h: height(vJewelImage),
+        ' Cel.
+        cel: rnd(6),
+
+        ' Draw.
+        Draw: function()
+            draw image this.img, TM_ToScreenX(this.x), TM_ToScreenY(this.y), this.cel
+        endfunc]
+endfunc

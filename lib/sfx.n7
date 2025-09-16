@@ -1,0 +1,307 @@
+' SFX
+' ---
+' A library for creating simple sound effects.
+'
+' By Marcus.
+
+
+' SFX
+' ---
+function SFX()
+    sfx = [sr: 16000, ech: 0, echDel: 0, echDO: 0]
+    
+    ' GetSampleRate
+    ' -------------
+    ' Return number of samples per second.
+    sfx.GetSampleRate = function()
+        return this.sr
+    endfunc
+    
+    ' SetSampleRate
+    ' -------------
+    ' Set number of samples per second.
+    sfx.SetSampleRate = function(sampleRate)
+        assert sampleRate >= 8000 and sampleRate <= 22050, "SFX.SetSampleRate: Invalid sample rate"
+        this.sr = sampleRate
+    endfunc
+    
+    ' SetEcho
+    ' -------
+    ' Add 'count' number of echos with a delay of 'delay' seconds. Set 'count' to 0 to disable echo.
+    ' The volume is multiplied by 'dropOff' for each echo. 'pan', [-1..1], can be used to make the
+    ' sound bounce between the left and right speaker. A value of -1 means that the first echo will
+    ' be played only on the left side, and 1 means it will be played on the right side. After each
+    ' echo the pan value is inverted. Set 'pan' to 0 to disable panning.
+    sfx.SetEcho = function(count, delay, dropOff, pan)
+        assert count >= 0, "SFX.SetEcho: Invalid count"
+        assert delay >= 0, "SFX.SetEcho: Invalid delay"
+        this.ech = count
+        this.echDel = delay
+        this.echDO = dropOff
+        this.echPan = pan
+    endfunc
+
+    ' SineWaveData
+    ' ------------
+    ' Return sine wave data lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be in
+    ' the range [0..1].
+    sfx.SineWaveData = function(duration, freq, vol)
+        assert duration > 0, "SFX.SineWaveData: Invalid duration"
+        if typeof(freq) <> TYPE_TABLE  freq = [freq]
+        if typeof(vol) <> TYPE_TABLE  vol = [vol]
+        freqDegree = sizeof(freq) - 1
+        freqBc = BinomialCoefficients(freqDegree)
+        volDegree = sizeof(vol) - 1
+        volBc = BinomialCoefficients(volDegree)
+        data = []
+        a = 0
+        p = 0
+        dp = 1/(duration*this.sr)
+        for i = 0 to duration*this.sr - 1
+            data[i] = sin(a)*EvaluateCurve(vol, volBc, p)
+            a = a + 2*PI*EvaluateCurve(freq, freqBc, p)/this.sr
+            p = p + dp
+        next
+        if this.ech
+            return ApplyEcho(data, this.ech, int(this.echDel*this.sr), this.echDO, this.echPan)
+        else
+            return [data, data]
+        endif
+    endfunc
+        
+    ' SineWave
+    ' --------
+    ' Return a sine wave sound lasting for 'duration' seconds. 'freq' is the frequency and can be
+    ' a number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be
+    ' a number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.SineWave = function(duration, freq, vol)
+        data = this.SineWaveData(duration, freq, vol)
+        return createsound(data[0], data[1], this.sr)
+    endfunc
+    
+    ' SaveSineWave
+    ' ------------
+    ' Save sine wave sound lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be in
+    ' the range [0..1].
+    sfx.SaveSineWave = function(filename, duration, freq, vol)
+        data = this.SineWaveData(duration, freq, vol)
+        return SaveWav(filename, data[0], data[1], this.sr)
+    endfunc
+
+    ' SquareWaveData
+    ' --------------
+    ' Return square wave data lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.SquareWaveData = function(duration, freq, vol)
+        assert duration > 0, "SFX.SquareWaveData: Invalid duration"    
+        if typeof(freq) <> TYPE_TABLE  freq = [freq]
+        if typeof(vol) <> TYPE_TABLE  vol = [vol]
+        freqDegree = sizeof(freq) - 1
+        freqBc = BinomialCoefficients(freqDegree)
+        volDegree = sizeof(vol) - 1
+        volBc = BinomialCoefficients(volDegree)
+        data = []
+        a = 0
+        p = 0
+        dp = 1/(duration*this.sr)
+        for i = 0 to duration*this.sr - 1
+            sa = sin(a)
+            if sa < 0  sa = -1
+            elseif sa > 0  sa = 1
+            data[i] = sa*EvaluateCurve(vol, volBc, p)
+            a = a + 2*PI*EvaluateCurve(freq, freqBc, p)/this.sr
+            p = p + dp
+        next
+        if this.ech
+            return ApplyEcho(data, this.ech, int(this.echDel*this.sr), this.echDO, this.echPan)
+        else
+            return [data, data]
+        endif
+    endfunc
+
+    ' SquareWave
+    ' ----------
+    ' Return a square wave sound lasting for 'duration' seconds. 'freq' is the frequency and can be
+    ' a number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be
+    ' a number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.SquareWave = function(duration, freq, vol)
+        data = this.SquareWaveData(duration, freq, vol)
+        return createsound(data[0], data[1], this.sr)
+    endfunc
+
+    ' SaveSquareWave
+    ' --------------
+    ' Save a square wave sound lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.SaveSquareWave = function(filename, duration, freq, vol)
+        data = this.SquareWaveData(duration, freq, vol)
+        return SaveWav(filename, data[0], data[1], this.sr)
+    endfunc
+
+    ' NoiseData
+    ' ---------
+    ' Return noise data lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.NoiseData = function(duration, freq, vol)
+        assert duration > 0, "SFX.NoiseData: Invalid duration"    
+        if typeof(freq) <> TYPE_TABLE  freq = [freq]
+        if typeof(vol) <> TYPE_TABLE  vol = [vol]
+        freqDegree = sizeof(freq) - 1
+        freqBc = BinomialCoefficients(freqDegree)
+        volDegree = sizeof(vol) - 1
+        volBc = BinomialCoefficients(volDegree)
+        data = []
+        tick = 0
+        value = 0
+        deta = 0
+        p = 0
+        dp = 1/(duration*this.sr)
+        for i = 0 to duration*this.sr - 1
+            tick = tick - 1
+            if tick <= 0
+                tick = this.sr/EvaluateCurve(freq, freqBc, p)
+                delta = ((rnd()*2 - 1) - value)/tick
+            endif
+            value = value + delta
+            data[i] = value*EvaluateCurve(vol, volBc, p)
+            p = p + dp
+        next
+        if this.ech
+            return ApplyEcho(data, this.ech, int(this.echDel*this.sr), this.echDO, this.echPan)
+        else
+            return [data, data]
+        endif
+    endfunc
+
+    ' Noise
+    ' -----
+    ' Return a noise sound lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.Noise = function(duration, freq, vol)
+        data = this.NoiseData(duration, freq, vol)
+        return createsound(data[0], data[1], this.sr)
+    endfunc
+
+    ' SaveNoise
+    ' ---------
+    ' Save a noise sound lasting for 'duration' seconds. 'freq' is the frequency and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. 'vol' is the volume and can be a
+    ' number or an array of numbers, treated as a 1D bezier curve. The 'vol' value(s) should be
+    ' in the range [0..1].
+    sfx.SaveNoise = function(filename, duration, freq, vol)
+        data = this.NoiseData(duration, freq, vol)
+        return SaveWav(filename, data[0], data[1], this.sr)
+    endfunc
+            
+    return sfx
+    
+    ' BinomialCoefficients
+    ' --------------------
+    function BinomialCoefficients(n)
+        function bc(n, k)
+            if n = k  return 1
+            v = 1
+            i = 1
+            while i <= k
+                v = v*int((n + 1 - i)/i)
+                i = i + 1
+            wend
+            return v
+        endfunc
+        c = []
+        for i = 0 to n  c[i] = bc(n, i)
+        return c
+    endfunc
+    
+    ' EvaluateCurve
+    ' -------------
+    function EvaluateCurve(points, bcs, param)
+        n = sizeof(points) - 1
+        v = 0
+        for i = 0 to n  v = v + bcs[i]*(1 - param)^(n - i)*param^i*points[i]
+        return v
+    endfunc
+    
+    ' ApplyEcho
+    ' ---------
+    function ApplyEcho(data, count, offset, dropOff, pan)
+        pan = max(min(pan, 1), -1)
+        ldata = fill(0, count*offset + sizeof(data))
+        rdata = fill(0, count*offset + sizeof(data))
+        for i = 0 to sizeof(data) - 1
+            ldata[i] = data[i]
+            rdata[i] = data[i]
+        next
+        for i = 1 to count
+            offs = i*offset
+            vol = dropOff^i
+            lvol = vol*cos((pan + 1)*0.5*PI*0.5)
+            rvol = vol*sin((pan + 1)*0.5*PI*0.5)
+            for j = 0 to sizeof(data) - 1
+                ldata[offs + j] = ldata[offs + j] + data[j]*lvol
+                rdata[offs + j] = rdata[offs + j] + data[j]*rvol
+            next
+            pan = -pan
+        next
+        return [ldata, rdata]
+    endfunc
+
+    ' SaveWav
+    ' -------    
+    function SaveWav(filename, ldata, rdata, sampleRate)
+        function WriteBinChars(f, txt)
+            for i = 0 to len(txt) - 1  write file f, asc(mid(txt, i)), 8
+        endfunc
+        
+        f = createfile(filename, true)
+        if typeof(f)
+            if ldata = rdata  channels = 1
+            else  channels = 2
+            for i = 0 to sizeof(ldata) - 1  ldata[i] = max(min(ldata[i], 1), -1)
+            if channels = 2  for i = 0 to sizeof(rdata) - 1  rdata[i] = max(min(rdata[i], 1), -1)
+            WriteBinChars(f, "RIFF")
+            frameCount = sizeof(ldata)
+            bits = 16
+            mul = 32767
+            length = int(frameCount*channels*bits/8)
+            write file f, length + 44 - 8, 32, false
+            WriteBinChars(f, "WAVE")
+            WriteBinChars(f, "fmt ")
+            write file f, 16, 32, false
+            write file f, 1, 16, false
+            write file f, channels, 16, false
+            write file f, sampleRate, 32, false
+            write file f, int(sampleRate*bits*channels/8), 32, false
+            write file f, int(channels*bits/8), 16, false
+            write file f, bits, 16, false
+            WriteBinChars(f, "data")
+            write file f, length, 32, false
+            if channels = 1
+                for i = 0 to sizeof(ldata) - 1  write file f, ldata[i]*mul, 16, true
+            else
+                for i = 0 to sizeof(ldata) - 1
+                    write file f, ldata[i]*mul, 16, true
+                    write file f, rdata[i]*mul, 16, true
+                next
+            endif
+            free file f
+            return true
+        else
+            return false
+        endif
+    endfunc
+endfunc

@@ -1,0 +1,52 @@
+' Some of the draw commands from n6, such as 'draw elipse' and 'draw vraster'
+' are undefined or not implemented yet, but they're coming.
+
+' Open a window and enable double buffering.
+set window "Drawing primitives", 640, 480
+set redraw off
+
+' Draw pixels, lines and rectangles for five seconds.
+t = clock()
+do
+    ' set color <r>, <g>, <b>[, <a>]
+    ' 'set color' takes four arguments in the range [0..255] for the red, green,
+    ' blue and alpha color components.
+    set color rnd(256), rnd(256), rnd(256), rnd(256)
+
+    ' draw pixel <x>, <y>
+    ' 'draw pixel' uses the current color for blending, while 'set pixel' (not
+    ' used here) simply sets the pixel, which can be used when generating
+    ' transparent images.
+    draw pixel rnd(640), rnd(480)
+
+    ' draw line <x1>, <y1>, <x2>, <y2>
+    draw line rnd(640), rnd(480), rnd(640), rnd(480)
+
+    ' draw rect <x>, <y>, <w>, <h>[, <filled>]
+    draw rect rnd(640) - 50, rnd(480) - 50, 50 + rnd(50), 50 + rnd(50), rnd(2)
+
+    redraw
+    fwait 60
+until clock() - t > 5000
+
+' Draw some polygons for five seconds.
+set color 0, 0, 0
+cls
+t = clock()
+do
+    set color rnd(256), rnd(256), rnd(256), rnd(256)
+
+    ' Set up an array with the format [<x0>, <y0>, <x1>, <y1> .. <xn>, <yn>]
+    p = []
+    for i = 0 to 2 + rnd(6)
+        p[sizeof(p)] = rnd(640)
+        p[sizeof(p)] = rnd(480)
+    next
+
+    ' draw poly <coordinates>[, <filled>]
+    draw poly p, rnd(2)
+
+    redraw
+    fwait 60
+until clock() - t > 5000
+ 

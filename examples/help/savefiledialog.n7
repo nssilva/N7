@@ -1,0 +1,18 @@
+' savefiledialog
+' --------------
+
+' 'savefiledialog([file_extension])' shows a system dialog for selecting an existing or non-existing
+' file. Set the optional string file_extension to a file extension (such as ”txt”) to only list
+' files of that type. If the user selects a file, its full path is returned.
+filename = savefiledialog("txt")
+if filename
+    if exists(filename)
+        pln "You selected the existing file " + chr(34) + filename + chr(34)
+    else
+        pln "You selected the non-existing file " + chr(34) + filename + chr(34)
+    endif
+else
+    pln "You didn't select any file!"
+endif
+
+system "pause"

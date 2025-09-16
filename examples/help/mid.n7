@@ -1,0 +1,11 @@
+' mid
+' ---
+
+' 'mid(s, n)' returns the character at index n in the string s (0 is the index of the first
+' character).
+pln "mid(" + chr(34) + "ectoplasm" + chr(34) + ", 4) = " + mid("ectoplasm", 4)
+
+' 'mid(s, n, m)' returns m characters, starting at character index n, of the string s.
+pln "mid(" + chr(34) + "ectoplasm" + chr(34) + ", 2, 3) = " + mid("ectoplasm", 2, 3)
+
+system "pause"

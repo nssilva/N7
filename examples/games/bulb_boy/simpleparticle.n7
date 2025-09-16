@@ -1,0 +1,414 @@
+' This is a translation of the N6 Simple Particle library
+
+#############################################################
+visible     prt_Particles = []
+visible     prt_ParticleCounter
+visible     prt_MaxParticles
+visible     prt_X
+visible     prt_Y
+visible     prt_Image
+visible     prt_Cel
+visible     prt_Additive
+visible     prt_Pause
+visible     prt_SrcDX
+visible     prt_SrcDY
+visible     prt_DstDX
+visible     prt_DstDY
+visible     prt_SrcA
+visible     prt_DstA
+visible     prt_Speed
+visible     prt_PoffEX = 0.0
+visible     prt_PoffEY = 0.0
+     
+########################################################################
+
+
+
+' /**
+' @brief Init library.
+'
+' You must call this function before adding any particles. You can
+' set the maximum number of active particles live at a time.
+'
+' @param maxParticles Max live particles.
+' */
+function SP_Init(maxParticles)
+    prt_ParticleCounter = 0
+    prt_MaxParticles = maxParticles
+
+    prt_Particles = fill([PRT_TYPE : 0],maxParticles)
+endfunc
+
+' /**
+' @brief Add a particle.
+'
+' The life time of a particle depends on the FPS at which your game
+' is running. The particle uses a parameter that's increased by
+' 'speed' every time you call 'SP_UpdateParticles' or
+' 'SP_DoParticles'. It starts at 0 and when it reaches 1 the
+'particle dies.
+'rem
+'@param img Id of image to use.
+'@param cel Cel of image to use. Set to -1 for an animation of all cels or -2 for a random cel.
+'@param addMode True for additive drawing.
+'@param x Start x-coordinate.
+'@param y Start y-coordinate.
+'@param srcDX Start x increment (when parameter is 0).
+'@param srcDY Start y increment (when parameter is 0).
+'@param dstDX End x increment (when parameter is 1).
+'@param dstDY End y increment (when parameter is 1).
+'@param srcAlpha Start alpha/transparency, where 1 is opaque and 0 is transparent.
+'@param dstAlpha End alpha/transparency.
+'@param speed Parameter increment.
+'@param pause Delay before particle is born. Decreased by 1 during each update.
+'*/
+function SP_AddParticle(img, cel, addMode, x, y, srcDX, srcDY, dstDX, dstDY, srcAlpha, dstAlpha, speed, pause)
+
+''   maybe use sizeof(prt_Particles) to
+''   replace prt_ParticleCounter below ?????
+
+''   or just use  prt_ParticleCounter as
+''  a regular counter????
+
+
+    prt_Particles[prt_ParticleCounter].PRT_TYPE = 1
+    prt_Particles[prt_ParticleCounter].PRT_IMAGE = img
+    if cel = -2 then cel = rnd(cels(img))
+    prt_Particles[prt_ParticleCounter].PRT_CEL = cel
+    prt_Particles[prt_ParticleCounter].PRT_ADDITIVE = addMode
+    prt_Particles[prt_ParticleCounter].PRT_PAUSE = pause
+    prt_Particles[prt_ParticleCounter].PRT_X = (x) - (width(img))*0.5
+    prt_Particles[prt_ParticleCounter].PRT_Y = (y) - (height(img))*0.5
+    prt_Particles[prt_ParticleCounter].PRT_PARAM = 0.0
+    prt_Particles[prt_ParticleCounter].PRT_SPEED = speed
+    prt_Particles[prt_ParticleCounter].PRT_SRC_DX = srcDX
+    prt_Particles[prt_ParticleCounter].PRT_SRC_DY = srcDY
+    prt_Particles[prt_ParticleCounter].PRT_DST_DX = dstDX
+    prt_Particles[prt_ParticleCounter].PRT_DST_DY = dstDY
+    prt_Particles[prt_ParticleCounter].PRT_SRC_A = srcAlpha*255.0
+    prt_Particles[prt_ParticleCounter].PRT_DST_A = dstAlpha*255.0
+
+    prt_ParticleCounter = (prt_ParticleCounter + 1)%prt_MaxParticles
+    
+endfunc
+
+'/**
+'@brief Add poof effect.
+'
+'Add particles equaly spread around a growing circle.
+'rem
+'@param img Image id.
+'@param cel Image cel. As for single particles, -1 is for animation and -2 for random cels.
+'@param x Center x-coordinate.
+'@param y Center y-coordinate.
+'@param particleCount Number of particles.
+'@param distance Starting distance from '(x, y)'.
+'@param force Size of movement vector at start.
+'@param speed Parameter increment per update.
+'@param addMode True for additive drawing.
+'@param fadeOut True for particles with alpha starting at 255 and ending at 0.
+'*/
+function SP_AddPoof(img, cel, x, y, particleCount, distance, force, speed, addMode, fadeOut)
+    astep = 360.0/(particleCount)
+    a = 0.0
+
+    if fadeOut; dstAlpha = 0.0; else; dstAlpha = 1.0; endif
+    for i = 1 to particleCount
+        c = cos(a)
+        s = sin(a)
+         SP_AddParticle (img, cel, addMode, x + int(c*distance), y + int(s*distance), c*force, s*force, prt_PoffEX, prt_PoffEY, 1.0, dstAlpha, speed, 0)
+        a = a + astep
+    next
+endfunc
+
+
+'/**
+'@brief Add random poof effect.
+'
+'Works like 'SP_AddPoof', but with slightly randomized properties for particles.
+'rem
+'@param img Image id.
+'@param cel Image cel. As for single particles, -1 is for animation and -2 for random cels.
+'@param x Center x-coordinate.
+'@param y Center y-coordinate.
+'@param particleCount Number of particles.
+'@param distance Max starting distance from '(x, y)'.
+'@param force Max size of movement vector at start.
+'@param speed Max parameter increment per update.
+'@param addMode True for additive drawing.
+'@param fadeOut True for particles with alpha starting at 255 and ending at 0.
+'*/
+function SP_AddRandomPoof(img, cel, x, y, particleCount, maxDistance, maxForce, maxSpeed, addMode, fadeOut)
+    astep = 360.0/(particleCount)
+    hastep = astep*0.5
+    iastep = 360/particleCount
+    a = 0.0
+
+    maxForce = maxForce*0.5
+    imaxForce = int(maxForce*1000.0)
+
+    maxDistance = maxDistance*0.5
+    imaxDistance = int(maxDistance*1000.0)
+
+    maxSpeed = maxSpeed*0.5
+    imaxSpeed = int(maxSpeed*1000.0)
+
+    if fadeOut; dstAlpha = 0.0; else; dstAlpha = 1.0; endif
+    for i = 1 to particleCount
+        'Direction.
+        ua = a + (rnd(iastep)) - hastep
+        c = cos(ua)
+        s = sin(ua)
+
+        ' force.
+        f = (maxForce + (rnd(imaxForce))*0.001)
+        
+        ' distance.
+        d = (maxDistance + (rnd(imaxDistance))*0.001)
+        
+        ' speed.
+        spd = (maxSpeed + (rnd(imaxSpeed))*0.001)
+
+        SP_AddParticle (img, cel, addMode, x + int(c*d), y + int(s*d), c*f, s*f, prt_PoffEX, prt_PoffEY, 1.0, dstAlpha, spd, 0)
+        a = a + astep
+    next
+endfunc
+
+'/**
+'@brief Set end vector for poof-generated particles.
+'rem
+'By default the end vector for poof-generated particles is (0, 0). If you
+'want, for example, want a gravity effect, you could set the end vector 
+'to 0, 4.
+'rem
+'@param ex End x-increment.
+'@param ey End y-increment
+'*/
+function SP_SetPoofEndVector(ex, ey)
+    prt_PoffEX = ex
+    prt_PoffEY = ey
+endfunc
+
+
+'/**
+'@brief Add a particle with current settings.
+'rem
+'Add a particle with settings defined with 'SP_SetImage',
+''SP_SetDirection', 'SP_SetAlpha', 'SP_SetSpeed' and 'SP_SetPause'.
+'rem
+'@param X-coordinate.
+'@param Y-coordinate.
+'*/
+function SP_AddParticleAt(x, y)
+    prt_Particles[prt_ParticleCounter].PRT_TYPE = 1
+    prt_Particles[prt_ParticleCounter].PRT_IMAGE = prt_Image
+    prt_Particles[prt_ParticleCounter].PRT_CEL = prt_Cel
+    prt_Particles[prt_ParticleCounter].PRT_ADDITIVE = prt_Additive
+    prt_Particles[prt_ParticleCounter].PRT_PAUSE = prt_Pause
+    prt_Particles[prt_ParticleCounter].PRT_X = (x) - ((prt_Image))*0.5
+    prt_Particles[prt_ParticleCounter].PRT_Y = (y) - (height(prt_Image))*0.5
+    prt_Particles[prt_ParticleCounter].PRT_PARAM = 0.0
+    prt_Particles[prt_ParticleCounter].PRT_SPEED = prt_Speed
+    prt_Particles[prt_ParticleCounter].PRT_SRC_DX = prt_SrcDX
+    prt_Particles[prt_ParticleCounter].PRT_SRC_DY = prt_SrcDY
+    prt_Particles[prt_ParticleCounter].PRT_DST_DX = prt_DstDX
+    prt_Particles[prt_ParticleCounter].PRT_DST_DY = prt_DstDY
+    prt_Particles[prt_ParticleCounter].PRT_SRC_A = prt_SrcA*255.0
+    prt_Particles[prt_ParticleCounter].PRT_DST_A = prt_DstA*255.0
+    prt_ParticleCounter = (prt_ParticleCounter + 1)%prt_MaxParticles
+endfunc
+
+'/**
+'@brief Set particle image properties for 'SP_AddParticleAt'.
+'@param img Image id.
+'@param cel Image Cel (-1 for animation, -2 for randomized cel).
+'@param addMode True for additive drawing.
+'*/
+function SP_SetImage(img, cel, addMode)
+    prt_Image = img
+    if cel = -2 then cel = rnd(cels(img))
+    prt_Cel = cel
+    prt_Additive = addMode
+endfunc
+
+'/**
+'@brief Set particle directions for 'SP_AddParticleAt'.
+'@param srcDX Start x increment.
+'@param srcDY Start y increment.
+'@param dstDX End x increment.
+'@param dstDY End y increment.
+'*/
+function SP_SetDirection(srcDX, srcDY, dstDX, dstDY)
+    prt_SrcDX = srcDX
+    prt_SrcDY = srcDY
+    prt_DstDX = dstDX
+    prt_DstDY = dstDY
+endfunc
+
+
+'/**
+'@brief Set particle alpha for 'SP_AddParticleAt'.
+'@param srcAlpha Start alpha/transparency, where 1 is opaque and 0 is transparent.
+'@param dstAlpha End alpha/transparency.
+'*/
+function SP_SetAlpha(srcAlpha, dstAlpha)
+    prt_SrcA = srcAlpha
+    prt_DstA = dstAlpha
+endfunc
+
+'/**
+'@brief Set parameter speed for 'SP_AddParticleAt'.
+'@param speed Parameter speed.
+'*/
+function SP_SetSpeed(speed)
+    prt_Speed = speed
+endfunc
+
+'/**
+'@brief Set delay for 'SP_AddParticleAt'.
+'@param pause Delay.
+'*/
+function SP_SetPause(pause)
+    prt_Pause = pause
+endfunc
+
+'/**
+'@brief Update all particles.
+'*/
+function SP_UpdateParticles()
+    foreach p in prt_Particles
+        if p.PRT_TYPE > 0
+            p.PRT_PAUSE = p.PRT_PAUSE - 1
+            if p.PRT_PAUSE <= 0
+                prm = p.PRT_PARAM
+                prm = prm + p.PRT_SPEED
+                if prm > 1.0
+                    p.PRT_TYPE = 0
+                else
+                    p.PRT_PARAM = prm
+                    dx = (1.0 - prm)*p.PRT_SRC_DX + prm*p.PRT_DST_DX
+                    dy = (1.0 - prm)*p.PRT_SRC_DY + prm*p.PRT_DST_DY
+                    p.PRT_X = p.PRT_X + dx
+                    p.PRT_Y = p.PRT_Y + dy
+                endif
+            endif
+        endif
+    next
+endfunc
+
+'/**
+'@brief Draw all particles.
+'*/
+function SP_DrawParticles()
+    foreach p in prt_Particles
+        if p.PRT_TYPE > 0 and p.PRT_PAUSE <= 0
+            set additive p.PRT_ADDITIVE
+            prm = p.PRT_PARAM
+            set color 255, 255, 255, int((1.0 - prm)*p.PRT_SRC_A + prm*p.PRT_DST_A)
+            if p.PRT_CEL = -1
+                cel = int(prm*float(cels(p.PRT_IMAGE)))
+                draw image p.PRT_IMAGE, int(p.PRT_X), int(p.PRT_Y), cel
+            else
+                draw image p.PRT_IMAGE, int(p.PRT_X), int(p.PRT_Y), p.PRT_CEL
+            endif
+        endif
+    next
+    set additive false
+    set color 255, 255, 255
+endfunc
+
+'/**
+'@brief Update all particles with an offset.
+'@param x X offset.
+'@param y Y offset.
+'*/
+function SP_DrawParticlesAt(x, y)
+    foreach p in prt_Particles
+        if p.PRT_TYPE > 0 and p.PRT_PAUSE <= 0
+            set additive p.PRT_ADDITIVE
+            prm = p.PRT_PARAM
+            set color 255, 255, 255, int((1.0 - prm)*p.PRT_SRC_A + prm*p.PRT_DST_A)
+            if p.PRT_CEL = -1
+                cel = int(prm*float(cels(p.PRT_IMAGE)))
+                draw image p.PRT_IMAGE, x + int(p.PRT_X), y + int(p.PRT_Y), cel
+            else
+                draw image p.PRT_IMAGE, x + int(p.PRT_X), y + int(p.PRT_Y), p.PRT_CEL
+            endif
+        endif
+    next
+    set additive false
+    set color 255, 255, 255
+endfunc
+
+
+'/**
+'@brief Update and draw all particles.
+'*/
+function SP_DoParticles()
+    foreach p in prt_Particles
+        if p.PRT_TYPE > 0
+            p.PRT_PAUSE = p.PRT_PAUSE - 1
+            if p.PRT_PAUSE <= 0
+                prm = p.PRT_PARAM
+                prm = prm + p.PRT_SPEED
+                if prm > 1.0
+                    p.PRT_TYPE = 0
+                else
+                    p.PRT_PARAM = prm
+                    dx = (1.0 - prm)*p.PRT_SRC_DX + prm*p.PRT_DST_DX
+                    dy = (1.0 - prm)*p.PRT_SRC_DY + prm*p.PRT_DST_DY
+                    p.PRT_X = p.PRT_X + dx
+                    p.PRT_Y = p.PRT_Y + dy
+                    set additive p.PRT_ADDITIVE
+                    prm = p.PRT_PARAM
+                    set color 255, 255, 255, int((1.0 - prm)*p.PRT_SRC_A + prm*p.PRT_DST_A)
+                    if p.PRT_CEL = -1
+                        cel = int(prm*float(cels(p.PRT_IMAGE)))
+                        draw image p.PRT_IMAGE, int(p.PRT_X), int(p.PRT_Y), cel
+                    else
+                        draw image p.PRT_IMAGE, int(p.PRT_X), int(p.PRT_Y), p.PRT_CEL
+                    endif
+                endif
+            endif
+        endif
+    next
+    set additive false
+    set color 255, 255, 255
+endfunc
+
+'/**
+'@brief Update and draw all particles with an offset.
+'@param x X offset.
+'@param y Y offset.
+'*/
+function SP_DoParticlesAt(x, y)
+    foreach p in prt_Particles
+        if p.PRT_TYPE > 0
+            p.PRT_PAUSE = p.PRT_PAUSE - 1
+            if p.PRT_PAUSE <= 0
+                prm = p.PRT_PARAM
+                prm = prm + p.PRT_SPEED
+                if prm > 1.0
+                    p.PRT_TYPE = 0
+                else
+                    p.PRT_PARAM = prm
+                    dx = (1.0 - prm)*p.PRT_SRC_DX + prm*p.PRT_DST_DX
+                    dy = (1.0 - prm)*p.PRT_SRC_DY + prm*p.PRT_DST_DY
+                    p.PRT_X = p.PRT_X + dx
+                    p.PRT_Y = p.PRT_Y + dy
+                    set additive p.PRT_ADDITIVE
+                    prm = p.PRT_PARAM
+                    set color 255, 255, 255, int((1.0 - prm)*p.PRT_SRC_A + prm*p.PRT_DST_A)
+                    if p.PRT_CEL = -1
+                        cel = int(prm*(cels(p.PRT_IMAGE)))
+                        draw image p.PRT_IMAGE, x + int(p.PRT_X), y + int(p.PRT_Y), cel
+                    else
+                        draw image p.PRT_IMAGE, x + int(p.PRT_X), y + int(p.PRT_Y), p.PRT_CEL
+                    endif
+                endif
+            endif
+        endif
+    next
+    set additive false
+    set color 255, 255, 255
+endfunc

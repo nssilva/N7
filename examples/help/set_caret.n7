@@ -1,0 +1,22 @@
+' set caret
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set caret", 640, 480
+
+' 'set caret x, y' sets position of text output/input to x, y. The actual caret is only visible
+' during text input with the 'rln' function.
+set caret 320, 200
+wln "My top left position is 320, 104"
+wln "I'm one line down"
+set caret 64, 264
+wln "And my position is 64, 168"
+
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

@@ -1,0 +1,3083 @@
+' neon_breath.n7
+' --------------
+' Contribution to Jam for All BASIC Dialects (#6).
+' By Marcus.
+
+#win32
+#mem64000000
+
+include "enginea.n7"
+include "s3d.n7"
+include "file.n7"
+include "lib/widgets.n7"
+
+' Fixed setttings.
+constant RES            = 360
+constant FOV            = 70
+constant FPS_CAP        = 60
+constant SCALE          = 0
+constant DBG            = 0
+constant MOUSE_SENS_MIN = 0.1
+constant MOUSE_SENS_MAX = 3.5
+
+' Object ids.
+constant PLAYER_ID          = 1
+constant ENEMY_ID           = 2
+constant ENEMY_SPAWN_ID     = 3
+constant HEALTH_ID          = 10
+constant BREATH_ID          = 11
+constant KEY_ID             = 12
+constant NEON_KEY_ID        = 13
+constant GUN_ID             = 14
+constant TORCH_ID           = 50
+constant LEVER_ID           = 51
+constant BARS_ID            = 52
+constant BARREL_ID          = 53
+constant PLAYER_BULLET_ID   = 100
+constant ENEMY_BULLET_ID    = 120
+
+' Special texture indexes from map editor.
+constant DOOR_TEX           = 26
+constant LOCKED_DOOR_TEX    = 27
+constant NDOOR_TEX          = 28
+constant LOCKED_NDOOR_1_TEX = 29
+constant LOCKED_NDOOR_3_TEX = 30
+
+' Tutorials.
+constant TUT_SIGN = 0
+constant TUT_FIRE = 1
+constant TUT_GUN = 2
+constant TUT_NEON = 3
+constant TUT_BARREL = 4
+constant TUT_NEON_BARREL = 5
+constant TUT_LEVER = 6
+constant TUT_COUNT = 7
+
+' Texts.
+visible vBreathText = ["Dang, the air is toxic!",
+        "  I can hold my breath for two",
+        "minutes, but then I'll start",
+        "taking damage. So ... better",
+        "hurry up!"]
+visible vGunText = ["I think I saw something on",
+        "that plateau ..."]
+
+' Use exe path because of weird behavior in wine.
+visible vPath
+
+' Settings.
+visible vFullscreen = true
+visible vFpsLock = true
+visible vMouseSens = 0.15
+
+' Game.
+visible vLevel
+visible vLevelSpawnDelay
+visible vPlayer
+visible vBreathOffs = 1
+visible vTutorials = fill(false, TUT_COUNT)
+visible vGameOver = false, vGameOverParam = 0
+visible vLevelComplete = false
+visible vNeon = false
+visible vBattleMode = false, vSpawnDelay = 0, vSavedFogR, vSavedFogG, vSavedFogB
+visible vKeys, vNeonKeys
+visible vLastEnemyHit = unset, vEnemyHitTimer = 0
+visible vOpenDoors = []
+visible vSigns = []
+visible vSpawns = []
+visible vMap = [], vMapLastSector, vMapActive
+visible vFogR = 0, vFogG = 0, vFogB = 0, vZMax = 0.25, vZMaxSqr = vZMax*vZMax
+visible vOldFogR = 0, vOldFogG = 0, vOldFogB = 0, vOldZMax = 0.25
+visible vFogP = 1
+visible vFogMode = EA_NORMAL
+visible vQuickMessage = unset, vQuickMessageTimer = 0
+visible vBlinkTimer = 0
+
+' Fonts.
+visible vFont, vLargeFont, vTerminalFont
+
+' Images.
+visible vLogoImage, vLogoGlowImage, vButtonsImage, vSliderImage, vCheckboxImage
+visible vBackdropImage
+visible vHealthImage, vBreathImage, vKeyImage, vNeonKeyImage, vGunImage
+visible vPlayerBulletImage
+visible vEnemyBullet1Image
+visible vSmokePoofImage, vNeonPoofImage
+visible vExploImage, vNeonExploImage
+visible vKeyIconImage, vNeonKeyIconImage
+
+' Meshes and their images and collision polygons.
+visible vTitleSphereMesh
+visible vEntryMesh, vEntryMeshImage, vEntryMeshCapImage
+visible vStairsMesh, vNeonStairsMesh
+visible vStairsImage, vNeonStairsImage
+visible vStairPolyX = [-0.125, -0.5, 0.125, -0.5, 0.125, 0.5, -0.125, 0.5]
+visible vStairPolyZ = [-0.5, -0.125, -0.5, 0.125, 0.5, 0.125, 0.5, -0.125]
+visible vPillar1Mesh, vPillar2Mesh, vPillar3Mesh
+visible vPillar1Image, vPillar2Image, vPillar3Image, vPillarPoly = CreateCirclePoly(0.5, 5)
+visible vBarrelMesh, vBarrelImage, vBarrelCapImage, vBarrelPoly = CreateCirclePoly(0.2, 5)
+visible vNeonBarrelMesh, vNeonBarrelImage, vNeonBarrelCapImage
+visible vNeonSpawnMesh, vNeonSpawnImage, vNeonSpawnCapImage, vSpawnPoly = CreateCirclePoly(0.2, 4)
+visible vTorchMesh, vTorchImage, vTorchFlameImage
+visible vTorchPoly = [-0.125, -0.125, 0.125, -0.125, 0.125, 0.125, -0.125, 0.125]
+visible vSignMesh, vSignImage, vSignDisplayImage, vSignContentImage
+visible vSignPoly = [-0.125, -0.125, 0.125, -0.125, 0.125, 0.125, -0.125, 0.125]
+visible vStoneTableMesh, vStoneTablePoly = [-0.25, -0.25, 0.25, -0.25, 0.25, 0.25, -0.25, 0.25]
+visible vBarsMesh
+visible vXBarsPoly = [-0.5, -0.1, 0.5, -0.1, 0.5, 0.1, -0.5, 0.1]
+visible vZBarsPoly = [-0.1, -0.5, 0.1, -0.5, 0.1, 0.5, -0.1, 0.5]
+visible vLeverMesh
+visible vLeverUpPoly = [-0.125, -0.5,  0.125, -0.5,  0.125, -0.3,  -0.125, -0.3]
+visible vLeverDownPoly = [-0.125, 0.3,  0.125, 0.3,  0.125, 0.5,  -0.125, 0.5]
+visible vLeverLeftPoly = [-0.5, -0.125,  -0.3, -0.125,  -0.3, 0.125,  -0.5, 0.125]
+visible vLeverRightPoly = [0.3, -0.125,  0.5, -0.125,  0.5, 0.125,  0.3, 0.125]
+visible vGunMesh
+visible vRob1Mesh, vRob1Texture, vRob1AttackTexture, vRob1HitTexture
+visible vRob1MoveAnim = [1, 2, 3, 4], vRob1AttackAnim = [0, 5]
+visible vRob2Mesh, vRob2Texture, vRob2AttackTexture, vRob2HitTexture
+visible vRob2MoveAnim = [1, 2, 3, 4], vRob2AttackAnim = [0, 5], vRob2Attack2Anim = [5]
+visible vSpiderMesh, vSpiderTexture, vSpiderAttackTexture, vSpiderHitTexture
+visible vSpiderMoveAnim = [1, 2, 3, 4], vSpiderJumpAnim = [5], vSpiderAttackAnim = [0, 6]
+visible vTickMesh, vTickTexture, vTickAttackTexture, vTickHitTexture
+visible vTickMoveAnim = [1, 2, 3, 4], vTickAttackAnim = [0, 5]
+
+' Sound effects.
+visible vPlayerShootSnd, vPlayerHitSnd
+visible vGunSnd, vHealthSnd, vKeySnd, vOrbSnd, vMessageSnd, vDeniedSnd, vDoorOpenSnd, vLeverSnd
+visible vEnemyShootSnd, vNeonEnemyHitSnd, vNeonEnemyDieSnd, vEnemyHitSnd, vEnemyDieSnd
+visible vRobot1AwareSnd, vRobot2AwareSnd, vTickAwareSnd, vSpiderAwareSnd
+visible vSpawnSound
+visible vButtonSound
+
+' Music.
+visible vGameMusic, vBattleMusic
+visible vGameMusicVol = 0, vBattleMusicVol = 0
+visible vMusicVol = 0.5, vSfxVol = 1
+
+' Other.
+visible vTitleParam
+visible vDrawPoly = fill(0, 64)
+
+' Base assets path on exe.
+vPath = GetPathCombined(GetPath(args[0]), "assets")
+
+' Create window and turn off automatic redraw.
+CreateWindow()
+set redraw off
+
+'while not mousebutton(0) fwait 60
+
+' S3D and engine settings.
+S3D_SetPerspectiveCorrection(S3D_NORMAL)
+EA_SetDebugOutput(DBG)
+EA_SetDoorMode(EA_SLIDE_SIDE)
+if vFpsLock  EA_SetFpsCap(FPS_CAP)
+else  EA_SetFpsCap(0)
+
+' Load.
+LoadAssets()
+
+' Game loop.
+do
+    ' Show title screen, returns false if user wants to quit.
+    if not TitleScreen()  break
+    BlackScreen(unset)
+    vLevel = 1
+    isContinue = false
+    savedHealth = unset
+    do
+        LoadMap(GetPathCombined(vPath, "level_" + vLevel + ".json"))
+    
+        EA_SetView(primary, rad(FOV), 0.1, 6)
+        
+        if vLevel = 1
+            vLevelSpawnDelay = 6
+            vPlayer.health = 75
+            vPlayer.gun = 0
+            if not isContinue
+                set color 0, 0, 0
+                cls
+                set font vFont
+                set color 255, 255, 255
+                set caret width(primary)/2, height(primary)/2 - fheight()
+                center "In the deepest forest, I fell down a well ..."
+                redraw
+                wait 3000
+                center "Oh bloody hell!"
+                redraw
+                wait 2500
+            endif
+        else
+            vLevelSpawnDelay = 5
+            vPlayer.gun = 1
+            if not isContinue  vPlayer.health = savedHealth
+        endif
+        BlackScreen(unset)
+        GenerateMap()
+        
+        EA_SetSoundMaxDist(6)
+        EA_SetUpdateAction(Update)
+        EA_SetDrawAction(Draw)
+        if vFpsLock  EA_SetFpsCap(FPS_CAP)
+        else  EA_SetFpsCap(0)
+        
+        vMusicVol = 0.25
+        set music volume vGameMusic, vGameMusicVol*vMusicVol
+        play music vGameMusic, true
+        
+        ' Enter engine loop.
+        EA_Run()
+        
+        ' Fade out.
+        CreateBackdrop()
+        for i = 1 to 0 step -0.01
+            if vGameMusicVol > 0
+                set music volume vGameMusic, vGameMusicVol*vMusicVol*(1 - vGameOverParam)
+            elseif vBattleMusicVol > 0
+                set music volume vBattleMusic, vBattleMusicVol*vMusicVol*(1 - vGameOverParam)
+            endif
+            intens = max(i*255, 0)
+            set color intens, intens, intens
+            draw image vBackdropImage, 0, 0
+            redraw
+            fwait 60
+        next
+        stop music vGameMusic
+        stop music vBattleMusic
+        
+        if vGameOver
+            if not GameOverScreen()
+                break
+            endif
+            isContinue = true
+            BlackScreen(unset)
+        elseif vLevelComplete
+            vLevel = vLevel + 1
+            isContinue = false
+            savedHealth = vPlayer.health
+            if vLevel > 2
+                GameCompleteScreen()
+                break
+            endif
+        else
+            break
+        endif
+    loop
+    BlackScreen(unset)
+loop
+
+' LoadAssets
+' ----------
+function LoadAssets()
+    ' Fonts.
+    vFont = loadfont(GetPathCombined(vPath, "arial16"))
+    vLargeFont = loadfont(GetPathCombined(vPath, "arial27"))
+    vTerminalFont = loadfont(GetPathCombined(vPath, "font8b"))
+    
+    ' Info.
+    BlackScreen("Loading ...")
+    
+    ' Images.
+    vLogoImage = loadimage(GetPathCombined(vPath, "neon_breath.png"))
+    vLogoGlowImage = loadimage(GetPathCombined(vPath, "neon_breath_glow.png"))
+    vButtonsImage = loadimage(GetPathCombined(vPath, "title_buttons.png"), 3, 6)
+    vSliderImage = loadimage(GetPathCombined(vPath, "slider.png"), 3, 1)
+    vCheckboxImage = loadimage(GetPathCombined(vPath, "checkbox.png"), 2, 1)
+    vBackdropImage = createimage(width(primary), height(primary))
+    vSignContentImage = createimage(192, 120)
+    vHealthImage = loadimage(GetPathCombined(vPath, "health.png"), 5, 6)
+    vBreathImage = loadimage(GetPathCombined(vPath, "breath.png"), 5, 6)
+    vKeyImage = loadimage(GetPathCombined(vPath, "key.png"), 5, 6)
+    vNeonKeyImage = loadimage(GetPathCombined(vPath, "neon_key.png"), 5, 6)
+    vGunImage = loadimage(GetPathCombined(vPath, "gun.png"), 5, 6)
+    vPlayerBulletImage = loadimage(GetPathCombined(vPath, "bullet_0.png"))
+    vEnemyBullet1Image = loadimage(GetPathCombined(vPath, "enemy_bullet_1.png"), 4, 1)
+    vKeyIconImage = loadimage(GetPathCombined(vPath, "key_icon.png"))
+    vNeonKeyIconImage = loadimage(GetPathCombined(vPath, "neon_key_icon.png"))
+    vSmokePoofImage = loadimage(GetPathCombined(vPath, "smoke_poof.png"), 5, 3)
+    vNeonPoofImage = loadimage(GetPathCombined(vPath, "neon_poof.png"), 7, 2)
+    vExploImage = loadimage(GetPathCombined(vPath, "explosion.png"), 5, 3)
+    vNeonExploImage = loadimage(GetPathCombined(vPath, "neon_explosion.png"), 5, 3)
+
+    ' Meshes and their textures.
+    vTitleSphereMesh = S3D_LoadMesh(GetPathCombined(vPath, "title_sphere/title_sphere.obj"), 1, 1, 1, false)    
+
+    vEntryImage = loadimage(GetPathCombined(vPath, "entry.png"))
+    vEntryCapImage = loadimage(GetPathCombined(vPath, "entry_cap.png"))
+    vEntryMesh = CreateCylinderMesh(vEntryImage, vEntryCapImage, 0.5, 1, 6)
+
+    vStairsImage = loadimage(GetPathCombined(vPath, "stairs_0.png"))
+    vNeonStairsImage = loadimage(GetPathCombined(vPath, "pink_stairs.png"))
+    vStairsMesh = CreateStairsMesh(vStairsImage)
+    vNeonStairsMesh = CreateStairsMesh(vNeonStairsImage)
+    
+    vPillar1Image = loadimage(GetPathCombined(vPath, "pillar_0_1.png"))
+    vPillar2Image = loadimage(GetPathCombined(vPath, "pillar_0_2.png"))
+    vPillar3Image = loadimage(GetPathCombined(vPath, "pillar_0_3.png"))
+    vPillar1Mesh = CreateCylinderMesh(vPillar1Image, unset, 0.4, 1, 6)
+    vPillar2Mesh = CreateCylinderMesh(vPillar2Image, unset, 0.4, 2, 6)
+    vPillar3Mesh = CreateCylinderMesh(vPillar3Image, unset, 0.4, 3, 6)
+    
+    vBarrelImage = loadimage(GetPathCombined(vPath, "barrel.png"))
+    vBarrelCapImage = loadimage(GetPathCombined(vPath, "barrel_cap.png"))
+    vNeonBarrelImage = loadimage(GetPathCombined(vPath, "neon_barrel.png"))
+    vNeonBarrelCapImage = loadimage(GetPathCombined(vPath, "neon_barrel_cap.png"))
+    vBarrelMesh = CreateCylinderMesh(vBarrelImage, vBarrelCapImage, 0.2, 0.5, 6)
+    vNeonBarrelMesh = CreateCylinderMesh(vNeonBarrelImage, vNeonBarrelCapImage, 0.2, 0.5, 6)
+    
+    vNeonSpawnImage = loadimage(GetPathCombined(vPath, "neon_spawn.png"))
+    vNeonSpawnCapImage = loadimage(GetPathCombined(vPath, "neon_spawn_cap.png"))
+    vNeonSpawnMesh = CreateCylinderMesh(vNeonSpawnImage, vNeonSpawnCapImage, 0.4, 0.125, 6)
+    
+    vStoneTableMesh = S3D_LoadMesh(GetPathCombined(vPath, "stone_table/stone_table.obj"), 1, -1, 1, false)
+
+    vTorchImage = loadimage(GetPathCombined(vPath, "torch.png"))
+    vTorchFlameImage = loadimage(GetPathCombined(vPath, "torch_flame.png"), 4, 1)
+    vTorchMesh = CreateTorchMesh()
+
+    vSignImage = loadimage(GetPathCombined(vPath, "sign.png"))
+    vSignDisplayImage = loadimage(GetPathCombined(vPath, "sign_text.png"))
+    vSignMesh = CreateSignMesh()
+
+    vGunMesh = S3D_LoadMesh(GetPathCombined(vPath, "gun/gun.obj"), 1, -1, 1, false)
+
+    vBarsMesh = S3D_LoadMesh(GetPathCombined(vPath, "bars/bars.obj"), 1, -1, 1, false)
+
+    vLeverMesh = S3D_LoadMesh(GetPathCombined(vPath, "lever/lever_0.obj"), 1, -1, 1, false)
+    S3D_LoadMeshFrame(vLeverMesh, GetPathCombined(vPath, "lever/lever_1.obj"), 1, -1, 1)
+
+    s = 0.5
+    vRob1Mesh = S3D_LoadMesh(GetPathCombined(vPath, "robot_1/robot_1_0.obj"), s, -s, s, false)
+    S3D_LoadMeshFrame(vRob1Mesh, GetPathCombined(vPath, "robot_1/robot_1_1.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob1Mesh, GetPathCombined(vPath, "robot_1/robot_1_2.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob1Mesh, GetPathCombined(vPath, "robot_1/robot_1_3.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob1Mesh, GetPathCombined(vPath, "robot_1/robot_1_4.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob1Mesh, GetPathCombined(vPath, "robot_1/robot_1_5.obj"), s, -s, s)
+    vRob1Texture = loadimage(GetPathCombined(vPath, "robot_1/robot_1.png"))
+    vRob1AttackTexture = loadimage(GetPathCombined(vPath, "robot_1/robot_1_attack.png"))
+    vRob1HitTexture = loadimage(GetPathCombined(vPath, "robot_1/robot_1_hit.png"))
+    
+    s = 0.6
+    vRob2Mesh = S3D_LoadMesh(GetPathCombined(vPath, "robot_2/robot_2_0.obj"), s, -s, s, false)
+    S3D_LoadMeshFrame(vRob2Mesh, GetPathCombined(vPath, "robot_2/robot_2_1.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob2Mesh, GetPathCombined(vPath, "robot_2/robot_2_2.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob2Mesh, GetPathCombined(vPath, "robot_2/robot_2_3.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob2Mesh, GetPathCombined(vPath, "robot_2/robot_2_4.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vRob2Mesh, GetPathCombined(vPath, "robot_2/robot_2_5.obj"), s, -s, s)
+    vRob2Texture = loadimage(GetPathCombined(vPath, "robot_2/robot_2.png"))
+    vRob2AttackTexture = loadimage(GetPathCombined(vPath, "robot_2/robot_2_attack.png"))
+    vRob2HitTexture = loadimage(GetPathCombined(vPath, "robot_2/robot_2_hit.png"))
+
+    s = 0.5
+    vTickMesh = S3D_LoadMesh(GetPathCombined(vPath, "neon_tick/neon_tick_0.obj"), s, -s, s, false)
+    S3D_LoadMeshFrame(vTickMesh, GetPathCombined(vPath, "neon_tick/neon_tick_1.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vTickMesh, GetPathCombined(vPath, "neon_tick/neon_tick_2.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vTickMesh, GetPathCombined(vPath, "neon_tick/neon_tick_3.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vTickMesh, GetPathCombined(vPath, "neon_tick/neon_tick_4.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vTickMesh, GetPathCombined(vPath, "neon_tick/neon_tick_5.obj"), s, -s, s)
+    vTickTexture = loadimage(GetPathCombined(vPath, "neon_tick/neon_tick.png"))
+    vTickAttackTexture = loadimage(GetPathCombined(vPath, "neon_tick/neon_tick_attack.png"))
+    vTickHitTexture = loadimage(GetPathCombined(vPath, "neon_tick/neon_tick_hit.png"))
+
+    s = 0.4
+    vSpiderMesh = S3D_LoadMesh(GetPathCombined(vPath, "neon_spider/neon_spider_0.obj"), s, -s, s, false)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_1.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_2.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_3.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_4.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_5.obj"), s, -s, s)
+    S3D_LoadMeshFrame(vSpiderMesh, GetPathCombined(vPath, "neon_spider/neon_spider_6.obj"), s, -s, s)
+    vSpiderTexture = loadimage(GetPathCombined(vPath, "neon_spider/neon_spider.png"))
+    vSpiderAttackTexture = loadimage(GetPathCombined(vPath, "neon_spider/neon_spider_attack.png"))
+    vSpiderHitTexture = loadimage(GetPathCombined(vPath, "neon_spider/neon_spider_hit.png"))
+    
+    ' Sound effects.
+    vPlayerShootSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/player_shoot_8.wav")), vol: 0.5]
+    vPlayerHitSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/hurt_1.wav")), vol: 0.7]
+    vLeverSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/lever_0.wav")), vol: 0.9]
+    vEnemyShootSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/enemy_shoot_4.wav")), vol: 1.25]
+    vNeonEnemyHitSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/dark_hit_2.wav")), vol: 0.8]
+    vNeonEnemyDieSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/dark_die_0.wav")), vol: 1]
+    vEnemyHitSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/dark_hit_6.wav")), vol: 0.3]
+    vEnemyDieSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/explo_4.wav")), vol: 1.4]
+    vMessageSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/info_0.wav")), vol: 1]
+    vDeniedSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/denied_1.wav")), vol: 1]
+    vDoorOpenSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/door_1.wav")), vol: 1.5]
+    vGunSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/pickup_0.wav")), vol: 1]
+    vHealthSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/pickup_2.wav")), vol: 1]
+    vKeySnd = [snd: loadsound(GetPathCombined(vPath, "sfx/key_0.wav")), vol: 1]
+    vOrbSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/orb_1.wav")), vol: 1]
+    vRobot1AwareSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/noise_8.wav")), vol: 0.4]
+    vRobot2AwareSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/noise_4.wav")), vol: 0.4]
+    vTickAwareSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/noise_2.wav")), vol: 0.4]
+    vSpiderAwareSnd = [snd: loadsound(GetPathCombined(vPath, "sfx/dark_call_0.wav")), vol: 0.4]
+    vSpawnSound = [snd: loadsound(GetPathCombined(vPath, "sfx/spawn.wav")), vol: 0.5]
+    vButtonSound = loadsound(GetPathCombined(vPath, "sfx/button.wav"))
+    
+    ' Music.
+    vGameMusic = loadmusic(GetPathCombined(vPath, "game_music.mp3"))
+    vBattleMusic = loadmusic(GetPathCombined(vPath, "battle_music.mp3"))
+endfunc
+
+' Update
+' ------
+function Update(dt)
+    vBlinkTimer = (vBlinkTimer + dt)%1
+    
+    if vGameOver
+        vGameOverParam = min(vGameOverParam + 0.5*dt, 1)
+        if vGameOverParam >= 1
+            EA_Stop()
+        endif
+    else
+        if vBattleMode
+            if vGameMusicVol > 0
+                vGameMusicVol = max(vGameMusicVol - dt, 0)
+                if vGameMusicVol = 0
+                    stop music vGameMusic
+                    vMusicVol = 0.5
+                    vBattleMusicVol = 0
+                    play music vBattleMusic, true
+                endif
+                set music volume vGameMusic, vGameMusicVol*vMusicVol
+            elseif vBattleMusicVol < 1
+                vBattleMusicVol = min(vBattleMusicVol + dt, 1)
+                set music volume vBattleMusic, vBattleMusicVol*vMusicVol
+            endif
+        else
+            if vBattleMusicVol > 0
+                vBattleMusicVol = max(vBattleMusicVol - dt, 0)
+                if vBattleMusicVol = 0
+                    stop music vBattleMusic
+                    vMusicVol = 0.25
+                    vGameMusicVol = 0
+                    play music vGameMusic, true
+                endif
+                set music volume vBattleMusic, vBattleMusicVol*vMusicVol
+            elseif vGameMusicVol < 1
+                vGameMusicVol = min(vGameMusicVol + dt, 1)
+                set music volume vGameMusic, vGameMusicVol*vMusicVol
+            endif
+        endif
+        if vPlayer.health = 0
+            vGameOver = true
+            vGameOverParam = 0
+            o = EA_Object()
+            o.SetPos(vPlayer.X(), vPlayer.Y(), vPlayer.Z())
+            o.SetYaw(vPlayer.Yaw())
+            o.SetPitch(vPlayer.Pitch())
+            o.SetEye(vPlayer.Eye())
+            o.Update = function(dt)
+                .Move(0, 4*dt, 0, 0)
+                .SetEye(max(.Eye() - dt*0.5, 0.1))
+                if .Eye() > 0.1
+                    .SetYaw(.Yaw() + PI*dt)
+                    .SetPitch(.Pitch() + 0.5*PI*dt)
+                endif
+            endfunc
+            EA_SetCamera(o)
+            ' Ugh, hack, player needs restore mouse stuff in its internal stop function.
+            vPlayer.ea_.Stop()
+            EA_RemoveObject(vPlayer)
+            EA_AddObject(o)
+        endif
+        UpdateMap()
+        UpdateFog(dt)
+        UpdateDoors(dt)
+        if vBattleMode  UpdateBattle(dt)
+        vQuickMessageTimer = max(vQuickMessageTimer - dt, 0)
+        vEnemyHitTimer = max(vEnemyHitTimer - dt, 0)
+        if (vNeon or vPlayer.breath < 120) and vTutorials[TUT_NEON]
+            vBreathOffs = max(vBreathOffs - dt*4, 0)
+        else
+            vBreathOffs = min(vBreathOffs + dt*4, 1)
+        endif
+        if keydown(KEY_TAB, true)  vMapActive = not vMapActive
+        
+        if keydown(KEY_ESCAPE, true)
+            EA_Pause()
+            res = PauseScreen()
+            EA_Resume()
+            wait 250
+            if vFpsLock  EA_SetFpsCap(FPS_CAP)
+            else  EA_SetFpsCap(0)
+            if not res  EA_Stop()
+        endif
+    endif
+endfunc
+
+' ChangeFog
+' ---------
+function ChangeFog(r, g, b, zmax)
+    ip = 1 - vFogP
+    vOldFogR = vOldFogR*ip + vFogR*vFogP
+    vOldFogG = vOldFogG*ip + vFogG*vFogP
+    vOldFogB = vOldFogB*ip + vFogB*vFogP
+    vOldZMax = vOldZMax*ip + vZMax*vFogP
+    vFogR = r; vFogG = g; vFogB = b
+    vZMax = zmax; vZMaxSqr = vZMax*vZMax
+    vFogP = 0
+endfunc
+
+' UpdateMap
+' ---------
+function UpdateMap()
+    s = vPlayer.Sector()
+    if s <> vMapLastSector 
+        ' Fog change?
+        if s.fog and not vBattleMode
+            ChangeFog(s.fog[0], s.fog[1], s.fog[2], s.fog[3])
+        endif
+        ' Map.
+        for i = 0 to sizeof(vMap) - 1
+            if vMap[i].s = s
+                vMap[i].vis = true
+                break
+            endif
+        next
+        ' For a rare tutorial.
+        if vTutorials[TUT_GUN] = false and key(s, "main")
+            vPlayer.main = true
+        endif
+        ' Neon.
+        if s.neon and not vNeon
+            vNeon = true
+            vPlayer.SetNeon(true)
+        elseif s.normal and vNeon
+            vNeon = false
+            vPlayer.SetNeon(false)
+        endif
+    endif
+    vMapLastSector = s
+endfunc
+
+' UpdateFog
+' ---------
+function UpdateFog(dt)
+    if vFogP < 1
+        vFogP = min(vFogP + 0.5*dt, 1)
+        ip = 1 - vFogP
+        EA_SetFog(vFogMode,
+                vOldFogR*ip + vFogR*vFogP, vOldFogG*ip + vFogG*vFogP, vOldFogB*ip + vFogB*vFogP)
+        EA_SetView(primary, rad(FOV), 0.1, vOldZMax*ip + vZMax*vFogP)
+    endif
+endfunc
+
+' UpdateDoors
+' -----------
+function UpdateDoors(dt)
+    i = 0
+    while i < sizeof(vOpenDoors)
+        d = vOpenDoors[i]
+        d.timer = d.timer - dt
+        if d.timer <= 0
+            t = d.GetTexture()
+            if t = LOCKED_DOOR_TEX  d.SetTexture(DOOR_TEX)
+            elseif t = LOCKED_NDOOR_1_TEX or t = LOCKED_NDOOR_3_TEX  d.SetTexture(NDOOR_TEX)
+            d.Close()
+            free key vOpenDoors, i
+        else
+            i = i + 1
+        endif
+    wend
+endfunc
+
+' ActivateSpawns
+' --------------
+function ActivateSpawns(sector)
+    ' Look for spawns.
+    clear vSpawns
+    foreach o in sector.Objects()  if o.id = ENEMY_SPAWN_ID  vSpawns[sizeof(vSpawns)] = o
+    if sizeof(vSpawns)  StartBattle()
+endfunc
+
+' ActivateObjects
+' ---------------
+function ActivateObjects(action)
+    foreach s in EA_Sectors()  foreach o in s.Objects()
+        if o.id = BARS_ID and o.action = action
+            if not o.Activated()  o.Activate()
+        endif
+    next
+endfunc
+
+' StartBattle
+' -----------
+function StartBattle()
+    vSavedFogR = vFogR; vSavedFogG = vFogG; vSavedFogB = vFogB
+    ChangeFog(128, 0, 0, vZMax)
+    vBattleMode = true
+    vSpawnDelay = 2
+endfunc
+
+' UpdateBattle
+' ------------
+function UpdateBattle(dt)
+    vSpawnDelay = vSpawnDelay - dt
+    if vSpawnDelay <= 0
+        count = 0
+        foreach s in vSpawns  count = count + sizeof(s.enms)
+        if count
+            vSpawnDelay = vLevelSpawnDelay
+            index = rnd(count)
+            count = 0
+            for i = 0 to sizeof(vSpawns) - 1
+                s = vSpawns[i]
+                count = count + sizeof(s.enms)
+                if index < count
+                    e = unset
+                    select s.enms[0]
+                        case "rob1"  e = Robot1(s.X(), unset, s.Z())
+                        case "rob2"  e = Robot2(s.X(), unset, s.Z())
+                        case "tick"  e = Tick(s.X(), unset, s.Z())
+                        case "spider"  e = Spider(s.X(), unset, s.Z())
+                    endsel
+                    free key s.enms, 0
+                    if e
+                        EA_AddObject(e)
+                        e.Spawn()
+                    else
+                        vSpawnDelay = 0
+                    endif
+                    break
+                endif
+            next
+        else
+            ' Count enemies.
+            any = false
+            foreach o in vSpawns[0].SectorObjects()  if o.id = ENEMY_ID
+                any = true
+                break
+            endif
+            ' Done with battle?
+            if any
+                vSpawnDelay = 1
+            else
+                vBattleMode = false
+                ChangeFog(vSavedFogR, vSavedFogG, vSavedFogB, vZMax)
+            endif
+        endif
+    endif
+endfunc
+
+' ShowQuickMessage
+' ----------------
+function ShowQuickMessage(msg)
+    vQuickMessage = msg
+    vQuickMessageTimer = 3 
+endfunc
+
+' ShowText
+' --------
+function ShowText(lines, terminal)
+    EA_Pause()
+    CreateBackdrop()
+    set image vSignContentImage
+    set color 0, 0, 0
+    cls
+    if terminal
+        set color 0, 256, 64
+        draw rect 1, 1, 190, 118
+        set font vTerminalFont
+    else
+        set color 0, 32, 128
+        draw rect 1, 1, 190, 118
+        set color 255, 255, 255
+        set font vFont
+    endif
+    set caret 8, 6
+    for i = 0 to sizeof(lines) - 1  wln replace(lines[i], "$", "#")
+    set caret width(vSignContentImage)/2, height(vSignContentImage) - fheight() - 6
+    center "[E]"
+    set image primary
+    play sound vMessageSnd.snd, vMessageSnd.vol*vSfxVol
+    state = 0
+    p = 0
+    do
+        if state = 0
+            p = min(p + 0.075, 1)
+            if keydown(KEY_E, true) or keydown(KEY_ESCAPE, true)
+                state = 1
+            endif
+        else
+            p = max(p - 0.075, 0)
+            if p <= 0  break
+        endif
+        set color 255 - p*128, 255 - p*128, 255 - p*128
+        draw image vBackdropImage, 0, 0
+        set color 255, 255, 255, p*240
+        draw image xform vSignContentImage, width(primary)/2, height(primary)/2,
+                p, p, 0, 96, 60
+        redraw
+        fwait 60
+    loop
+    EA_Resume()
+endfunc
+
+' Draw
+' ----
+function Draw()
+    if vPlayer.gun' and vPlayer.gunParam
+        S3D_Clear()
+        S3D_ClearTransformation()
+        S3D_SetDepthBuffer(S3D_Z_BUFFER)
+        ip = 1 - vPlayer.gunParam
+        offsz = 0
+        rotx = 0
+        if typeof(vPlayer.shootParam)
+            'p = vPlayer.shootParam*vPlayer.shootParam
+            p = 1 - (1 - vPlayer.shootParam)^3
+            
+            offsz = -sin(p*PI)*0.15
+            rotx = sin(p*PI)*PI*0.1
+        endif
+        S3D_Translate(0.15 + vPlayer.bob*cos(vPlayer.boba*0.5)*0.0125,
+                0.22 + vPlayer.bob*sin(vPlayer.boba)*0.01 + ip*0.25,
+                0.5 - ip*0.1 + offsz)
+        S3D_Scale(0.25, 0.25, 0.25)
+        S3D_RotateX(rotx)
+        S3D_Mesh(vGunMesh, 0)
+        S3D_Render()
+    endif
+    
+    
+    if vPlayer.htim > 0 or vPlayer.btim > 0
+        set color 200, 0, 0, (vPlayer.htim + vPlayer.btim)*255
+        cls
+    endif
+
+    if vMapActive
+        DrawMap()
+    else
+        set color 255, 255, 255, 32
+        draw ellipse width(primary)/2, height(primary)/2, 2, 2
+    endif
+    
+    if vQuickMessageTimer
+        set font vFont
+        w = fwidth(vQuickMessage)
+        h = fheight()
+        x = (width(primary) - w)/2
+        y = height(primary)/3 - h/2
+        set color 0, 0, 0, 128
+        draw rect x - 2, y - 2, w + 4, h + 4, true
+        set color 0, 0, 0
+        draw rect x - 2, y - 2, w + 4, h + 4
+        set color 255, 255, 255
+        set caret x, y
+        wln vQuickMessage
+    endif
+    
+    set color 255, 255, 255
+    if vKeys > 0
+        y = height(primary) - height(vKeyIconImage)
+        w = width(vKeyIconImage)
+        for i = 0 to vKeys - 1  draw image vKeyIconImage, 2 + w*i, y
+    endif
+    if vNeonKeys > 0
+        y = height(primary) - height(vNeonKeyIconImage)
+        w = width(vNeonKeyIconImage)
+        x = width(primary) - 2 - w
+        for i = 0 to vNeonKeys - 1  draw image vNeonKeyIconImage, x - w*i, y
+    endif
+    
+    set caret 28, 2
+    set font vFont
+    set color 204, 204, 204, 160
+    center "Health"
+    set font vLargeFont
+    if vPlayer.health > 25  set color 255, 255, 255, 160
+    else  set color 255, 0, 0, 160
+    center max(vPlayer.health, 0)
+    
+    set caret width(primary) - 28 + vBreathOffs*64, 2
+    set color 204, 204, 204, 160
+    set font vFont
+    center "Breath"
+    set font vLargeFont
+    if int(vPlayer.breath) > 30  set color 255, 255, 255, 160
+    else  set color 255, 0, 0, 160
+    center str(max(vPlayer.breath, 0), 0, 0)
+    
+    if not vTutorials[TUT_SIGN]
+        set font vFont
+        set caret width(primary)/2, height(primary) - fheight() - 4
+        set color 255, 255, 255, (vBlinkTimer >= 0.5)*160
+        center "Press [E] to interact with objects"
+    endif
+
+    if vLastEnemyHit and vEnemyHitTimer > 0
+        x = width(primary)/2
+        set caret x, 2
+        set color 204, 204, 204, 160
+        set font vFont
+        center vLastEnemyHit.name
+        set color 0, 0, 0
+        w = 64
+        draw rect x - w/2, 20, w, 4, true
+        set color 204, 0, 0, 160
+        draw rect x - w/2, 20, w*vLastEnemyHit.health/vLastEnemyHit.maxHealth, 4, true
+    endif
+    
+    if vGameOver
+        set color 200, 0, 0, vGameOverParam*255
+        cls
+    endif
+endfunc
+
+' GenerateMap
+' -----------
+function GenerateMap()
+    sectors = EA_Sectors()
+    clear vMap
+    foreach sector in sectors
+        if not key(sector, "fog")  sector.fog = unset
+        if not key(sector, "neon")  sector.neon = false
+        if not key(sector, "normal") sector.normal = false
+        s = [s: sector, vis: false, neon: instr(sector.name, "neon") >= 0, p: []]
+        vMap[sizeof(vMap)] = s
+        ' Hack ... The polygon array contains 4 values per vertex, x and z are in 0 and 1.
+        for i = 0 to sizeof(sector.polygon)/4 - 1
+            s.p[sizeof(s.p)] = sector.polygon[i*4 + 1]*8
+            s.p[sizeof(s.p)] = sector.polygon[i*4]*8
+        next
+    next
+    vMapLastSector = unset
+    vMapActive = false
+endfunc
+
+' DrawMap
+' -------
+function DrawMap()
+    cx = width(primary)/2; cy = height(primary)/2
+    dx = vPlayer.DZ(); dy = vPlayer.DX()
+    tx = cx - vPlayer.Z()*8
+    ty = cy - vPlayer.X()*8
+    for i = 0 to sizeof(vMap) - 1
+        if vMap[i].vis
+            if vMap[i].neon
+                set color 255, 0, 64, 32
+                DrawPolyAt(vMap[i].p, tx, ty, true)
+                set color 255, 0, 64
+                DrawPolyAt(vMap[i].p, tx, ty, false)
+            else
+                set color 0, 255, 64, 32
+                DrawPolyAt(vMap[i].p, tx, ty, true)
+                set color 0, 255, 64
+                DrawPolyAt(vMap[i].p, tx, ty, false)
+            endif
+        endif
+    next
+    set color 255, 255, 64
+    x = cx + dx*4; y = cy + dy*4
+    draw line cx - dx*6, cy - dy*6, x, y
+    draw line x, y, cx - dy*4, cy + dx*4
+    draw line x, y, cx + dy*4, cy - dx*4
+endfunc
+
+' LoadMap
+' -------
+function LoadMap(filename)
+    if not exists(filename) return false
+    
+    vBreathOffs = 1
+    vGameOver = false; vGameOverParam = 0
+    vLevelComplete = false
+    vNeon = false
+    vBattleMode = false
+    vKeys = 0; vNeonKeys = 0
+    vLastEnemyHit = unset; vEnemyHitTimer = 0
+    clear vOpenDoors
+    clear vSigns
+    clear vSpawns
+    clear vMap = []; vMapLastSector = unset; vMapActive = false
+    vFogR = 0; vFogG = 0; vFogB = 0; vZMax = 0.25; vZMaxSqr = vZMax*vZMax
+    vOldFogR = 0; vOldFogG = 0; vOldFogB = 0; vOldZMax = 0.25
+    vFogP = 0
+    vQuickMessage = unset; vQuickMessageTimer = 0
+    vBlinkTimer = 0
+    vGameMusicVol = 0; vBattleMusicVol = 0; vMusicVol = 0.4
+    vPlayer = unset
+    
+    flags = EA_LoadMap(filename)
+    foreach f in flags
+        select f.flag
+            case "player"
+                vPlayer = CreatePlayerObject(f.x, f.floorY, f.z)
+                vPlayer.SetYaw(rad(float(f.value)))
+            case "entry"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.ceilingY, f.z)
+                obj.SetPitch(PI)
+                obj.SetMesh(vEntryMesh)
+                EA_AddStaticObject(obj)
+            case "stairs"
+                obj = CreateStairsObject(vStairsMesh, f.value, f.x, f.floorY, f.z)
+                EA_AddStaticObject(obj)
+            case "neon stairs"
+                obj = CreateStairsObject(vNeonStairsMesh, f.value, f.x, f.floorY, f.z)
+                EA_AddStaticObject(obj)
+            case "pillar"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetRadius(0.25)
+                obj.SetHeight(unset)
+                obj.SetColPoly(vPillarPoly)
+                select int(f.value)
+                    case 3  obj.SetMesh(vPillar3Mesh)
+                    case 2  obj.SetMesh(vPillar2Mesh)
+                    default  obj.SetMesh(vPillar1Mesh)
+                endsel
+                EA_AddStaticObject(obj)
+            case "barrel"
+                obj = EA_StaticObject()
+                obj.id = BARREL_ID
+                if f.value = "health"  obj.item = HEALTH_ID
+                elseif f.value = "breath"  obj.item = BREATH_ID
+                elseif f.value = "key"  obj.item = KEY_ID
+                else  obj.item = unset
+                obj.neon = false
+                obj.SetPos(f.x, f.floorY - 0.01, f.z)
+                obj.SetHeight(0.5)
+                obj.SetMesh(vBarrelMesh)
+                obj.SetColPoly(vBarrelPoly)
+                EA_AddStaticObject(obj)
+            case "neon barrel"
+                obj = EA_StaticObject()
+                obj.id = BARREL_ID
+                if f.value = "health"  obj.item = HEALTH_ID
+                elseif f.value = "breath"  obj.item = BREATH_ID
+                elseif f.value = "key"  obj.item = KEY_ID
+                else  obj.item = unset
+                obj.neon = true
+                obj.SetPos(f.x, f.floorY - 0.01, f.z)
+                obj.SetHeight(0.5)
+                obj.SetMesh(vNeonBarrelMesh)
+                obj.SetColPoly(vBarrelPoly)
+                EA_AddStaticObject(obj)            
+            case "spawn"
+                obj = EA_StaticObject()
+                obj.id = ENEMY_SPAWN_ID
+                obj.enms = split(f.value, " ")
+                obj.SetPos(f.x, f.floorY - 0.01, f.z)
+                obj.SetHeight(0.125)
+                obj.SetMesh(vNeonSpawnMesh)
+                obj.SetColPoly(vSpawnPoly)
+                EA_AddStaticObject(obj)
+            case "torch"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetRadius(0.25)
+                obj.SetHeight(0.5)
+                obj.SetColPoly(vTorchPoly)
+                obj.SetMesh(vTorchMesh)
+                EA_AddStaticObject(obj)
+                obj = EA_StaticObject()
+                obj.id = TORCH_ID
+                obj.SetPos(f.x, f.floorY - 0.505, f.z)
+                obj.SetRadius(0.125)
+                obj.SetHeight(0.5)
+                obj.frame = rnd()*4
+                obj.SetSprite(vTorchFlameImage, int(obj.frame), true)
+                obj.Update = function(dt)
+                    .frame = (.frame + dt*15)%4
+                    .SetCel(int(.frame))
+                endfunc
+                EA_AddStaticObject(obj)
+            case "sign"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetRadius(0.25)
+                obj.SetHeight(0.25)
+                obj.SetColPoly(vSignPoly)
+                obj.SetMesh(vSignMesh)
+                EA_AddStaticObject(obj)
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY - 0.35, f.z)
+                obj.SetRadius(0.25)
+                obj.SetHeight(0.375)
+                obj.SetSprite(vSignDisplayImage, 0, true)
+                EA_AddStaticObject(obj)
+                vSigns[sizeof(vSigns)] = [f.x, f.floorY + 0.5, f.z, split(f.value, "#")]
+                
+            case "bars"
+                params = split(f.value, " ")
+                obj = EA_StaticObject()
+                obj.id = BARS_ID
+                obj.action = int(params[1])
+                obj.a = false
+                obj.p = 0
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetHeight(1)
+                if params[0] = "x"
+                    obj.SetColPoly(vXBarsPoly)
+                else
+                    obj.SetColPoly(vZBarsPoly)
+                    obj.SetYaw(PI*0.5)
+                endif
+                obj.SetMesh(vBarsMesh)
+                obj.Activate = function()
+                    if not .a
+                        .oy = .Y()
+                        .a = true
+                    endif
+                endfunc
+                obj.Update = function(dt)
+                    if .a and .p < 1
+                        .p = min(.p + dt, 1)
+                        ' Right ... static object can't do this.
+                        '.SetPos(.X(), .oy + .p*0.95, .Z())
+                        ' Hack, doesn't affect collision
+                        .ea_.y = .oy - .p*0.9
+                        if .p >= 1
+                            ' Ugh ... remove this object, but add a copy without collision.
+                            EA_RemoveObject(this)
+                            obj = EA_StaticObject()
+                            obj.SetPos(.X(), .Y(), .Z())
+                            obj.SetYaw(.Yaw())
+                            obj.SetMesh(vBarsMesh)
+                            EA_AddStaticObject(obj)
+                        endif
+                    endif
+                endfunc
+                obj.Activated = function(); return .a; endfunc
+                EA_AddStaticObject(obj)
+                
+            case "lever"
+                params = split(f.value, " ")
+                obj = EA_StaticObject()
+                obj.id = LEVER_ID
+                obj.action = int(params[1])
+                obj.a = false
+                obj.p = 0
+                obj.SetPos(f.x, f.floorY, f.z)
+                if params[0] = "left"
+                    obj.SetYaw(PI*0.5)
+                    obj.SetColPoly(vLeverLeftPoly)
+                elseif params[0] = "right"
+                    obj.SetYaw(-PI*0.5)
+                    obj.SetColyPoly(vLeverRightPoly)
+                elseif params[0] = "down"
+                    obj.SetYaw(PI)
+                    obj.SetColPoly(vLeverDownPoly)
+                else
+                    obj.SetColPoly(vLeverUpPoly)
+                endif
+                obj.SetHeight(1)
+                obj.Pull = function()
+                    if not .a then .a = true
+                endfunc
+                obj.Update = function(dt)
+                    if .a and .p < 1
+                        .p = min(.p + dt*2, 1)
+                        if .p >= 1
+                            .SetFrame(1)
+                        else
+                            .SetFrames(0, 1, .p)
+                        endif
+                    endif
+                endfunc
+                obj.Activated = function(); return .a; endfunc
+                obj.SetMesh(vLeverMesh)
+                EA_AddStaticObject(obj)
+            case "health"
+                EA_AddStaticObject(
+                        CreatePickup(HEALTH_ID, vHealthImage, f.x, f.floorY, f.z, true))
+            case "breath"
+                EA_AddStaticObject(
+                        CreatePickup(BREATH_ID, vBreathImage, f.x, f.floorY, f.z, true))
+            case "key"
+                EA_AddStaticObject(
+                        CreatePickup(KEY_ID, vKeyImage, f.x, f.floorY, f.z, true))
+            case "neon key"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetRadius(0.25)
+                obj.SetHeight(0.25)
+                obj.SetColPoly(vSignPoly)
+                obj.SetMesh(vSignMesh)
+                EA_AddStaticObject(obj)
+                EA_AddStaticObject(
+                        CreatePickup(NEON_KEY_ID, vNeonKeyImage, f.x, f.floorY - 0.35, f.z, false))
+            case "gun"
+                obj = EA_StaticObject()
+                obj.SetPos(f.x, f.floorY, f.z)
+                obj.SetHeight(0.4)
+                obj.SetColPoly(vStoneTablePoly)
+                obj.SetMesh(vStoneTableMesh)
+                EA_AddStaticObject(obj)
+                EA_AddStaticObject(
+                        CreatePickup(GUN_ID, vGunImage, f.x, f.floorY - 0.45, f.z, false))
+
+            case "rob1"
+                obj = Robot1(f.x, f.floorY, f.z)
+                EA_AddObject(obj)
+            
+            case "rob2"
+                obj = Robot2(f.x, f.floorY, f.z)
+                EA_AddObject(obj)
+            
+            case "tick"
+                obj = Tick(f.x, f.floorY, f.z)
+                EA_AddObject(obj)
+                
+            case "spider"
+                obj = Spider(f.x, f.floorY, f.z)
+                EA_AddObject(obj)
+                
+            case "fog"
+                s = EA_SectorAt(f.x, f.z)
+                s.fog = split(f.value, " ")
+                for i = 0 to 3  s.fog[i] = float(s.fog[i])
+            
+            case "main"
+                EA_SectorAt(f.x, f.z).main = true
+            
+            case "neon"
+                EA_SectorAt(f.x, f.z).neon = true
+                
+            case "normal"
+                EA_SectorAt(f.x, f.z).normal = true
+                
+        endsel
+    next
+    EA_AddObject(vPlayer)
+    EA_SetCamera(vPlayer)
+    EA_SetView(primary, rad(FOV), 0.1, vZMax)
+    EA_SetFog(vFogMode, vFogR, vFogG, vFogB)
+    return true
+endfunc
+
+' CreatePickup
+' ------------
+function CreatePickup(id, img, x, y, z, onlyYaw)
+    obj = EA_StaticObject()
+    obj.id = id
+    obj.cc = cels(img)
+    obj.SetPos(x, y - 0.02, z)
+    obj.SetRadius(0.5*width(img)/64)
+    obj.SetHeight(height(img)/64)
+    obj.SetSprite(img, 0, onlyYaw)
+    obj.Update = function(dt)
+        .frame = (.frame + dt*15)%.cc
+        .SetCel(int(.frame))
+    endfunc
+    return obj
+endfunc
+
+' CreatePlayerObject
+' ------------------
+function CreatePlayerObject(x, y, z)
+    obj = EA_FpsPlayer()
+    obj.id = PLAYER_ID
+    obj.SetPos(x, y, z)
+    obj.SetLeap(0.25)
+    obj.SetHeight(0.7)
+    obj.SetJumpForce(4.5)
+    obj.SetEye(0.6)
+    obj.SetMoveSpeed(1.3)
+    obj.SetRadius(0.2)
+    obj.SetMaxPitch(0.25*PI)
+    obj.SetMouseSens(MouseSensitivity())
+    obj.SetCollisionMode(EA_NORMAL)
+    
+    obj.health = 100
+    
+    obj.bob = 0
+    obj.boba = 0
+    
+    obj.neon = false
+    obj.breath = 120
+    
+    obj.gun = 0
+    obj.gunParam = 0
+    obj.shootParam = 0
+    
+    ' Hack for a rare tutorial ... trying to leave gun room without picking it up.
+    obj.main = false
+    
+    obj.htim = 0
+    obj.btim = 0
+    
+    ' SetNeon
+    ' -------
+    obj.SetNeon = function(neon)
+        .neon = neon
+        if not vTutorials[TUT_NEON] then .breath = -1
+    endfunc
+    
+    ' Breath
+    ' ------
+    obj.Breath = function()
+        return .breath
+    endfunc
+    
+    ' Update
+    ' ------
+    obj.Update = function(dt)
+        ' Bob effect.
+        if .Walking()
+            if .OnGround()
+            .bob = min(.bob + dt*2, 1)
+            .boba = (.boba + dt*4*PI)%(4*PI) ' gun bobs at 0.5a
+            endif
+        else
+            .bob = max(.bob - dt*4, 0)
+        endif
+        .SetEye(0.6 + .bob*sin(.boba)*0.025)
+
+        ' Health and breath timers.
+        .htim = max(.htim - dt, 0)
+        if .btim > 0
+            .btim = max(.btim - dt, 0)
+            if .btim <= 0 and not vTutorials[TUT_NEON]
+                ShowText(vBreathText, false)
+                vTutorials[TUT_NEON] = true
+                .breath = 120.4
+            endif
+        endif
+                
+        ' Breath.
+        if .neon
+            ob = floor(.breath)
+            .breath = .breath - dt
+            if ob < 0 and floor(.breath) < ob and ob%2 = 0
+                .PlaySound(vPlayerHitSnd.snd, vPlayerHitSnd.vol*0.5*vSfxVol)
+                .health = max(.health - 5, 0)
+                .btim = 0.5
+            endif
+        else
+            .breath = min(.breath + dt*30, 120.4)
+        endif
+        
+        ' Gun.
+        if .gun
+            .gunParam = min(.gunParam + dt*2.5, 1)
+            if typeof(.shootParam)
+                .shootParam = .shootParam + dt*2
+                if .shootParam >= 1 then .shootParam = unset
+            endif
+        endif
+        
+        ' Action button.
+        if keydown(KEY_E, true)
+            ' Read sign?
+            if not .ReadSign()
+                ' Check for doors.
+                res = .Facing()
+                if res and res.dist < 1
+                    if res.type = EA_DOOR
+                        if vBattleMode
+                            .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                            ShowQuickMessage("The door is sealed")
+                        else
+                            if vTutorials[TUT_GUN] = false and .main
+                                ShowText(vGunText, false)
+                            elseif res.data.GetTexture() = LOCKED_DOOR_TEX
+                                if vKeys > 0 and res.data.Open()
+                                    .PlaySound(vDoorOpenSnd.snd, vDoorOpenSnd.vol*vSfxVol)
+                                    vOpenDoors[sizeof(vOpenDoors)] = res.data
+                                    res.data.timer = 3
+                                    vKeys = vKeys - 1
+                                    ShowQuickMessage("Unlocked door")
+                                else
+                                    .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                                    ShowQuickMessage("The door is locked")
+                                endif
+                            elseif res.data.GetTexture() = LOCKED_NDOOR_1_TEX
+                                if vNeonKeys > 0 and res.data.Open()
+                                    .PlaySound(vDoorOpenSnd.snd, vDoorOpenSnd.vol*vSfxVol)
+                                    vOpenDoors[sizeof(vOpenDoors)] = res.data
+                                    res.data.timer = 3
+                                    vNeonKeys = vNeonKeys - 1
+                                    ShowQuickMessage("Unlocked door")
+                                else
+                                    .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                                    ShowQuickMessage("The door is locked")
+                                endif
+                            elseif res.data.GetTexture() = LOCKED_NDOOR_3_TEX
+                                if vNeonKeys >= 3 and res.data.Open()
+                                    .PlaySound(vDoorOpenSnd.snd, vDoorOpenSnd.vol*vSfxVol)
+                                    vOpenDoors[sizeof(vOpenDoors)] = res.data
+                                    res.data.timer = 3
+                                    vNeonKeys = vNeonKeys - 3
+                                    ShowQuickMessage("Unlocked door")
+                                else
+                                    .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                                    ShowQuickMessage("The door is locked")
+                                endif
+                            else
+                                if vTutorials[TUT_SIGN]
+                                    if res.data.Open()
+                                        .PlaySound(vDoorOpenSnd.snd, vDoorOpenSnd.vol*vSfxVol)
+                                        vOpenDoors[sizeof(vOpenDoors)] = res.data
+                                        res.data.timer = 3
+                                    endif
+                                else
+                                    .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                                    ShowQuickMessage("Better have a look at that screen first ...")
+                                endif
+                            endif
+                        endif
+                    ' Lever?
+                    elseif res.type = EA_OBJECT
+                        if res.data.id = LEVER_ID and not res.data.Activated()
+                            .PlaySound(vLeverSnd.snd, vLeverSnd.vol*vSfxVol)
+                            res.data.Pull()
+                            ActivateObjects(res.data.action)
+                            if not vTutorials[TUT_LEVER]
+                                vTutorials[TUT_LEVER] = true
+                                ShowQuickMessage("I remember some iron bars ...")
+                            endif
+                        elseif res.data.id = BARS_ID
+                            .PlaySound(vDeniedSnd.snd, vDeniedSnd.vol*vSfxVol)
+                            ShowQuickMessage("Those are solid iron bars ...")
+                        elseif res.data.id = BARREL_ID
+                            if res.data.neon and not vTutorials[TUT_NEON_BARREL]
+                                ShowQuickMessage("Sounds hollow ...")
+                            elseif not (res.data.neon or vTutorials[TUT_BARREL])
+                                ShowQuickMessage("Maybe I can break it ...")
+                            endif
+                        endif
+                    ' Exit?
+                    elseif res.type = EA_WALL
+                        if res.data = 31
+                            vLevelComplete = true
+                            EA_Stop()
+                        endif
+                    endif
+                endif
+            endif
+        endif
+        
+        ' Collisions.
+        list = .SectorObjects()
+        for i = 0 to sizeof(list) - 1
+            o = list[i]
+            if o.id and .CollidesWith(o)
+                select o.id
+                    case HEALTH_ID
+                        if .health < 100
+                            .PlaySound(vHealthSnd.snd, vHealthSnd.vol*vSfxVol)
+                            .health = min(.health + 20, 100)
+                            EA_RemoveObject(o)
+                            ShowQuickMessage("Regained some health")
+                        endif
+                    case BREATH_ID
+                        if .breath < 120
+                            .PlaySound(vHealthSnd.snd, vHealthSnd.vol*vSfxVol)
+                            .breath = min(max(.breath, 0) + 20, 120.4)
+                            EA_RemoveObject(o)
+                            ShowQuickMessage("Regained some breath")
+                        endif
+                    case KEY_ID
+                        .PlaySound(vKeySnd.snd, vKeySnd.vol*vSfxVol)
+                        EA_RemoveObject(o)
+                        vKeys = vKeys + 1
+                        ShowQuickMessage("Picked up a key")
+                    case GUN_ID
+                        .PlaySound(vGunSnd.snd, vGunSnd.vol*vSfxVol)
+                        vTutorials[TUT_GUN] = true
+                        EA_RemoveObject(o)
+                        .gun = 1
+                        .gunParam = 0
+                        ShowQuickMessage("Picked up some sort of weapon")
+                    case NEON_KEY_ID
+                        .PlaySound(vOrbSnd.snd, vOrbSnd.vol*vSfxVol)
+                        EA_RemoveObject(o)
+                        vNeonKeys = vNeonKeys + 1
+                        ShowQuickMessage("Picked up an orb")
+                        ActivateSpawns(.Sector())
+                    case TORCH_ID
+                        .EnemyHit(5)
+                        if not vTutorials[TUT_FIRE]
+                            ShowQuickMessage("Holy poop, fire hurts!")
+                            vTutorials[TUT_FIRE] = true
+                        endif
+                endsel
+            endif
+        next
+        
+        ' Shoot.
+        if mousebutton(0) and not typeof(.shootParam)
+            .PlaySound(vPlayerShootSnd.snd, vPlayerShootSnd.vol*vSfxVol)
+            .shootParam = 0
+            dx = .DX(); dy = .DY(); dz = .DZ()
+            b = CreateBulletObject(0, vPlayerBulletImage, 25,
+                    .X() + dx*0.25 + dz*0.05,
+                    .Y() - .Eye() + 0.1 + dy*0.25,
+                    .Z() + dz*0.25 - dx*0.05,
+                    .DX()*6, .DY()*6, .DZ()*6,
+                    false)
+            EA_AddObject(b)
+            ' Ugh ... check if enemies nearby can hear the player.
+            os = .SectorObjects()
+            if sizeof(os)
+                mind = (vZMax*0.8)^2
+                ' Only make an enemy aware if there are no aware enemies.
+                aware = 0
+                closest = unset
+                for i = 0 to sizeof(os) - 1  if os[i].id = ENEMY_ID
+                    if os[i].aware
+                        aware = aware + 1
+                        'break
+                    else
+                        d = .SqrDistanceTo(os[i])
+                        if d < mind
+                            mind = d
+                            closest = os[i]
+                        endif
+                    endif
+                endif
+                if closest
+                    if vLevel < 2 and aware < 2 or vLevel >= 2 and aware < 3
+                        closest.HeardPlayer()
+                    endif
+                endif
+            endif
+        endif
+    endfunc
+    
+    ' ReadSign
+    ' --------
+    ' Display sign message and return true if player is close to and looking at a sign.
+    obj.ReadSign = function()
+        if sizeof(vSigns)
+            px = .X(); py = .Y(); pz = .Z(); dirx = .DX(); dirz = .DZ()
+            for i = 0 to sizeof(vSigns) - 1
+                dx = vSigns[i][0] - px
+                dz = vSigns[i][2] - pz
+                d = dx*dx + dz*dz
+                if d < 1 and d > 0
+                    d = sqr(d)
+                    dx = dx/d; dz = dz/d
+                    dp = dx*dirx + dz*dirz
+                    if dp > 0.75
+                        vTutorials[TUT_SIGN] = true
+                        ShowText(vSigns[i][3], true)
+                        return true
+                    endif 
+                endif
+            next
+        endif
+        return false
+    endfunc
+    
+    ' BulletHit
+    ' ---------
+    obj.BulletHit = function(dmg, dx, dz)
+        if .htim = 0
+            .health = max(.health - dmg, 0)
+            if .health > 0
+                .PlaySound(vPlayerHitSnd.snd, vPlayerHitSnd.vol*vSfxVol)
+                .htim = 0.5
+            endif
+        endif
+    endfunc
+    
+    obj.EnemyHit = function(dmg)
+        if .htim = 0
+            .health = max(.health - dmg, 0)
+            if .health > 0
+                .PlaySound(vPlayerHitSnd.snd, vPlayerHitSnd.vol*vSfxVol)
+                .htim = 0.5
+            endif
+        endif
+    endfunc
+    
+
+    
+    return obj
+endfunc
+
+' CreateBulletObject
+' ------------------
+function CreateBulletObject(id, img, damage, x, y, z, dx, dy, dz, enemy)
+    obj = EA_Object()
+    obj.id = id
+    obj.cc = cels(img)
+    obj.cel = 0
+    obj.dmg = damage
+    obj.dx = dx; obj.dy = dy; obj.dz = dz
+    obj.enm = enemy
+    obj.Update = function(dt)
+        if .cc
+            .cel = (.cel + dt*25)%.cc
+            .SetCel(int(.cel))
+        endif
+        res = .Move(.dx*dt, .dy*dt, .dz*dt, 0)
+        ' Checking sector, since high speed objects can clip through walls in theory.
+        if res.any or .Sector() = unset
+            if res.w and res.info.type = EA_OBJECT and res.info.data.id = BARREL_ID
+                b = res.info.data
+                if b.neon
+                    if not .enm  vTutorials[TUT_NEON_BARREL] = true
+                    b.PlaySound(vNeonEnemyDieSnd.snd, vNeonEnemyDieSnd.vol*vSfxVol)
+                    AddAnimation(vNeonExploImage, b.X(), b.Y() - 0.35, b.Z(), 0.1, false, 15)
+                else
+                    if not .enm  vTutorials[TUT_BARREL] = true
+                    b.PlaySound(vEnemyDieSnd.snd, vEnemyDieSnd.vol*vSfxVol)
+                    AddAnimation(vExploImage, b.X(), b.Y() - 0.35, b.Z(), 0.1, false, 15)
+                endif
+                EA_RemoveObject(b)
+                ' Add pickup?
+                if b.item = HEALTH_ID
+                    EA_AddStaticObject(
+                            CreatePickup(HEALTH_ID, vHealthImage, b.X(), b.Y(), b.Z(), true))
+                elseif b.item = BREATH_ID
+                    EA_AddStaticObject(
+                            CreatePickup(BREATH_ID, vBreathImage, b.X(), b.Y(), b.Z(), true))
+                elseif b.item = KEY_ID
+                    EA_AddStaticObject(
+                            CreatePickup(KEY_ID, vKeyImage, b.X(), b.Y(), b.Z(), true))
+                endif
+                ' Hurt player and enemies.
+                foreach o in b.SectorObjects()
+                    if o.id = PLAYER_ID
+                        if b.SqrDistanceTo(o) < 1.5625
+                            o.EnemyHit(10)
+                        endif
+                    elseif o.id = ENEMY_ID
+                        if b.SqrDistanceTo(o) < 1.5625
+                            dx = o.X() - b.X(); dz = o.Z() - b.Z()
+                            k = 1/sqr(dx*dx + dz*dz)
+                            dx = dx*k; dz = dz*k
+                            o.BulletHit_(10,
+                                    o.X() - dx*o.Radius(), o.Y() - o.Height()/2,
+                                    o.Z() - dz*o.Radius(),
+                                    dx*k, 0, dz*k)
+                        endif
+                    endif
+                next
+            endif
+            EA_RemoveObject(this)
+        else
+            if .enm
+                if .CollidesWith(vPlayer)
+                    k = 1/sqr(.dx*.dx + .dz*.dz)
+                    vPlayer.BulletHit(.dmg, .dx*k, .dz*k)
+                    EA_RemoveObject(this)
+                endif
+            else
+                os = .SectorObjects()
+                if sizeof(os)
+                    for i = 0 to sizeof(os) - 1
+                        if os[i].id = ENEMY_ID and .CollidesWith(os[i])
+                            k = 1/sqr(.dx*.dx + .dz*.dz)
+                            os[i].BulletHit_(.dmg, .X(), .Y() - .Height()*0.5, .Z(), .dx*k, .dy*k, .dz*k)
+                            EA_RemoveObject(this)
+                            vLastEnemyHit = os[i]
+                            if os[i].health > 0  vEnemyHitTimer = 3
+                            else  vEnemyHitTimer = 1
+                            break
+                        endif
+                    next
+                endif
+            endif
+        endif
+    endfunc
+    obj.SetPos(x, y + 0.5*height(img)/64, z)
+    obj.SetSprite(img, obj.cel, false)
+    obj.SetHeight(height(img)/64)
+    obj.SetRadius(0.5*width(img)/64)
+    
+    return obj
+endfunc
+
+' CreateStairsObject
+' ------------------
+function CreateStairsObject(mesh, dir, x, y, z)
+    obj = EA_StaticObject()
+    obj.SetPos(x, y, z)
+    obj.SetMesh(mesh)
+    select dir
+        case "up"
+            obj.SetYaw(PI)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z - 0.5 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(1)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z - 0.25 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.75)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.5)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z + 0.25 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.25)
+            EA_AddStaticObject(o)
+        case "right"
+            obj.SetYaw(PI/2)
+            o = EA_StaticObject()
+            o.SetPos(x - 0.5 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.25)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x - 0.25 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.5)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.75)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x + 0.25 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(1)
+            EA_AddStaticObject(o)
+        case "left"
+            obj.SetYaw(-PI/2)
+            o = EA_StaticObject()
+            o.SetPos(x - 0.5 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(1)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x - 0.25 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.75)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.5)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x + 0.25 + 0.125, y, z)
+            o.SetColPoly(vStairPolyX)
+            o.SetHeight(0.25)
+            EA_AddStaticObject(o)
+        default
+            o = EA_StaticObject()
+            o.SetPos(x, y, z - 0.5 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.25)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z - 0.25 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.5)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(0.75)
+            EA_AddStaticObject(o)
+            o = EA_StaticObject()
+            o.SetPos(x, y, z + 0.25 + 0.125)
+            o.SetColPoly(vStairPolyZ)
+            o.SetHeight(1)
+            EA_AddStaticObject(o)
+    endsel
+    return obj
+endfunc
+
+' CreateStairsMesh
+' ----------------
+function CreateStairsMesh(img)
+    m = S3D_BeginMesh()
+        S3D_Texture(img)
+        S3D_Begin(S3D_QUADS)
+            S3D_Translate(-0.5, 0, -0.5)
+            S3D_Vertex(0, -0.25, 0.25, 0, 0)
+            S3D_Vertex(1, -0.25, 0.25, 1, 0)
+            S3D_Vertex(1, -0.25, 0, 1, 0.5)
+            S3D_Vertex(0, -0.25, 0, 0, 0.5) 
+            S3D_Vertex(0, -0.5, 0.5, 0, 0)
+            S3D_Vertex(1, -0.5, 0.5, 1, 0)
+            S3D_Vertex(1, -0.5, 0.25, 1, 0.5)
+            S3D_Vertex(0, -0.5, 0.25, 0, 0.5) 
+            S3D_Vertex(0, -0.75, 0.75, 0, 0)
+            S3D_Vertex(1, -0.75, 0.75, 1, 0)
+            S3D_Vertex(1, -0.75, 0.5, 1, 0.5)
+            S3D_Vertex(0, -0.75, 0.5, 0, 0.5) 
+            S3D_Vertex(0, -1.0, 1, 0, 0)
+            S3D_Vertex(1, -1.0, 1, 1, 0)
+            S3D_Vertex(1, -1.0, 0.75, 1, 0.5)
+            S3D_Vertex(0, -1.0, 0.75, 0, 0.5)
+            S3D_Vertex(0, -0.25, 0, 0, 0.5)
+            S3D_Vertex(1, -0.25, 0, 1, 0.5)
+            S3D_Vertex(1, 0, 0, 1, 1)
+            S3D_Vertex(0, 0, 0, 0, 1)
+            S3D_Vertex(0, -0.5, 0.25, 0, 0.5)
+            S3D_Vertex(1, -0.5, 0.25, 1, 0.5)
+            S3D_Vertex(1, -0.25, 0.25, 1, 1)
+            S3D_Vertex(0, -0.25, 0.25, 0, 1)
+            S3D_Vertex(0, -0.75, 0.5, 0, 0.5)
+            S3D_Vertex(1, -0.75, 0.5, 1, 0.5)
+            S3D_Vertex(1, -0.5, 0.5, 1, 1)
+            S3D_Vertex(0, -0.5, 0.5, 0, 1)
+            S3D_Vertex(0, -1.0, 0.75, 0, 0.5)
+            S3D_Vertex(1, -1.0, 0.75, 1, 0.5)
+            S3D_Vertex(1, -0.75, 0.75, 1, 1)
+            S3D_Vertex(0, -0.75, 0.75, 0, 1)
+        S3D_End() 
+    S3D_EndMesh()
+    return m
+endfunc
+
+' CreateCylinderMesh
+' ------------------
+function CreateCylinderMesh(img, capImg, r, h, res)
+    p = []
+    for i = 0 to res - 1
+        a = i*PI*2/res
+        p[sizeof(p)] = [cos(a)*r, sin(a)*r]
+    next
+    m = S3D_BeginMesh()
+        S3D_Texture(img)
+        S3D_Begin(S3D_QUADS)
+        for i = 0 to res - 1
+            j = (i + 1)%res
+            S3D_Vertex(p[i][0], -h, p[i][1], i/res, 0)
+            S3D_Vertex(p[j][0], -h, p[j][1], (i + 1)/res, 0)
+            S3D_Vertex(p[j][0], 0, p[j][1], (i + 1)/res, 1)
+            S3D_Vertex(p[i][0], 0, p[i][1], i/res, 1)
+        next
+        S3D_End()
+        if capImg
+            S3D_Texture(capImg)
+            S3D_Begin(S3D_TRIANGLES)
+            for i = 0 to res - 1
+                j = (i + 1)%res
+                S3D_Vertex(0, -h, 0, 0.5, 0.5)
+                S3D_Vertex(p[j][0], -h, p[j][1], 0.5 + 0.5*p[j][0]/r, 0.5 + 0.5*p[j][1]/r)
+                S3D_Vertex(p[i][0], -h, p[i][1], 0.5 + 0.5*p[i][0]/r, 0.5 + 0.5*p[i][1]/r)
+            next
+            S3D_End()
+        endif    
+    S3D_EndMesh()
+    return m
+endfunc
+
+' CreateTorchMesh
+' ---------------
+function CreateTorchMesh()
+    outer = 0.125
+    inner = outer/2
+    h = 0.5
+    m = S3D_BeginMesh()
+        S3D_Texture(vTorchImage)
+        S3D_Begin(S3D_QUADS)
+            S3D_Vertex(-outer, -h, -outer, 0, 0)
+            S3D_Vertex(outer, -h, -outer, 1, 0)
+            S3D_Vertex(inner, 0, -inner, 0.75, 0.6)
+            S3D_Vertex(-inner, 0, -inner, 0.25, 0.6)
+            S3D_Vertex(outer, -h, -outer, 0, 0)
+            S3D_Vertex(outer, -h, outer, 1, 0)
+            S3D_Vertex(inner, 0, inner, 0.75, 0.6)
+            S3D_Vertex(inner, 0, -inner, 0.25, 0.6)
+            S3D_Vertex(outer, -h, outer, 0, 0)
+            S3D_Vertex(-outer, -h, outer, 1, 0)
+            S3D_Vertex(-inner, 0, inner, 0.75, 0.6)
+            S3D_Vertex(inner, 0, inner, 0.25, 0.6)
+            S3D_Vertex(-outer, -h, outer, 0, 0)
+            S3D_Vertex(-outer, -h, -outer, 1, 0)
+            S3D_Vertex(-inner, 0, -inner, 0.75, 0.6)
+            S3D_Vertex(-inner, 0, inner, 0.25, 0.6)
+            S3D_Vertex(-outer, -h, outer, 0, 0.67)
+            S3D_Vertex(outer, -h, outer, 1, 0.67)
+            S3D_Vertex(outer, -h, -outer, 1, 1)
+            S3D_Vertex(-outer, -h, -outer, 0, 1)            
+        S3D_End()
+    S3D_EndMesh()
+    return m
+endfunc
+
+' CreateSignMesh
+' --------------
+function CreateSignMesh()
+    outer = 0.25
+    inner = outer/2
+    h = 0.25
+    m = S3D_BeginMesh()
+        S3D_Translate(0, -0.01, 0)
+        S3D_Texture(vSignImage)
+        S3D_Begin(S3D_QUADS)
+            S3D_Vertex(-inner, -h, -inner, 0.25, 0)
+            S3D_Vertex(inner, -h, -inner, 0.75, 0)
+            S3D_Vertex(outer, 0, -outer, 1, 0.5)
+            S3D_Vertex(-outer, 0, -outer, 0, 0.5)
+            S3D_Vertex(inner, -h, -inner, 0.25, 0)
+            S3D_Vertex(inner, -h, inner, 0.75, 0)
+            S3D_Vertex(outer, 0, outer, 1, 0.5)
+            S3D_Vertex(outer, 0, -outer, 0, 0.5)
+            S3D_Vertex(inner, -h, inner, 0.25, 0)
+            S3D_Vertex(-inner, -h, inner, 0.75, 0)
+            S3D_Vertex(-outer, 0, outer, 1, 0.5)
+            S3D_Vertex(outer, 0, outer, 0, 0.5)
+            S3D_Vertex(-inner, -h, inner, 0.25, 0)
+            S3D_Vertex(-inner, -h, -inner, 0.75, 0)
+            S3D_Vertex(-outer, 0, -outer, 1, 0.5)
+            S3D_Vertex(-outer, 0, outer, 0, 0.5)            
+            S3D_Vertex(-inner, -h, inner, 0.25, 0.5 + 0.125)
+            S3D_Vertex(inner, -h, inner, 0.75, 0.5 + 0.125)
+            S3D_Vertex(inner, -h, -inner, 0.75, 1 - 0.125)
+            S3D_Vertex(-inner, -h, -inner, 0.25, 1 - 0.125)            
+        S3D_End()
+    S3D_EndMesh()
+    return m
+endfunc
+
+' CreateCirclePoly
+' ----------------
+function CreateCirclePoly(r, vertices)
+    p = []
+    astep = 2*PI/vertices
+    for i = 0 to vertices - 1
+        p[sizeof(p)] = r*cos(i*astep)
+        p[sizeof(p)] = r*sin(i*astep)
+    next
+    return p
+endfunc
+
+' Robot1
+' ------
+function Robot1(x, y, z)
+    e = Enemy(vRob1Mesh, vRob1Texture, x, y, z)
+    e.name = "Wee robot"
+    e.SetHeight(0.5)
+    e.SetRadius(0.25)
+    e.SetHitTexture(vRob1HitTexture)
+    e.SetHitImages(vSmokePoofImage, vExploImage)
+    e.PlayAnim(vRob1MoveAnim, 2, true, unset)
+    e.SetSpeed(0.25)
+    e.SetLeap(0.2) ' Negative leap prevents him from dropping down from ledges.
+    e.SetHealth(100)
+    e.SetDamage(5)
+    e.spots = 0
+    e.state = 0
+    
+    e.HitWall = function(dx, dz)
+        if .aware then .FacePlayer()
+        else .SetDir(rad(deg(atan2(dx, dz)) - 45 + rnd()*90))
+    endfunc
+    
+    e.PlayerSpotted = function()
+        if not .aware
+            .PlaySound(vRobot1AwareSnd.snd, vRobot1AwareSnd.vol*vSfxVol)
+            .SetSpeed(0.75)
+            .anim.spd = 6
+            .SetTexture(vRob1AttackTexture)
+            .spots = 0
+            .SetSpotDelay(0.75)
+        endif
+        if .state = 0
+            .spots = .spots + 1
+            .FacePlayer()
+            if .spots%2 = 0
+                .SetSpeed(0)
+                .PlayAnim(vRob1AttackAnim, 5, false, .Attack)
+                .state = 1
+            endif
+        endif
+    endfunc
+
+    e.PlayerLost = function()
+        if .state = 0
+            .SetSpeed(0.24)
+            .anim.spd = 2
+            .SetSpotDelay(1)
+        endif
+        .SetTexture(vRob1Texture)
+    endfunc
+    
+    e.Attack = function()
+        if .aware
+            .PlaySound(vEnemyShootSnd.snd, vEnemyShootSnd.vol*vSfxVol)
+            .FacePlayer()
+            y = .Y() - 0.5
+            if .PlayerInFov()            
+                dx = vPlayer.X() - .X()
+                dy = vPlayer.Y() - vPlayer.Height()*0.5 - y
+                dz = vPlayer.Z() - .Z()
+                k = 1/sqr(dx*dx + dy*dy + dz*dz)
+                dx = dx*k; dy = dy*k; dz = dz*k
+            else
+                dx = sin(.visA); dy = 0; dz = cos(.visA)    
+            endif
+            b = CreateBulletObject(ENEMY_BULLET_ID, vEnemyBullet1Image, 10,
+                    .X() + dx*0.1, y + dy*0.1, .Z() + dz*0.1, dx*5, dy*5, dz*5,
+                    true)
+            EA_AddObject(b)
+            .PlayAnim(vRob1MoveAnim, 6, true, unset)
+            .SetSpeed(0.75)
+        else
+            .PlayAnim(vRob1MoveAnim, 2, true, unset)
+            .SetSpeed(0.25)
+            .SetSpotDelay(1)
+        endif
+        .state = 0
+    endfunc
+   
+    e.BulletHit = function(dmg, dx, dz)
+        .health = max(.health - dmg, 0)
+        if .health = 0
+            .PlaySound(vEnemyDieSnd.snd, vEnemyDieSnd.vol*vSfxVol)
+            EA_RemoveObject(this)
+            return true
+        else
+            .PlaySound(vEnemyHitSnd.snd, vEnemyHitSnd.vol*vSfxVol)
+            .Push(dx*2, dz*2)
+            return false
+        endif
+    endfunc
+    
+    e.PlayerHit = function()
+        dx = .X() - vPlayer.X()
+        dz = .Z() - vPlayer.Z()
+        d = dx*dx + dz*dz
+        if d > 0
+            k = 0.25/sqr(d)
+            .Push(dx*k, dz*k)
+        endif
+    endfunc
+    
+    return e
+endfunc
+
+function Robot2(x, y, z)
+    e = Enemy(vRob2Mesh, vRob2Texture, x, y, z)
+    e.name = "Tall robot"
+    e.SetHeight(1.0)
+    e.SetRadius(0.25)
+    e.SetHitTexture(vRob2HitTexture)
+    e.SetHitImages(vSmokePoofImage, vExploImage)
+    e.PlayAnim(vRob2MoveAnim, 4, true, unset)
+    e.SetSpeed(0.5)
+    e.SetLeap(0.2) ' Negative leap prevents him from dropping down from ledges.
+    e.SetHealth(150)
+    e.SetDamage(5)
+    e.spots = 0
+    e.shots = 0
+    e.state = 0
+    
+    e.HitWall = function(dx, dz)
+        if .aware then .FacePlayer()
+        else .SetDir(rad(deg(atan2(dx, dz)) - 45 + rnd()*90))
+    endfunc
+    
+    e.PlayerSpotted = function()
+        if not .aware
+            .PlaySound(vRobot2AwareSnd.snd, vRobot2AwareSnd.vol*vSfxVol)
+            .SetSpeed(1)
+            .anim.spd = 8
+            .SetTexture(vRob2AttackTexture)
+            .SetSpotDelay(0.75)
+            .spots = 0
+        endif
+        if .state = 0
+            .spots = .spots + 1
+            .FacePlayer()
+            if .spots%2 = 0
+                .shots = 0
+                .SetSpeed(0)
+                .PlayAnim(vRob2AttackAnim, 5, false, .Attack)
+                .state = 1
+                .spots = 0
+            endif
+        endif
+    endfunc
+    
+    e.PlayerLost = function()
+        if .state = 0
+            .SetSpeed(0.5)
+            .anim.spd = 4
+        endif
+        .SetTexture(vRob2Texture)
+        .SetSpotDelay(1)
+    endfunc
+    
+    e.Attack = function()
+        if .aware
+            .PlaySound(vEnemyShootSnd.snd, vEnemyShootSnd.vol*vSfxVol)
+            if .shots = 0
+                .FacePlayer()
+            endif
+            .shots = .shots + 1
+            y = .Y() - 0.7
+            if .PlayerInFov()            
+                dx = vPlayer.X() - .X()
+                dy = vPlayer.Y() - vPlayer.Height()*0.5 - y
+                dz = vPlayer.Z() - .Z()
+                k = 1/sqr(dx*dx + dy*dy + dz*dz)
+                dx = dx*k; dy = dy*k; dz = dz*k
+            else
+                dx = sin(.visA); dy = 0; dz = cos(.visA)    
+            endif
+            b = CreateBulletObject(ENEMY_BULLET_ID, vEnemyBullet1Image, 10,
+                    .X() + dx*0.1, y + dy*0.1, .Z() + dz*0.1, dx*5, dy*5, dz*5,
+                    true)
+            EA_AddObject(b)
+            if .shots = 3
+                .PlayAnim([1, 2, 3, 4], 8, true, unset)
+                .SetSpeed(1.0)
+                .state = 0
+            else
+                .PlayAnim(vRob2Attack2Anim, 2, false, .Attack)
+            endif
+        else
+            .PlayAnim(vRob2MoveAnim, 2, true, unset)
+            .SetSpeed(0.5)
+            .SetSpotDelay(1)
+            .state = 0
+        endif
+    endfunc
+   
+    e.BulletHit = function(dmg, dx, dz)
+        .health = max(.health - dmg, 0)
+        .spots = 1
+        .at = min(.at, 0.25)
+        if .health = 0
+            .PlaySound(vEnemyDieSnd.snd, vEnemyDieSnd.vol*vSfxVol)
+            EA_RemoveObject(this)
+            return true
+        else
+            .PlaySound(vEnemyHitSnd.snd, vEnemyHitSnd.vol*vSfxVol)
+            .Push(dx*0.5, dz*0.5)
+            return false
+        endif
+    endfunc
+    
+    e.PlayerHit = function()
+        dx = .X() - vPlayer.X()
+        dz = .Z() - vPlayer.Z()
+        d = dx*dx + dz*dz
+        if d > 0
+            k = 0.25/sqr(d)
+            .Push(dx*k, dz*k)
+        endif
+    endfunc
+    
+    return e
+endfunc
+
+' Tick
+' ----
+function Tick(x, y, z)
+    e = Enemy(vTickMesh, vTickTexture, x, y, z)
+    e.name = "Tick"
+    e.SetHeight(0.35)
+    e.SetRadius(0.3)
+    e.SetHitTexture(vTickHitTexture)
+    e.SetHitImages(vNeonPoofImage, vNeonExploImage)
+    e.PlayAnim(vTickMoveAnim, 6, true, unset)
+    e.SetSpeed(0.25)
+    e.SetLeap(0.2)
+    e.SetHealth(150)
+    e.SetDamage(10)
+    e.SetSpotDelay(1)
+    e.spots = 0
+    e.shots = 0
+    e.state = 0
+    
+    e.HitWall = function(dx, dz)
+        if .aware then .FacePlayer()
+        else .SetDir(rad(deg(atan2(dx, dz)) - 45 + rnd()*90))
+    endfunc
+    
+    e.PlayerSpotted = function()
+        if .state = 0 and not .aware
+            .PlaySound(vTickAwareSnd.snd, vTickAwareSnd.vol*vSfxVol)
+            .SetSpeed(1)
+            .anim.spd = 20
+            .spots = 0
+            .SetSpotDelay(0.5)
+        endif
+        .spots = .spots + 1
+        ' Stop rush after being shot.
+        if .state = 0 and .spd > 1
+            .FacePlayer()
+            .SetSpeed(0)
+            .state = 1
+            .shots = 0
+            .PlayAnim(vTickAttackAnim, 6, false, .Attack)
+            .SetTexture(vTickAttackTexture)
+            return
+        endif
+        if .state = 0
+            .FacePlayer()
+            if .spots%2 = 0
+                .state = 1
+                .shots = 1
+                .PlayAnim(vTickAttackAnim, 6, false, .Attack)
+                .SetTexture(vTickAttackTexture)
+            else
+                if rnd(2) = 0
+                    .SetDir(.movA - PI*0.5)
+                else
+                    .SetDir(.movA + PI*0.5)
+                endif
+            endif
+        endif
+    endfunc
+
+    e.PlayerLost = function()
+        if .state = 0
+            .SetSpeed(0.25)
+            .anim.spd = 6
+            .SetSpotDelay(1)
+            .SetTexture(vTickTexture)
+        endif
+    endfunc
+    
+    e.Attack = function()
+        .PlaySound(vEnemyShootSnd.snd, vEnemyShootSnd.vol*vSfxVol)
+        .shots = .shots + 1
+        .FacePlayer()
+        y = .Y() - 0.25
+        if .PlayerInFov()            
+            dx = vPlayer.X() - .X()
+            dy = vPlayer.Y() - vPlayer.Height()*0.5 - y
+            dz = vPlayer.Z() - .Z()
+            k = 1/sqr(dx*dx + dy*dy + dz*dz)
+            dx = dx*k; dy = dy*k; dz = dz*k
+        else
+            dx = sin(.visA); dy = 0; dz = cos(.visA)    
+        endif
+        b = CreateBulletObject(ENEMY_BULLET_ID, vEnemyBullet1Image, 10,
+                .X() + dx*0.2, y + dy*0.2, .Z() + dz*0.2, dx*5, dy*5, dz*5,
+                true)
+        EA_AddObject(b)
+        if .shots < 2
+            .PlayAnim(vTickAttackAnim, 8, false, .Attack)            
+        else
+            .state = 0
+            if .aware
+                .PlayAnim(vTickMoveAnim, 20, true, unset)
+                .SetSpeed(1)
+                .at = 0.25
+                .spots = 0
+            else
+                .PlayAnim(vTickMoveAnim, 6, true, unset)
+                .SetSpeed(0.25)
+            endif
+            .SetTexture(vTickTexture)
+        endif
+    endfunc
+    
+    e.BulletHit = function(dmg, dx, dz)
+        .health = max(.health - dmg, 0)
+        if .health = 0
+            .PlaySound(vNeonEnemyDieSnd.snd, vNeonEnemyDieSnd.vol*vSfxVol)
+            EA_RemoveObject(this)
+            return true
+        else
+            .PlaySound(vNeonEnemyHitSnd.snd, vNeonEnemyHitSnd.vol*vSfxVol)
+            .Push(dx*1, dz*1)
+            if .state = 0 and .spd < 2.5
+                .at = 0.5
+                .SetSpeed(2.5)
+                .anim.spd = 25
+                if rnd(2) = 0
+                    .SetDir(atan2(dx, dz) - PI*0.5)
+                else
+                    .SetDir(atan2(dx, dz) + PI*0.5)
+                endif
+            endif
+            return false
+        endif
+    endfunc
+    
+    return e
+endfunc
+
+' Spider
+' ------
+function Spider(x, y, z)
+    e = Enemy(vSpiderMesh, vSpiderTexture, x, y, z)
+    e.name = "Spider"
+    e.SetHeight(0.5)
+    e.SetRadius(0.36)
+    e.SetHitTexture(vSpiderHitTexture)
+    e.SetHitImages(vNeonPoofImage, vNeonExploImage)
+    e.PlayAnim(vSpiderMoveAnim, 3, true, unset)
+    e.SetSpeed(0.25)
+    e.SetLeap(0.2) ' Negative leap prevents him from dropping down from ledges.
+    e.SetHealth(150)
+    e.SetDamage(10)
+    e.SetSpotDelay(0.5)
+    e.jumpsInRow = 0
+    e.spots = 0
+    e.state = 0
+    
+    e.HitWall = function(dx, dz)
+        if .aware then .FacePlayer()
+        else .SetDir(rad(deg(atan2(dx, dz)) - 45 + rnd()*90))
+    endfunc
+    
+    e.PlayerSpotted = function()
+        if not .aware
+            .PlaySound(vSpiderAwareSnd.snd, vSpiderAwareSnd.vol*vSfxVol)
+            .SetSpeed(1.1)
+            .anim.spd = 12
+            .spots = 0
+            .jumpsInRow = 0
+            .SetSpotDelay(0.5)
+        endif
+        ' Stop rush after shooting.
+        if .state = 0 and .spd > 1.1
+            .SetSpeed(1.1)
+            .anim.spd = 12
+        endif
+        if .state = 0
+            .spots = .spots + 1
+            .FacePlayer()
+            if .spots%2 = 0 and .og
+                if vPlayer.Sector() = .Sector() and .SqrDistanceTo(vPlayer) < 4 and .jumpsInRow < 2 and 
+                        |vPlayer.Y() - .Y()| < 0.25
+                    .jumpsInRow = .jumpsInRow + 1
+                    .dy = -5
+                    .og = false
+                    .PlayAnim(vSpiderJumpAnim, 3, false, unset)
+                    .SetSpeed(2.5)
+                    .state = 1
+                else
+                    .jumpsInRow = 0
+                    .PlayAnim(vSpiderAttackAnim, 6, false, .Attack)
+                    .SetTexture(vSpiderAttackTexture)
+                    .SetSpeed(0)
+                    .state = 2
+                endif
+            endif
+        endif
+    endfunc
+    
+    e.Landed = function()
+        if .state = 1
+            .state = 0
+            if .aware
+                '.PlayAnim(vSpiderMoveAnim, 12, true, unset)
+                '.SetSpeed(1.1)
+                if .jumpsInRow >= 2
+                    .at = min(.at, 0.25)
+                endif
+                if rnd(2) = 0
+                    .SetDir(.movA - PI*0.75)
+                else
+                    .SetDir(.movA + PI*0.75)
+                endif
+                .PlayAnim(vSpiderMoveAnim, 20, true, unset)
+                .SetSpeed(2.5)
+                .at = 0.5
+            else
+                .PlayAnim(vSpiderMoveAnim, 3, true, unset)
+                .SetSpeed(0.25)
+            endif
+        endif
+    endfunc
+
+    e.PlayerLost = function()
+        if .state = 0
+            .SetSpeed(0.25)
+            .anim.spd = 3
+            .SetSpotDelay(0.5)
+            .SetTexture(vSpiderTexture)
+        endif
+    endfunc
+    
+    e.Attack = function()
+        if .aware
+            .PlaySound(vEnemyShootSnd.snd, vEnemyShootSnd.vol*vSfxVol)
+            .FacePlayer()
+            y = .Y() - 0.25
+            if .PlayerInFov()            
+                dx = vPlayer.X() - .X()
+                dy = vPlayer.Y() - vPlayer.Height()*0.5 - y
+                dz = vPlayer.Z() - .Z()
+                k = 1/sqr(dx*dx + dy*dy + dz*dz)
+                dx = dx*k; dy = dy*k; dz = dz*k
+            else
+                dx = sin(.visA); dy = 0; dz = cos(.visA)    
+            endif
+            b = CreateBulletObject(ENEMY_BULLET_ID, vEnemyBullet1Image, 10,
+                    .X() + dx*0.2, y + dy*0.2, .Z() + dz*0.2, dx*5, dy*5, dz*5,
+                    true)
+            EA_AddObject(b)
+            if .health >= 75
+                if rnd(2) = 0
+                    .SetDir(.movA - PI*0.25)
+                else
+                    .SetDir(.movA + PI*0.25)
+                endif
+            else
+                if rnd(2) = 0
+                    .SetDir(.movA - PI*0.75)
+                else
+                    .SetDir(.movA + PI*0.75)
+                endif
+            endif
+            .PlayAnim(vSpiderMoveAnim, 20, true, unset)
+            .SetSpeed(2.5)
+            .at = 0.5
+        else
+            .PlayAnim(vSpiderMoveAnim, 3, true, unset)
+            .SetSpotDelay(0.5)
+            .SetSpeed(0.25)
+        endif
+        .SetTexture(vSpiderTexture)
+        .state = 0
+    endfunc
+   
+    e.BulletHit = function(dmg, dx, dz)
+        .health = max(.health - dmg, 0)
+        if .health = 0
+            .PlaySound(vNeonEnemyDieSnd.snd, vNeonEnemyDieSnd.vol*vSfxVol)
+            EA_RemoveObject(this)
+            return true
+        else
+            .PlaySound(vNeonEnemyHitSnd.snd, vNeonEnemyHitSnd.vol*vSfxVol)
+            if not .og then .Push(dx*1, dz*1)
+            .at = min(.at, 0.5)
+            .spots = 1
+            return false
+        endif
+    endfunc
+    
+    e.PlayerHit = function()
+        if .state = 1
+            .jumpsInRow = 2
+        endif
+        dx = .X() - vPlayer.X()
+        dz = .Z() - vPlayer.Z()
+        d = dx*dx + dz*dz
+        if d > 0
+            k = 0.25/sqr(d)
+            .Push(dx*k, dz*k)
+        endif
+    endfunc
+    
+    return e
+endfunc
+
+
+' Enemy
+' -----
+' Base enemy.
+function Enemy(mesh, texture, x, y, z)
+    e = EA_Object()
+    e.id = ENEMY_ID
+    e.name = ""
+    ' Not using the directional stuff of the ea object.
+    ' Move angle.
+    e.movA = rnd()*PI*2
+    e.dx = sin(e.movA)
+    e.dz = cos(e.movA)
+    e.dy = 0.1
+    e.spd = 0
+    e.psh = 0
+    e.pdx = 0
+    e.pdz = 0
+    e.leap = 0
+    e.og = false
+    e.visA = e.movA
+    e.ts = 2*PI ' turn speed
+    
+    e.mesh = mesh
+    e.tex = texture
+    e.htex = unset
+    e.anim = Anim()
+    
+    e.aware = false
+    e.adelay = 1
+    e.at = rnd()*e.adelay
+    
+    e.health = 100
+    e.maxHealth = 100
+    e.htim = 0
+    e.dmg = 0
+    
+    e.spawn = 0
+    
+    e.SetPos(x, y, z)
+
+    ' SetHealth
+    ' ---------
+    e.SetHealth = function(health)
+        .health = health
+        .maxHealth = health
+    endfunc
+            
+    ' SetDir
+    ' ------
+    e.SetDir = function(a)
+        .movA = a%(PI*2)
+        .dx = sin(a)*.spd
+        .dz = cos(a)*.spd
+    endfunc
+    
+    ' SetTexture
+    ' ----------
+    e.SetTexture = function(texture)
+        .tex = texture
+    endfunc
+    
+    e.SetHitTexture = function(texture)
+        .htex = texture
+    endfunc
+    
+    e.SetHitImages = function(hitImg, exploImg)
+        .pimg = hitImg
+        .eimg = exploImg
+    endfunc
+    
+    ' SetLeap
+    ' -------
+    e.SetLeap = function(leap)
+        .leap = leap
+    endfunc
+    
+    ' PlayAnim
+    ' --------
+    ' Play animation and set completion callback.
+    e.PlayAnim = function(frames, spd, looped, callback)
+        .anim.Play(frames, spd, looped)
+        .acb = callback
+    endfunc
+    
+    ' SetSpeed
+    ' --------
+    e.SetSpeed = function(spd)
+        .spd = spd
+        .dx = sin(.movA)*.spd
+        .dz = cos(.movA)*.spd
+    endfunc
+    
+    ' SetTurnSpeed
+    ' ------------
+    e.SetTurnSpeed = function(spd)
+        .ts = spd
+    endfunc
+    
+    ' SetSpotDelay
+    ' ------------
+    e.SetSpotDelay = function(delay)
+        .adelay = delay
+    endfunc
+
+    ' SetDamage
+    ' ---------    
+    e.SetDamage = function(damage)
+        .dmg = damage
+    endfunc
+
+    ' FacePlayer
+    ' ----------
+    e.FacePlayer = function()
+        .SetDir(atan2(vPlayer.X() - .X(), vPlayer.Z() - .Z()))     
+    endfunc
+
+    ' Push
+    ' ----
+    e.Push = function(dx, dz)
+        .pdx = .psh*.pdx + dx
+        .pdz = .psh*.pdz + dz
+        .psh = 1
+    endfunc
+    
+    ' Shielded
+    ' --------
+    e.Shielded = function()
+        return .htim > 0
+    endfunc
+    
+    ' Spawn
+    ' -----
+    e.Spawn = function()
+        .PlaySound(vSpawnSound.snd, vSpawnSound.vol*vSfxVol)
+        .spawn = 1
+    endfunc
+            
+    ' Update
+    ' ------
+    e.Update = function(dt)
+        ' Spawning?
+        if .spawn > 0
+            .spawn = max(.spawn - dt*0.5, 0)
+            return
+        endif
+        ' Update animation and execute callback if done.
+        .anim.Update(dt)
+        if .anim.s = 0 and .acb
+            .tmp = .acb
+            .acb = unset
+            .tmp()
+            .tmp = unset
+        endif
+        ' Rotate visual angle so that it matches the move angle.
+        if .visA < .movA
+            if |.visA - .movA| < PI
+                .visA = .visA + .ts*dt
+                if .visA > .movA
+                    .visA = .movA
+                endif
+            else
+                .visA = .visA - .ts*dt
+                if .visA < 0
+                    .visA = max(.visA%(2*PI), .movA)
+                endif
+            endif
+        elseif .visA > .movA
+            if |.visA - .movA| < PI
+                .visA = .visA - .ts*dt
+                if .visA < .movA
+                    .visA = .movA
+                endif
+            else
+                .visA = .visA + .ts*dt
+                if .visA >= 2*PI
+                    .visA = min(.visA%(2*PI), .movA)
+                endif
+            endif
+        endif
+        ' Awareness.
+        .at = max(.at - dt, 0)
+        if .at = 0
+            if not .aware
+                if .PlayerInFov()
+                    .PlayerSpotted()
+                    .aware = true
+                endif
+            else
+                if .Visible(vPlayer)
+                    .PlayerSpotted()
+                else
+                    .aware = false
+                    .PlayerLost()
+                endif
+            endif
+            .at = .adelay
+        endif
+        ' Move.
+        if .spd > 0 or .psh > 0 or not .og
+            if .og
+                res = .Move((.dx + .psh*.pdx)*dt, 0.1*dt, (.dz + .psh*.pdz)*dt, .leap)
+            else
+                res = .Move((.dx + .psh*.pdx)*dt,
+                        .dy*dt + dt*(EA_G + EA_G*dt)/2,
+                        (.dz + .psh*.pdz)*dt, .leap)
+                .dy = .dy + EA_G*dt
+                if res.g then .Landed()
+            endif
+            .og = res.g
+            if res.c and .dy < 0 then .dy = 0
+            if res.w then .HitWall(res.dx, res.dz)
+        endif
+        ' Player bump.
+        if .CollidesWith(vPlayer)
+            vPlayer.EnemyHit(.dmg)
+            .PlayerHit()
+            if not .aware
+                .PlayerSpotted()
+                .aware = true
+            endif
+        endif
+        .psh = max(.psh - 1.5*dt, 0)
+        if .htim > 0
+            .htim = max(.htim - dt, 0)
+        endif
+    endfunc
+    
+    e.HeardPlayer = function()
+        if .spawn > 0  return
+        if not .aware
+            .FacePlayer()
+        endif
+    endfunc
+    
+    e.BulletHit_ = function(dmg, x, y, z, dx, dy, dz)
+        if .spawn > 0  return
+        if .htim = 0
+            .htim = 0.25
+            if .health - dmg > 0 then .PlayerSpotted()
+            ' Dead?
+            if .BulletHit(dmg, dx, dz)
+                AddAnimation(.eimg, .X(), .Y() - .Height()*0.5, .Z(), 0, false, 15)
+            else
+                AddAnimation(.pimg, x, y, z, 0.1, false, 15)
+            endif
+            .aware = true
+        endif
+    endfunc
+    
+    ' PlayerInFov
+    ' -----------
+    e.PlayerInFov = function()
+        dx = vPlayer.X() - .X()
+        dz = vPlayer.Z() - .Z()
+        d = dx*dx + dz*dz
+        if d > 0 and d < max(vZMaxSqr, 16)
+            k = 1/sqr(d)
+            return dx*k*sin(.visA) + dz*k*cos(.visA) > 0.67 and .Visible(vPlayer)
+        else
+            return false
+        endif
+    endfunc
+    
+    ' Render
+    ' ------
+    e.Render = function()
+        S3D_Push()
+        S3D_Translate(.X(), .Y(), .Z())
+        S3D_RotateY(.visA)
+        if .spawn > 0
+            p = .spawn*.spawn
+            S3D_Texture(unset)
+            S3D_Color(255, 255, 255)
+            s = 0.1 + (1 - p)*0.9
+            S3D_Scale(s, s, s)
+            S3D_RotateY(p*3*PI)
+            S3D_Mesh(.mesh, 0)
+        else
+            if .htim > 0 and .htex then S3D_Texture(.htex)
+            else  S3D_Texture(.tex)
+            S3D_BlendMesh(.mesh, .anim.f0, .anim.f1, .anim.b)
+        endif
+        S3D_Pop()
+    endfunc
+    
+    ' HitWall
+    ' -------
+    e.HitWall = function(dx, dz); endfunc
+    
+    ' PlayerSpotted
+    ' -------------
+    e.PlayerSpotted = function(); endfunc
+    
+    ' PlayerLost
+    ' ----------
+    e.PlayerLost = function(); endfunc
+    
+    ' BulletHit
+    ' ---------
+    e.BulletHit = function(dmg, dx, dz); endfunc
+    
+    ' PlayerHit
+    ' ---------
+    e.PlayerHit = function(); endfunc
+
+    ' Landed
+    ' ------
+    e.Landed = function(); endfunc
+    
+    return e
+endfunc
+
+' AddAnimation
+' ------------
+function AddAnimation(img, x, y, z, offs, onlyYaw, speed)
+    a = EA_StaticObject()
+    a.SetSprite(img, 0, onlyYaw)
+    a.SetCel(0)
+    a.spd = speed
+    a.c = 0
+    a.cc = cels(img)
+    h = height(img)/64
+    a.SetRadius(0.5*width(img)/64)
+    a.SetHeight(h)
+    dx = vPlayer.X() - x
+    dy = vPlayer.Y() - y
+    dz = vPlayer.Z() - z
+    if onlyYaw
+        d = dx*dx + dz*dz
+        if d > 0
+            d = offs/sqr(d)
+            x = x + dx*d
+            z = z + dz*d         
+        endif
+    else
+        d = dx*dx + dy*dy + dz*dz
+        if d > 0
+            d = offs/sqr(d)
+            x = x + dx*d
+            y = y + dy*d
+            z = z + dz*d
+        endif
+    endif
+    a.SetPos(x, y + 0.5*h, z)
+    a.Update = function(dt)
+        .c = .c + dt*.spd
+        if .c >= .cc
+            EA_RemoveObject(this)
+        else
+            .SetCel(int(.c))
+        endif    
+    endfunc
+    
+    EA_AddStaticObject(a)
+endfunc
+
+' Anim
+' ----
+function Anim()
+    a = []
+    a.f = unset     ' frames
+    a.f0 = 0        ' frame 0
+    a.f1 = 0        ' frame 1
+    a.p = 1         ' param
+    a.b = 1         ' blend
+    a.spd = 0       ' speed
+    a.ospd = 0      ' old speed
+    a.l = false     ' looped
+    a.s = 0         ' state
+    
+    ' Play
+    ' ----
+    a.Play = function(frames, spd, looped)
+        .f = frames
+        '.mf = sizeof(.f) - 1
+        if .spd then .ospd = .spd
+        else  .ospd = spd
+        .spd = spd
+        .l = looped
+        if .b < 1
+            .s = 2 ' finish blend
+        else
+            .f0 = .f1
+            .f1 = .f[0]
+            .b = 0
+            .s = 3 ' blend old frame to first frame
+        endif       
+    endfunc
+    
+    ' Update
+    ' ------
+    a.Update = function(dt)
+        if .s = 2 ' finish blend
+            .b = .b + 2*.ospd*dt
+            if .b >= 1
+                .f0 = .f1
+                .f1 = .f[0]
+                .b = 0
+                .s = 3   
+            endif
+        elseif .s = 3 ' blend old frame to first frame
+            .b = .b + 2*.spd*dt
+            if .b >= 1
+                .f0 = .f[0]
+                .f1 = .f[0]
+                .p = 0
+                .b = 0
+                .s = 1
+            endif   
+        elseif .s = 1 ' animate
+            if .l   ' looped.
+                .p = (.p + .spd*dt)%sizeof(.f)
+                fp = floor(.p)
+                .f0 = .f[fp%sizeof(.f)]
+                .f1 = .f[(fp + 1)%sizeof(.f)]
+                .b = .p%1
+            else
+                .p = .p + .spd*dt
+                fp = floor(.p)
+                if fp >= sizeof(.f) - 1 ' done.
+                    .s = 0
+                    .b = 1
+                    .f0 = .f[sizeof(.f) - 1]
+                    .f1 = .f[sizeof(.f) - 1]
+                else
+                    .b = .p%1
+                    ' crash on f1 line when low fps
+                    .f0 = .f[fp]
+                    .f1 = .f[fp + 1]
+                endif
+            endif
+        endif
+    endfunc
+    
+    return a
+endfunc
+
+
+' CreateBackdrop
+' --------------
+function CreateBackdrop()
+    ' Should be blurred.
+    set image vBackdropImage
+    set color 255, 255, 255
+    draw image primary, 0, 0
+    set image primary
+endfunc
+
+' DrawPolyAt
+' ----------
+function DrawPolyAt(p, x, y, filled)
+    c = sizeof(p)/2
+    for i = 0 to c - 1
+        vDrawPoly[i*2] = p[i*2] + x
+        vDrawPoly[i*2 + 1] = p[i*2 + 1] + y
+    next
+    draw poly vDrawPoly, filled, c
+endfunc
+
+' CreateWindow
+' ------------
+function CreateWindow()
+    aspect = screenw()/screenh()
+    if aspect >= 2 or not vFullscreen
+        set window "Neon Breath", int(RES*min(aspect, 2)/2)*2, RES, false, int((screenh() - 160)/RES)
+    else
+        set window "Neon Breath", int(RES*min(aspect, 2)/2)*2, RES, true
+    endif
+endfunc
+
+' TitleScreen
+' -----------
+function TitleScreen()
+    BlackScreen(unset)
+    S3D_SetView(primary, rad(110), 0.1, 15)
+    S3D_SetDepthBuffer(S3D_Z_BUFFER_WRITE)
+    vTitleParam = 0
+    hw = width(primary)/2
+    hh = height(primary)/2
+    playButton = WDG_AddButton(vButtonsImage, 0, hw - 73 - width(vButtonsImage)/2, hh)
+    optionsButton = WDG_AddButton(vButtonsImage, 3, hw + 73 - width(vButtonsImage)/2, hh)
+    creditsButton = WDG_AddButton(vButtonsImage, 6, hw - 73 - width(vButtonsImage)/2, hh + 48)
+    quitButton = WDG_AddButton(vButtonsImage, 9, hw + 73 - width(vButtonsImage)/2, hh + 48)
+    do
+        res = WDG_Update()
+        if res = optionsButton
+            WDG_PushWidgets()
+            OptionsScreen(UpdateAndDrawTitleBG)
+            WDG_PopWidgets()
+        elseif res = creditsButton
+            WDG_PushWidgets()
+            CreditsScreen(UpdateAndDrawTitleBG)
+            WDG_PopWidgets()
+        elseif res = quitButton or keydown(KEY_ESCAPE, true)
+            res = unset
+            break
+        endif
+        UpdateAndDrawTitleBG()
+        x = (width(primary) - width(vLogoImage))/2
+        y = height(primary)/4 - height(vLogoImage)/2
+        set color 128 + 128*sin(rad(vTitleParam)*4), 0, 255, 128 + 48*sin(rad(vTitleParam)*2)
+        set additive true
+        draw image vLogoGlowImage, x, y
+        set additive false
+        set color 255, 255, 255
+        draw image vLogoImage, x, y
+        WDG_Draw()
+        redraw
+        fwait 60
+    until res = playButton
+    WDG_Clear()
+    return res <> unset
+
+    ' UpdateAndDrawTitleBG
+    ' --------------------    
+    function UpdateAndDrawTitleBG()
+        set color 0, 0, 0
+        cls
+        vTitleParam = (vTitleParam + 0.2)%(360*4)
+        S3D_Clear()
+        S3D_Scale(10, 10, 10)
+        S3D_RotateY(rad(vTitleParam/4))
+        S3D_RotateZ(rad(vTitleParam))
+        S3D_RotateX(rad(vTitleParam/2))
+        S3D_Mesh(vTitleSphereMesh, 0)
+        S3D_Render()
+    endfunc
+endfunc
+
+' OptionsScreen
+' -------------
+function OptionsScreen(bgFunc)
+    hw = width(primary)/2
+    hh = height(primary)/2
+    bhw = width(vButtonsImage)/2
+    bhh = height(vButtonsImage)/2
+    sw = 160
+    senseSlider = WDG_AddSlider(vSliderImage, 0, hw - sw/2, hh - 26 - height(vSliderImage)/2, sw - width(vSliderImage), vMouseSens)
+    fsCheckbox = WDG_AddCheckbox(vCheckboxImage, 0, hw - 48, hh - height(vCheckboxImage)/2, vFullscreen)
+    fpsCheckbox = WDG_AddCheckbox(vCheckboxImage, 0, hw - 48, hh + 26 - height(vCheckboxImage)/2, vFpsLock <> 0)
+    backButton = WDG_AddButton(vButtonsImage, 12, hw - bhw, hh + 80 - bhh)
+    do
+        res = WDG_Update()
+        if res = senseSlider
+            vMouseSens = res.Value()
+        elseif res = fsCheckbox
+            vFullscreen = res.Checked()
+            CreateWindow()
+        elseif res = fpsCheckbox
+            vFpsLock = res.Checked()
+            pln "fps lock: " + vFpsLock
+        endif
+        bgFunc()
+        set color 255, 255, 255
+        set font vLargeFont
+        set caret hw, hh - 80 - fheight()/2
+        center "Options"
+        set font vFont
+        set caret hw, senseSlider.y - fheight()
+        center "Mouse sensitivity"
+        set caret fsCheckbox.x + width(vCheckboxImage) + 3, fsCheckbox.y + 6
+        wln "Fullscreen"
+        set caret fpsCheckbox.x + width(vCheckboxImage) + 3, fpsCheckbox.y + 6
+        wln "Lock 60 fps"
+        set color 255, 255, 255, 128
+        draw rect hw - sw/2 + 6, senseSlider.y + height(vSliderImage)/2 - 1, sw - 12, 2, true
+        set color 255, 255, 255
+        WDG_Draw()
+        redraw
+        fwait 60
+    until keydown(KEY_ESCAPE, true) or res = backButton
+    WDG_Clear()
+endfunc
+
+' CreditsScreen
+' -------------
+function CreditsScreen(bgFunc)
+    hw = width(primary)/2
+    hh = height(primary)/2
+    bhw = width(vButtonsImage)/2
+    bhh = height(vButtonsImage)/2
+    backButton = WDG_AddButton(vButtonsImage, 12, hw - bhw, hh + 80 - bhh)
+    do
+        res = WDG_Update()
+        bgFunc()
+        set color 255, 255, 255
+        set font vLargeFont
+        set caret hw, hh - 80 - fheight()/2
+        center "Credits"
+        set font vFont
+        set caret hw, hh - fheight()*2.25
+        center "A contribution to Jam for All BASIC Dialects (#6)"
+        center "Code, graphics and sound effects by Marcus"
+        center "The music was generated using Music AI"
+        WDG_Draw()
+        redraw
+        fwait 60
+    until keydown(KEY_ESCAPE, true) or res = backButton
+    WDG_Clear()
+endfunc
+
+' PauseScreen
+' -----------
+function PauseScreen()
+    CreateBackdrop()
+    hw = width(primary)/2
+    hh = height(primary)/2
+    bhw = width(vButtonsImage)/2
+    bhh = height(vButtonsImage)/2
+    optionsButton = WDG_AddButton(vButtonsImage, 3, hw - 64 - bhw, hh - 23 + 40)
+    quitButton = WDG_AddButton(vButtonsImage, 9, hw + 64 - bhw, hh - 23 + 40)
+    resumeButton = WDG_AddButton(vButtonsImage, 15, hw - bhw, hh + 23 + 40)
+
+    do
+        res = WDG_Update()
+        if res = optionsButton
+            WDG_PushWidgets()
+            OptionsScreen(function()
+                    set color 128, 128, 128
+                    draw image vBackdropImage, 0, 0
+                endfunc)
+            WDG_PopWidgets()
+            vPlayer.SetMouseSens(MouseSensitivity())
+        elseif res = quitButton or res = resumeButton or keydown(KEY_ESCAPE, true)
+            break
+        endif
+
+        set color 128, 128, 128
+        draw image vBackdropImage, 0, 0
+        set color 255, 255, 255
+        set font vLargeFont
+        set caret hw, hh - 108
+        center "Controls"
+        set font vFont
+        set caret hw, hh - 76
+        center "Look around with the mouse and move with"
+        center "the WASD keys. Jump with the SPACE BAR and"
+        center "shoot with the left mouse button. Press the E"
+        center "key to interact with objects, and use the TAB"
+        center "key to view a map"
+        WDG_Draw()
+        redraw
+        fwait 60
+    loop
+    WDG_Clear()
+    ' Yeah ...
+    gc
+    return res <> quitButton
+endfunc
+
+' GameOverScreen
+' --------------
+function GameOverScreen()
+    hw = width(primary)/2
+    hh = height(primary)/2
+    bhw = width(vButtonsImage)/2
+    bhh = height(vButtonsImage)/2
+    playButton = WDG_AddButton(vButtonsImage, 0, hw - 64 - bhw, hh + 40 - bhh)
+    quitButton = WDG_AddButton(vButtonsImage, 9, hw + 64 - bhw, hh + 40 - bhh)
+    do
+        res = WDG_Update()
+        set color 0, 0, 0
+        cls
+        set color 255, 255, 255
+        set font vLargeFont
+        set caret hw, hh - 40 - fheight()/2
+        center "You failed!"
+        set font vFont
+        set caret hw, hh - fheight()
+        center "Would you like to retry the level?" 
+        WDG_Draw()
+        redraw
+        fwait 60
+    until res
+    WDG_Clear()
+    return res = playButton
+endfunc
+
+' GameCompleteScreen
+' ------------------
+function GameCompleteScreen()
+    BlackScreen(unset)
+    set color 0, 0, 0
+    cls
+    set font vTerminalFont
+    set color 0, 256, 64
+    set caret width(primary)/2, height(primary)/2 - fheight()
+    center "You are now ..."
+    redraw
+    wait 3000
+    center "A girl scout."
+    redraw
+    wait 5000
+    BlackScreen(unset)
+endfunc
+
+' BlackScreen
+' -----------
+function BlackScreen(msg)
+    set color 0, 0, 0
+    cls
+    redraw
+    if typeof(msg)
+        wait 250
+        set font vTerminalFont
+        set caret width(primary)/2, (height(primary) - fheight())/2
+        set color 0, 256, 64
+        center msg
+        redraw
+        wait 250
+    else
+        wait 500
+    endif
+endfunc
+
+' MouseSensitivity
+' ----------------
+function MouseSensitivity()
+    return MOUSE_SENS_MIN + (MOUSE_SENS_MAX - MOUSE_SENS_MIN)*vMouseSens
+endfunc

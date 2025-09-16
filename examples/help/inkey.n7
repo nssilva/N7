@@ -1,0 +1,40 @@
+' inkey
+' -----
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window.
+set window "inkey", 640, 480
+
+' Number of text lines written.
+lines = 0
+
+' Loop.
+do
+    ' 'inkey()' returns the ASCII code of any character that was processed from keyboard during the
+    ' last wait call. The input is queued, and the function returns 0 when the queue is empty. You
+    ' can use 'inkey' to implement custom text input. For game controls, use 'keydown'.
+    c = inkey()
+    while c
+        ' At the bottom of the screen?
+        if lines*fheight() >= height(primary)
+            set caret 0, 0
+            lines = 0
+            set color 0, 0, 0
+            cls
+            set color 255, 255, 255
+        endif
+    
+        ' Some characters, such as backspace and return, can't be printed. Here we just check if the
+        ' character would have a width if printed with the current font.
+        if fwidth(chr(c))  wln "Got key " + c + " (" + chr(34) + chr(c) + chr(34) + ")"
+        else  wln "Got key " + c
+        
+        lines = lines + 1
+        
+        c = inkey()
+    wend
+    
+    fwait 30
+loop

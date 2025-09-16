@@ -1,0 +1,37 @@
+' polyline_closed_example.n7
+' --------------------------
+
+include "polyline.n7"
+
+set window "test", 640, 480
+set redraw off
+
+points = [[50, 200], [200, 100], [500, 200], [320, 400], [64, 300]]
+' Set last parameter to true for a closed path.
+path = PolyLine(points, true)
+
+d = 0
+while not keydown(KEY_ESCAPE, true)
+    d = d + 1
+    
+    set color 0, 0, 0
+    cls
+    
+    ' Draw control points and lines.
+    set color 128, 128, 128
+    for i = 0 to sizeof(points) - 1
+        j = (i + 1)%sizeof(points)
+        draw ellipse points[i][0], points[i][1], 4, 4, true
+        draw line points[i][0], points[i][1], points[j][0], points[j][1]
+    next
+            
+    set color 255, 255, 255
+    ' When the curve is looped, d is wrapped and a valid pos is always returned.
+    pos = path.GetPoint(d, true)
+    ' You can use GetDirection to get the normalized derivative of the curve at distance d.
+    dir = path.GetDirection(d, true)
+    draw line pos[0] - dir[0]*16, pos[1] - dir[1]*16, pos[0], pos[1]
+    
+    redraw
+    fwait 60
+wend

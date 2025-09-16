@@ -1,0 +1,68 @@
+' qsort.n7
+' --------
+
+' qsort
+' -----
+' Sort in ascending order if f >= 0, descending if f < 0 or using f if it's a
+' function.
+function qsort(a, f)
+	' reclh
+	' -----
+	' Sort ascending.
+	function reclh(a, low, high)
+		i = low; j = high
+		pivot = a[(low + high)/2]
+		do
+			while (a[i] < pivot) i = i + 1
+			while (a[j] > pivot) j = j - 1
+			if i <= j
+				tmp = a[i]; a[i] = a[j]; a[j] = tmp
+				i = i + 1; j = j - 1
+			endif
+		until i > j
+		if low < j reclh(a, low, j)
+		if i < high reclh(a, i, high)
+	endfunc
+
+	' rechl
+	' -----
+	' Sort descending.
+	function rechl(a, low, high)
+		i = low; j = high
+		pivot = a[(low + high)/2]
+		do
+			while (a[i] > pivot) i = i + 1
+			while (a[j] < pivot) j = j - 1
+			if i <= j
+				tmp = a[i]; a[i] = a[j]; a[j] = tmp
+				i = i + 1; j = j - 1
+			endif
+		until i > j
+		if low < j rechl(a, low, j)
+		if i < high rechl(a, i, high)
+	endfunc
+
+	' recf
+	' ----
+	' Sort using function f.
+	function recf(a, low, high, f)	
+		i = low; j = high
+		pivot = a[(low + high)/2]
+		do
+			while f(a[i], pivot) < 0 i = i + 1
+			while f(a[j], pivot) > 0 j = j - 1
+			if i <= j
+				tmp = a[i]; a[i] = a[j]; a[j] = tmp
+				i = i + 1; j = j - 1
+			endif
+		until i > j
+		if low < j recf(a, low, j, f)
+		if i < high recf(a, i, high, f)
+	endfunc
+
+	if typeof(a) = TYPE_TABLE and sizeof(a) > 1
+		if typeof(f) = TYPE_FUNCTION recf(a, 0, sizeof(a) - 1, f)
+		elseif f >= 0 reclh(a, 0, sizeof(a) - 1)
+		else rechl(a, 0, sizeof(a) - 1)
+	endif
+endfunc

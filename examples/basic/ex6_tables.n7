@@ -1,0 +1,38 @@
+' Tables are probably the biggest thing with n7 compared to n6. There were
+' "objects" in n6, but they were extremely limited.
+
+' You could create "sprite" object like this: 
+s = []
+s.img = 13
+s.pos = []
+s.pos.x = 11
+s.pos.y = 27
+pln "A sprite: img = " + str(s.img) + ", pos = (" + str(s.pos.x) + ", " + str(s.pos.y) + ")"
+
+' Or you could do it with one line:
+s = [img: 7, pos: [x: 23, y: 9]]
+pln "Another sprite: img = " + str(s.img) + ", pos = (" + str(s.pos.x) + ", " + str(s.pos.y) + ")"
+
+' Unlike numbers and strings, that are value types, tables are of reference type. 
+foo = s
+' foo now references the same table as s.
+if foo = s then pln "foo and s are the same table"
+' However, you can make deep copies of tables with 'copy'.
+foo = copy(s)
+if foo = s then pln "They're still the same, you idiot!"
+else pln "Now they're not the same"
+pln
+
+' You can create an entire array of sprites if you want. Remember 'fill'? The
+' neat thing with fill is that it always makes DEEP copies of the first
+' parameter.
+many = fill([img: 0, pos: [x: 0, y: 0]], 5)
+pln "A list of sprites:"
+for i = 0 to 4
+    pln "  img = " + str(many[i].img) + ", pos = (" + str(many[i].pos.x) + ", " + str(many[i].pos.y) + ")"
+next
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+

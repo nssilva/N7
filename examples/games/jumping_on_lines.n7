@@ -1,0 +1,79 @@
+' Jumping on lines
+' ----------------
+
+set window "Jumping on lines", 320, 240, false, 3
+set redraw off
+
+' Put a couple of horizontal lines (x, y and width) in an array.
+lines = [
+    [x: 0, y: 224, w: 320],
+    [x: 0, y: 160, w: 96],
+    [x: 320 - 96, y: 160, w: 96],
+    [x: 96, y: 96, w: 128]]
+
+' A player.
+player = [x: 160 - 8, y: 0, w: 16, h: 24, dx: 0, dy:0, onGround: false]
+
+do
+    ' Decrease x-speed on KEY_LEFT
+    if keydown(KEY_LEFT)  player.dx = max(player.dx - 0.2, -1)
+    ' Increase x-speed on KEY_RIGHT
+    else if keydown(KEY_RIGHT)  player.dx = min(player.dx + 0.2, 1)
+    ' Slow down.
+    else
+        if player.dx > 0  player.dx = max(player.dx - 0.05, 0)
+        elseif player.dx < 0  player.dx = min(player.dx + 0.05, 0)
+    endif
+    ' Jump on KEY_UP if onGround flag is set.
+    if keydown(KEY_UP, true) and player.onGround  player.dy = -3.8
+    ' Apply x movement, prevent leaving the screen.
+    player.x = min(max(player.x + player.dx, 0), 320 - player.w)
+    ' Gravity.
+    player.dy = min(player.dy + 0.1, 4)
+    if LinesCollision(lines, player, player.dy)
+        player.dy = 0
+        player.onGround = true
+    else
+        player.onGround = false
+    endif
+    ' Apply y movement.
+    player.y = player.y + player.dy
+
+    ' Clear screen.
+    set color 0, 0, 0
+    cls
+   
+    ' Draw lines.
+    set color 255, 255, 255
+    for i = 0 to sizeof(lines) - 1  draw rect lines[i].x, lines[i].y, lines[i].w, 1, true
+
+    ' Draw player.
+    draw rect player.x, player.y, player.w, player.h
+
+    ' Write instructions.
+    set caret 160, 8
+    center "Move and jump with arrow keys"
+    center "Press escape to quit"
+
+    redraw
+
+    fwait 60
+until keydown(KEY_ESCAPE)
+
+' LinesCollision
+' --------------
+' Check if dy applied to sprite.y would make it land on a line.
+function LinesCollision(lines, sprite, dy)
+    ' Check sprite against all lines.
+    foreach ln in lines
+        ' Would sprite fall through if y-speed was applied?
+        if sprite.x + sprite.w > ln.x and sprite.x < ln.x + ln.w   
+            if sprite.y + sprite.h <= ln.y and sprite.y + sprite.h + sprite.dy > ln.y
+                ' Put it on the ground.
+                sprite.y = ln.y - sprite.h
+                return true
+            endif
+        endif
+    next
+    return false
+endfunc

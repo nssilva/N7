@@ -1,0 +1,10 @@
+' atan
+' ----
+
+' 'atan(x)' returns the arc tangent of x in radians. It's the inverse of 'tan'. We use 'rad' to
+' convert from degrees to radians and 'deg' to convert from radians to degrees.
+c = tan(rad(45))
+pln "tan(rad(45)) = " + c
+pln "deg(atan(" + c + ")) = " + deg(atan(c))
+
+system "pause"

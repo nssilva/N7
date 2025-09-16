@@ -1,0 +1,14 @@
+' openfiledialog
+' --------------
+
+' 'openfiledialog([file_extension])' shows a system dialog for opening an existing file. Set the
+' optional string file_extension to a file extension (such as ”txt”) to only list files of that
+' type. If the user selects a file, its full path is returned.
+filename = openfiledialog("txt")
+if filename
+    pln "You selected the file " + chr(34) + filename + chr(34)
+else
+    pln "You didn't select any file!"
+endif
+
+system "pause"

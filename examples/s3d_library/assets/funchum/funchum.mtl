@@ -1,0 +1,15 @@
+newmtl material_0
+Kd 1.0 1.0 1.0
+map_Kd skin.png
+newmtl material_1
+Kd 1.0 1.0 1.0
+map_Kd eye.png
+newmtl material_2
+Kd 1.0 1.0 1.0
+map_Kd purple.png
+newmtl material_3
+Kd 1.0 1.0 1.0
+map_Kd dpurple.png
+newmtl material_4
+Kd 1.0 1.0 1.0
+map_Kd mouth.png

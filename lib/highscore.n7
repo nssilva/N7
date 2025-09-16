@@ -1,0 +1,223 @@
+' Highscore library
+' -----------------
+' Can be used with the same syntax as the n6 hiscore list but also supports instantiation if you
+' need more than one list.
+'
+' Converted to n7 by Marcus, original n6 version by jsm.
+
+
+' The n6 syntax uses this instance.
+visible vHS = Highscore(10, "Noname", 10000)
+
+' HS_Init
+' -------
+' Init list.
+function HS_Init(maxEntries, defaultName, maxScore)
+    vHS.Init(maxEntries, defaultName, maxScore)
+endfunc
+
+' SetDefaultName
+' --------------
+' Set default name.
+function HS_SetDefaultName(name)
+    vHS.defaultName = name
+endfunc
+
+' HS_Load
+' -------
+' Load list from file.
+function HS_Load(filename)
+    return vHS.Load(filename)
+endfunc
+
+' HS_Save
+' -------
+' Save list to file.
+function HS_Save(filename)
+    return vHS.Save(filename)
+endfunc
+
+' HS_GetCount
+' -----------
+' Get number of entries.
+function HS_GetCount()
+    return sizeof(vHS.list)
+endfunc
+
+' HS_GetName
+' ----------
+' Return name at index [0..number of entries - 1], where 0 has the highest score.
+function HS_GetName(index)
+    if index < 0 or index >= sizeof(vHS.list)  return unset
+    return vHS.list[index].name
+endfunc
+
+' HS_GetScore
+' -----------
+' Return score at index [0..number of entries - 1], where 0 has the highest score.
+function HS_GetScore(index)
+    if index < 0 or index >= sizeof(vHS.list)  return unset
+    return vHS.list[index].score
+endfunc
+
+' HS_GetEntries
+' -------------
+' Return all entries as an array with the fields name and score.
+function HS_GetEntries()
+    return vHS.list
+endfunc
+
+' HS_IsQualified
+' --------------
+' Return true if score qualifies for the list.
+function HS_IsQualified(score)
+    if sizeof(vHS.list)  return int(score) > vHS.list[sizeof(vHS.list) - 1].score
+    else return false
+endfunc
+
+' HS_GetPosition
+' --------------
+' Return the index that the score would get if added to the list, or -1 if the score doesn't
+' qualify for the list.
+function HS_GetPosition(score)
+    return vHS.GetPosition(score)
+endfunc
+
+' HS_AddEntry
+' -----------
+' Add an entry with the specified name and score to the list if qualified, return true on success.
+function HS_AddEntry(name, score)
+    return vHS.AddEntry(name, score)
+endfunc
+
+' Highscore
+' ---------
+' Create and return a new highscore list.
+function Highscore(maxEntries, defaultName, maxScore)
+    hs = []
+    hs.list = []
+
+    ' Init
+    ' ----    
+    hs.Init = function(maxEntries, defaultName, maxScore)
+        assert maxEntries > 0, "Invalid highscore list size"
+        clear this.list
+        this.defaultName = defaultName
+        for i = 0 to maxEntries - 1  this.list[maxEntries - i - 1] = [
+                name: this.defaultName,
+                score: int(i*maxScore/maxEntries + rnd(maxScore/maxEntries))]
+    endfunc
+
+    ' SetDefaultName
+    ' --------------
+    hs.SetDefaultName = function(name)
+        this.defaultName = name
+    endfunc
+
+    ' Load
+    ' ----
+    hs.Load = function(filename)
+        f = openfile(filename)
+        if typeof(f)
+            count = int(fread(f))
+            clear this.list
+            if count > 0
+                for i = 0 to count - 1
+                    this.list[i] = [name: fread(f), score: int(fread(f))]
+                next
+            endif
+            free file f
+            return true
+        else
+            return false
+        endif
+    endfunc    
+
+    ' Save
+    ' ----
+    hs.Save = function(filename)
+        f = createfile(filename)
+        if typeof(f)
+            wln file f, sizeof(this.list)
+            if sizeof(this.list) > 0
+                for i = 0 to sizeof(this.list) - 1
+                    wln file f, chr(34) + this.list[i].name + chr(34) + " " + this.list[i].score
+                next
+            endif
+            free file f
+            return true
+        else
+            return false
+        endif
+    endfunc
+
+    ' GetCount
+    ' --------
+    function HS_GetCount()
+        return sizeof(this.list)
+    endfunc
+
+    ' GetName
+    ' -------
+    hs.GetName = function(index)
+        if index < 0 or index >= sizeof(this.list)  return unset
+        return this.list[index].name
+    endfunc
+
+    ' GetScore
+    ' --------    
+    hs.GetScore = function(index)
+        if index < 0 or index >= sizeof(this.list)  return unset
+        return this.list[index].score
+    endfunc
+
+    ' GetEntries
+    ' ----------
+    hs.GetEntries = function()
+        return this.list
+    endfunc
+
+    ' IsQualified
+    ' -----------
+    hs.IsQualified = function(score)
+        if sizeof(this.list)  return int(score) > this.list[sizeof(this.list) - 1].score
+        else  return false
+    endfunc
+
+    ' GetPosition
+    ' -----------
+    hs.GetPosition = function(score)
+        if sizeof(this.list) = 0  return - 1
+        score = int(score)
+        for index = 0 to sizeof(this.list) - 1  if score > this.list[index].score  break
+        if index < sizeof(this.list)  return index
+        else return -1
+    endfunc
+
+    ' AddEntry
+    ' --------
+    hs.AddEntry = function(name, score)
+        if sizeof(this.list) = 0  return false
+        score = int(score)
+        for index = 0 to sizeof(this.list) - 1  if score > this.list[index].score  break
+        if index < sizeof(this.list)
+            if index < sizeof(this.list) - 1
+                for i = sizeof(this.list) - 1 to index + 1
+                    this.list[i].score = this.list[i - 1].score
+                    this.list[i].name = this.list[i - 1].name
+                next
+            endif
+            this.list[index].score = score
+            this.list[index].name = replace(name, chr(34), "'")
+            if len(this.list[index].name) = 0  this.list[index].name = this.defaultName
+            return true
+        else
+            return false
+        endif
+    endfunc
+
+    hs.Init(maxEntries, defaultName, maxScore)
+
+    return hs
+endfunc
+

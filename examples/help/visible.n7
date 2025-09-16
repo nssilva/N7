@@ -1,0 +1,26 @@
+' visible
+' -------
+
+' To make a program variable visible inside functions, you have to declare it visible using a
+' 'visible' statement. You can declare multiple variables as visible on a single line. You can,
+' optionally, make an initial assignment to a variable. I personally start the names of visible
+' variables with 'v', but that's just me.
+visible vFoo
+visible vBar = 13, vQux
+
+' This variable is not visible inside functions.
+notVisible = "Oh"
+
+vFoo = "Horse"
+MyFunction()
+pln vQux
+
+system "pause"
+
+function MyFunction()
+    pln "vFoo + vBar = " + vFoo + vBar
+    vQux = "Bye bye!"
+    ' Uncomment this line to get a compiler error message!
+    'pln "notVisible = " + notVisible
+endfunc
+

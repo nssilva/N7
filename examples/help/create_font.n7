@@ -1,0 +1,47 @@
+' create font, font, set font, free font
+' --------------------------------------
+
+' 'create font font_id, name, size' creates a bitmap font with the identifier font_id from a system
+' font named name (ex. ”arial”). Use size to set the font's height in pixels. 'createfont(name,
+' size)' does the same thing as the command 'create font' but auto-generates and returns an unused
+' identifier. The 'create font' command is for backward compability with n6, the preferred way of
+' creating a font is through the 'createfont' function.
+font1 = createfont("arial", 24)
+
+' 'create font font_id, name[, bold[, italic[, underlined[, smooth]]]]' creates a font that is bold,
+' italic, underlined and/or smoothened depending on the arguments. 'createfont(name[, bold[,
+' italic[, underlined[, smooth]]]])' auto-generates and returns an unused identifier. Here we create
+' a font that is bold, italic and smoothened.
+font2 = createfont("courier new", 28, true, true, false, true)
+
+' 'font(font_id)' returns true if font font_id exists (has been created or loaded).
+if not (font(font1) and font(font2))
+    pln "Could not create fonts!"
+    system "pause"
+    end
+endif
+
+' Create a window of the size 640x480.
+set window "fonts", 640, 480
+
+' 'set font font_id' sets the font used by 'wln', 'write', 'center' and 'rln' to font_id.
+set font font1
+set caret 320, 120
+center "Arial 24"
+
+set font font2
+set caret 320, 240
+center "Courier New 32, bold, italic and smoothened"
+
+' Write some text with the default n7 font, id 0.
+set font 0
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60
+
+' 'free font font_id' removes a font from memory. All fonts are freed when the program exits, so
+' here it's really not needed.
+free font font1
+free font font2

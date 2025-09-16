@@ -1,0 +1,64 @@
+' This shows some functions to check for keys and values in a table and to
+' delete them. When a numeric key is deleted the table is assumed to be an
+' array, in which case some sort of re-indexing occurs. The behavior for arrays
+' with "holes" is kind of undefined so far. 
+
+function PrintArray(a)
+    s = ""
+    if sizeof(a)
+        for i = 0 to sizeof(a) - 1 if i < sizeof(a) - 1 s = s + a[i] + ", "
+                                   else s = s + a[i]
+    endif
+    pln "[" + s + "] (" + sizeof(a) + " elements)"
+    
+endfunc
+
+function PrintTable(t)
+    s = ""
+    if sizeof(t)
+        foreach k,v in t s = s + k + ": " + v + ", "
+        s = left(s, len(s) - 2)
+    endif
+    pln "[" + s + "]"
+endfunc
+
+' Create and print an array
+foo = []
+for i = 1 to 20 foo[sizeof(foo)] = rnd(10)
+PrintArray(foo)
+
+' Remove key/index 4.
+free key foo, 4
+PrintArray(foo)
+
+' Remove every key/index where the value is 3.
+free val foo, 3
+PrintArray(foo)
+
+' Check if key/index 4 exists (it does, because of the re-indexing).
+if key(foo, 4) pln "Index 4 exists"
+
+' Check if the value 3 exists.
+if not val(foo, 3) pln "No element in the array has the value 3"
+pln
+
+' If you for some reason NEED an array with holes and want to remove an index,
+' you should not use any of the commands 'free key' or 'free val'. Instead you
+' can use 'free <id>' to remove a key from a table. That won't cause any re-
+' indexing. You can even remove variables, tables or not, completely from
+' program or local memory this way, but it's not recomended.
+'   JavaScript handles this better, while I believe Lua works kind of as "bad"
+' as n7. I might reconcider how to handle sparse arrays.
+foo = [15, 16, 17, 18, 19]
+PrintTable(foo)
+free foo[1]
+PrintTable(foo)
+
+' Below, 'pln' would cause a runtime error.
+free foo
+' pln foo
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+

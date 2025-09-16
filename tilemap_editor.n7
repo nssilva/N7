@@ -1,0 +1,1583 @@
+' Tilemap Editor
+' --------------
+' Sorry about the sloppy code, I'm rushing this.
+'
+' By Marcus.
+
+' NOTES:
+'   Should there be any action on the image/map tiles if the user changes the tile size? I assume
+' this would be part of a chain of user actions (change image to one with higher resolution ->
+' increase tile size, for example). So invalidating the tiles is probably a bad idea. 
+
+include "ngui.n7"
+include "file.n7"
+
+#win32
+#mem32000000
+
+' Modes: draw tiles or edit single tiles (flags).
+constant DRAW_MODE = 0, EDIT_MODE = 1
+
+' Default sizes.
+constant DEFAULT_MAP_WIDTH = 20, DEFAULT_MAP_HEIGHT = 15
+constant DEFAULT_TILE_WIDTH = 32, DEFAULT_TILE_HEIGHT = 32
+
+visible vDataPath
+
+' Widgets.
+visible vTilemapEditor, vCellSelector
+visible vMapHeaderLabel
+visible vImageCellPropsBox, vMapCellPropsBox
+
+' Images.
+path = GetPath(args[0])
+visible vFlagMarkersImage = loadimage(GetPathCombined(path, "assets/tmed/flag_markers.png"), 2, 1)
+visible vCollisionTypesImage = loadimage(GetPathCombined(path, "assets/tmed/collision_types.png"), 7, 1)
+
+' Current map.
+visible vMapFilename = unset, vImageFilename = unset
+
+' This is where the settings of NED are stored.
+vDataPath = GetPathCombined(GetAppDataDirectory(), "naalaa7")
+CreateDirectory(vDataPath)
+
+' Use NED's theme.
+theme = LoadNEDThemeSetting()
+if theme = "Default light"  SetDarkMode(false)
+elseif theme = "Default dark"  SetDarkMode(true)
+else  LoadTheme("assets/themes/" + theme + ".txt")
+
+' Scale factor 0 for a resizable window.
+w = screenw()*2/3
+h = screenh()*2/3
+set window "Tilemap Editor", w, h, false, 0, min(w, 640), min(h, 480)
+set redraw off
+
+' Create gui and enter main loop.
+root = CreateGUI()
+
+EnterMainLoop(root)
+
+
+' CreateGUI
+' ---------
+function CreateGUI()
+    root = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    root.SetSpacing(2)
+    
+    ' Menu setup.
+    menuBar = MenuBar()
+    root.Add(menuBar)
+    
+    ' File menu.
+    menu = Menu(FileMenuAction)
+    menuBar.Add("File", menu)
+    menu.Add("New", "Ctrl+N")
+    menu.Add("Load", "Ctrl+O")
+    menu.Add("Save", "Ctrl+S")
+    menu.Add("Save as", unset)
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Exit", unset)
+    
+    ' Map menu.
+    menu = Menu(MapMenuAction)
+    menuBar.Add("Map", menu)
+    menu.Add("Set size", unset)
+    menu.Add("Set tile size", unset)
+    menu.Add("Clear", unset)
+    menu.Add(HDivider(1, 4), unset)
+    menu.Add("Load image", unset)
+    menu.Add("Set color key", unset)
+    
+    ' Shortcuts (Ctrl + key).
+    AddCommand(KEY_N, NewMap)
+    AddCommand(KEY_O, LoadMap)
+    AddCommand(KEY_S, SaveMap)
+
+    ' Editor and toolbox in a hbox.
+    hbox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+    hbox.SetPadding(2)
+    hbox.SetSpacing(8)
+    root.Add(hbox)
+    
+    ' Editor.
+    edbox = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    hbox.Add(edbox)
+    edbox.SetSpacing(4)
+    vTilemapEditor = TilemapEditor(DEFAULT_MAP_WIDTH, DEFAULT_MAP_HEIGHT,
+            DEFAULT_TILE_WIDTH, DEFAULT_TILE_HEIGHT)
+    vTilemapEditor.SetCellSelectedAction(MapCellSelectedAction)
+    vMapHeaderLabel = Label("", SIZE_EXPAND, SIZE_AUTO)
+    edbox.Add(vMapHeaderLabel)
+    edbox.Add(vTilemapEditor)
+    
+    ' Toolbox.
+    toolbox = VBox(SIZE_AUTO, SIZE_EXPAND)
+    hbox.Add(toolbox)
+    toolbox.SetSpacing(4)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.Add(Label("Mode", SIZE_AUTO, SIZE_AUTO))
+    hb.Add(ComboBox(80, ["Draw", "Edit"], function(wdg, index)
+            cell = vCellSelector.GetCell()
+            vTilemapEditor.SetMode(index)
+            vCellSelector.SelectCell(cell)
+        endfunc))
+    Last(hb.GetChildren()).SelectIndex(DRAW_MODE)
+    toolbox.Add(hb)
+    toolbox.Add(Label("Image", SIZE_AUTO, SIZE_AUTO))
+    
+    ' Image cell selector.
+    vCellSelector = ImageCellSelector(204, SIZE_EXPAND, ImageCellSelectedAction)
+    toolbox.Add(vCellSelector)
+    
+    ' Image cell properties box.
+    vImageCellPropsBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+    vImageCellPropsBox.SetSpacing(4)
+    vImageCellPropsBox.headerLabel = Label("Image cell: none", SIZE_EXPAND, SIZE_AUTO)
+    vImageCellPropsBox.Add(vImageCellPropsBox.headerLabel)
+    vImageCellPropsBox.Add(Label("Collision type", SIZE_AUTO, SIZE_AUTO))
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetSpacing(4)
+    vImageCellPropsBox.Add(hb)
+    hb.Add(RadioButton("collision", true, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(0)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(1)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(2)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.SetSpacing(4)
+    vImageCellPropsBox.Add(hb)
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(3)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(4)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(5)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))
+    hb.Add(RadioButton("collision", false, CollisionTypeChangedAction))
+    hb.Add(Image(vCollisionTypesImage))
+    Last(hb.GetChildren()).SetCell(6)
+    Last(hb.GetChildren()).SetForeground(GetColor(COLOR_PRIMARY_BACKGROUND))    
+    'vImageCellPropsBox.SetHidden(true)
+    toolbox.Add(vImageCellPropsBox)
+    
+    ' Map cell properties box.
+    vMapCellPropsBox = VBox(SIZE_EXPAND, SIZE_AUTO)
+    vMapCellPropsBox.SetSpacing(4)
+    vMapCellPropsBox.Add(HDivider(1, 4))
+    vMapCellPropsBox.headerLabel = Label("Map cell:", SIZE_EXPAND, SIZE_AUTO)
+    vMapCellPropsBox.Add(vMapCellPropsBox.headerLabel)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.Add(Label("Game flag", 72, SIZE_AUTO))
+    vMapCellPropsBox.gameFlagEntry = TextEntry(80, false)
+    vMapCellPropsBox.gameFlagEntry.SetValueChangedAction(function(wdg, value)
+            if value = "0"
+                value = ""
+                this.SetText("")
+            endif
+            vTilemapEditor.SetSelectedGameFlag(value)
+        endfunc)
+    vMapCellPropsBox.gameFlagEntry.SetReturnAction(function(wdg)
+            SetFocus(unset)
+        endfunc)
+    vMapCellPropsBox.gameFlagEntry.SetEscapeAction(function(wdg)
+            vMapCellPropsBox.gameFlagEntry.RestoreText()
+            SetFocus(unset)
+        endfunc)
+    vMapCellPropsBox.gameFlagEntry.SetTabAction(function(wdg)
+            SetFocus(vMapCellPropsBox.loaderFlagEntry)
+        endfunc)
+    hb.Add(vMapCellPropsBox.gameFlagEntry)
+    vMapCellPropsBox.Add(hb)
+    hb = HBox(SIZE_AUTO, SIZE_AUTO)
+    hb.SetValign(ALIGN_CENTER)
+    hb.Add(Label("Loader flag", 72, SIZE_AUTO))
+    vMapCellPropsBox.loaderFlagEntry = TextEntry(80, false)
+    vMapCellPropsBox.loaderFlagEntry.SetValueChangedAction(function(wdg, value)
+            ' Sorry, can't make it work with n6 saved maps else.
+            if value = "0"
+                value = ""
+                this.SetText("")
+            endif
+            vTilemapEditor.SetSelectedLoaderFlag(value)
+        endfunc)
+    vMapCellPropsBox.loaderFlagEntry.SetReturnAction(function(wdg)
+            SetFocus(unset)
+        endfunc)
+    vMapCellPropsBox.loaderFlagEntry.SetTabAction(function(wdg)
+            SetFocus(vMapCellPropsBox.gameFlagEntry)
+        endfunc)
+    hb.Add(vMapCellPropsBox.loaderFlagEntry)
+    vMapCellPropsBox.Add(hb)
+    vMapCellPropsBox.SetHidden(true)
+    toolbox.Add(vMapCellPropsBox)
+    
+    toolbox.Add(Filler(SIZE_EXPAND, 16))
+        
+    UpdateMapHeader()
+
+    return root
+endfunc
+
+' UpdateMapHeader
+' ----------------
+function UpdateMapHeader()
+    if vMapFilename
+        name = GetFilename(vMapFilename, true)
+    else
+        name = "New map"
+    endif
+    ck = vTilemapEditor.GetColorKey()
+    if typeof(ck[0])
+        ck = "(" + ck[0] + ", " + ck[1] + ", " + ck[2] + ")"
+    else
+        ck = "not set"
+    endif
+    vMapHeaderLabel.SetText(name +
+            "    size: " + vTilemapEditor.GetMapWidth() + "x" + vTilemapEditor.GetMapHeight() + 
+            ", tile size: " + vTilemapEditor.GetTileWidth() + "x" + vTilemapEditor.GetTileHeight() + 
+            ", color key: " + ck)
+endfunc
+
+' FileMenuAction
+' --------------
+function FileMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  NewMap()
+        case 1  LoadMap()
+        case 2  SaveMap()
+        case 3  SaveMapAs()
+        case 4  end
+    endsel
+endfunc
+
+' MapMenuAction
+' -------------
+function MapMenuAction(menu, selectedIndex)
+    select selectedIndex
+        case 0  ShowMapSizeDialog()
+        case 1  ShowTileSizeDialog()
+        case 2
+            vTilemapEditor.ClearTiles()
+            
+        case 3 
+            filename = openfiledialog("")
+            if filename
+                img = loadimage(filename)
+                if image(img)
+                    vImageFilename = filename
+                    vTilemapEditor.SetImage(img)
+                    vCellSelector.SetImage(vTilemapEditor.GetImage())
+                else
+                    ShowMessageBox("Error", "Could not load image " + 
+                            chr(34) + GetFilename(filename, true) + chr(34) + "!",
+                            ["Close"], unset)
+                endif
+            endif 
+        case 4  ShowColorKeyDialog()
+    endsel
+endfunc
+
+' NewMap
+' ------
+function NewMap()
+    vMapFilename = unset
+    vImageFilename = unset
+    vTilemapEditor.Clear(DEFAULT_MAP_WIDTH, DEFAULT_MAP_HEIGHT,
+            DEFAULT_TILE_WIDTH, DEFAULT_TILE_HEIGHT)
+    vCellSelector.Clear()
+    UpdateMapHeader()
+endfunc
+
+' LoadMap
+' -------
+function LoadMap()
+    filename = openfiledialog("txt")
+    if filename
+        NewMap()
+        f = openfile(filename)
+        if typeof(f)
+            vMapFilename = filename
+            fn = fread(f)
+            if fn <> "unset"
+                ' I believe that a sub folder was possible in n6, but that should with this code.
+                img = loadimage(GetPathCombined(GetPath(vMapFilename), fn))
+                if not image(img)
+                    ShowErrorMessage("Could not load image " + chr(34) + fn + chr(34) + "!")
+                    NewMap()
+                    free file f
+                    return
+                endif
+                vImageFilename = fn
+                c = int(fread(f))
+                r = int(fread(f))
+                ck = int(fread(f))
+                ckR = int(fread(f))
+                ckG = int(fread(f))
+                ckB = int(fread(f))
+                if ck  vTilemapEditor.SetColorKey(ckR, ckG, ckB)
+                else  vTilemapEditor.SetColorKey(unset, unset, unset)
+                vTilemapEditor.SetTileSize(int(width(img)/c), int(height(img)/r))
+                vTilemapEditor.SetImage(img)
+                vCellSelector.SetImage(vTilemapEditor.GetImage())
+                for i = 0 to cels(vTilemapEditor.GetImage()) - 1
+                    vCellSelector.SetCollisionType(i, int(fread(f)))
+                next
+            else
+                vTilemapEditor.SetTileSize(int(fread(f)), int(fread(f)))
+                ck = int(fread(f))
+                ckR = int(fread(f))
+                ckG = int(fread(f))
+                ckB = int(fread(f))
+                if ck  vTilemapEditor.SetColorKey(ckR, ckG, ckB)
+                else  vTilemapEditor.SetColorKey(unset, unset, unset)
+                tmp = fread(f)                
+            endif
+            vTilemapEditor.SetMapSize(int(fread(f)), int(fread(f)))
+            tiles = vTilemapEditor.GetTiles()
+            for y = 0 to vTilemapEditor.GetMapHeight() - 1
+                for x = 0 to vTilemapEditor.GetMapWidth() - 1
+                    tiles[x][y].cel = int(fread(f)) - 1
+                next
+            next
+            props = ["gf", "lf"]
+            for i = 0 to sizeof(props) - 1
+                for y = 0 to vTilemapEditor.GetMapHeight() - 1
+                    for x = 0 to vTilemapEditor.GetMapWidth() - 1
+                        txt = fread(f)
+                        if txt <> "0"
+                            tiles[x][y][props[i]] = txt
+                        else
+                            tiles[x][y][props[i]] = ""
+                        endif
+                    next
+                next
+            next
+            free file f
+        else
+            ShowErrorMessage("Could not load map " + chr(34) + filename + chr(34) + "!")
+        endif
+        UpdateMapHeader()
+    endif
+endfunc
+
+' SaveMap
+' -------
+function SaveMap()
+    if not vMapFilename
+        SaveMapAs()
+    else
+        f = createfile(vMapFilename)
+        if typeof(f)
+            ' Decided to keep the n6 file format, even though it's horrible.
+            ck = vTilemapEditor.GetColorKey()
+            if vImageFilename
+                img = vTilemapEditor.GetSourceImage()
+                ' Uhm ... idk ... save image to map's path if paths differ.
+                if GetPath(vMapFilename) <> GetPath(vImageFilename)
+                    vImageFilename = GetPathCombined(GetPath(vMapFilename),
+                            GetFilename(vImageFilename, false) + ".png")
+                    save image img, vImageFilename
+                endif
+                wln file f, GetFilename(vImageFilename, true)
+                c = int(width(img)/vTilemapEditor.GetTileWidth())
+                r = int(height(img)/vTilemapEditor.GetTileHeight())
+                wln file f, c + " " + r
+                if typeof(ck[0])  wln file f, "1 " + ck[0] + " " + ck[1] + " " + ck[2]
+                else  wln file f, "0 255 0 255"
+                for i = 0 to c*r - 1  write file f, vCellSelector.GetCollisionType(i) + " "
+                wln file f
+            else
+                ' Special case, not n6 compatible, write tile size instead of image columns and
+                ' rows.
+                wln file f, "unset"
+                wln file f, vTilemapEditor.GetTileWidth() + " " + vTilemapEditor.GetTileHeight()
+                if typeof(ck[0])  wln file f, "1 " + ck[0] + " " + ck[1] + " " + ck[2]
+                else  wln file f, "0 255 0 255"
+                wln file f, "unset"
+            endif
+            wln file f, vTilemapEditor.GetMapWidth() + " " + vTilemapEditor.GetMapHeight()
+            tiles = vTilemapEditor.GetTiles()
+            for y = 0 to vTilemapEditor.GetMapHeight() - 1
+                for x = 0 to vTilemapEditor.GetMapWidth() - 1
+                    write file f, (tiles[x][y].cel + 1) + " "
+                next
+                wln file f
+            next
+            for y = 0 to vTilemapEditor.GetMapHeight() - 1
+                for x = 0 to vTilemapEditor.GetMapWidth() - 1
+                    write file f, chr(34) + tiles[x][y].gf + chr(34) + " "
+                next
+                wln file f
+            next
+            for y = 0 to vTilemapEditor.GetMapHeight() - 1
+                for x = 0 to vTilemapEditor.GetMapWidth() - 1
+                    write file f, chr(34) + tiles[x][y].lf + chr(34) + " "
+                next
+                wln file f
+            next
+            free file f
+        else
+            ShowMessageBox("Error", "Could not create file " + 
+                    chr(34) + GetFilename(vMapFilename, true) + chr(34) + "!",
+                    ["Close"], unset)
+        endif
+        UpdateMapHeader()
+    endif
+endfunc
+
+' SaveMapAs
+' ---------
+function SaveMapAs()
+    filename = savefiledialog("txt")
+    if filename
+        extFound = false
+        for i = len(filename) - 1 to 0
+            c = mid(filename, i)
+            if c = "\" or c = "/"  break
+            if c = "."
+                extFound = true
+                break
+            endif
+        next
+        if not extFound  filename = filename + ".txt"        
+        vMapFilename = filename
+        SaveMap()
+    endif       
+endfunc
+
+function ShowErrorMessage(msg)
+    ShowMessageBox("Error", msg, ["Close"], unset)
+endfunc
+
+' ShowMapSizeDialog
+' -----------------
+function ShowMapSizeDialog()
+    dlg = VBox(SIZE_AUTO, SIZE_AUTO)
+    dlg.SetBackground(GetColor(COLOR_BACKGROUND))
+    dlg.SetHalign(ALIGN_CENTER)
+    dlg.SetPadding(16)
+    dlg.SetSpacing(16)
+    dlg.SetBorder(1)
+    dlg.SetBorderColor(GetColor(COLOR_BORDER))
+    dlg.shadow = 9
+
+    title = Header("Set map size", SIZE_AUTO, SIZE_AUTO)
+    dlg.Add(title)
+    
+    dlg.widthEntry = TextEntry(64, true)
+    dlg.widthEntry.SetText(vTilemapEditor.GetMapWidth())
+    dlg.widthEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.widthEntry.SetReturnAction(function(wdg); ClosePopup(1); endfunc) ' Expected behavior?
+    dlg.widthEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().heightEntry)
+        endfunc)
+    dlg.heightEntry = TextEntry(64, true)
+    dlg.heightEntry.SetText(vTilemapEditor.GetMapHeight())
+    dlg.heightEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.heightEntry.SetReturnAction(function(wdg); ClosePopup(1); endfunc)
+    dlg.heightEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().widthEntry)
+        endfunc)
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetValign(ALIGN_CENTER)
+    hbox.Add(Label("Width", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.widthEntry)
+    hbox.Add(Label(" Height", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.heightEntry)
+    dlg.Add(hbox)
+
+    ' Divider.
+    dlg.Add(HDivider(1, 0))
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetSpacing(16)
+    okbtn = TextButton("Set", SIZE_AUTO, SIZE_AUTO, function(wdg); ClosePopup(1); endfunc)
+    cancelbtn = TextButton("Cancel", SIZE_AUTO, SIZE_AUTO, function(wdg); ClosePopup(0); endfunc)
+    m = max(okbtn.MinWidth(), cancelbtn.MinWidth())
+    okbtn.ww = m
+    cancelbtn.ww = m
+    hbox.Add(okbtn)
+    hbox.Add(cancelbtn)
+    dlg.Add(hbox)
+
+    w = dlg.MinWidth()
+    h = dlg.MinHeight()
+    dlg.x = (width(primary) - w)/2
+    dlg.y = (height(primary) - h)/2
+    dlg.Resize(w, h)
+    ShowPopup(dlg, 0, function(wdg, msg)
+            if msg
+                w = int(this.widthEntry.GetText())
+                h = int(this.heightEntry.GetText())
+                if w > 0 and h > 0
+                    vTilemapEditor.SetMapSize(w, h)
+                    UpdateMapHeader()
+                endif
+            endif
+        endfunc)
+
+endfunc
+
+' ShowTileSizeDialog
+' -----------------
+function ShowTileSizeDialog()
+    dlg = VBox(SIZE_AUTO, SIZE_AUTO)
+    dlg.SetBackground(GetColor(COLOR_BACKGROUND))
+    dlg.SetHalign(ALIGN_CENTER)
+    dlg.SetPadding(16)
+    dlg.SetSpacing(16)
+    dlg.SetBorder(1)
+    dlg.SetBorderColor(GetColor(COLOR_BORDER))
+    dlg.shadow = 9
+
+    title = Header("Set tile size", SIZE_AUTO, SIZE_AUTO)
+    dlg.Add(title)
+    
+    dlg.widthEntry = TextEntry(64, true)
+    dlg.widthEntry.SetText(vTilemapEditor.GetTileWidth())
+    dlg.widthEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.widthEntry.SetReturnAction(function(wdg); ClosePopup(1); endfunc) ' Expected behavior?
+    dlg.widthEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().heightEntry)
+        endfunc)
+    dlg.heightEntry = TextEntry(64, true)
+    dlg.heightEntry.SetText(vTilemapEditor.GetTileHeight())
+    dlg.heightEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.heightEntry.SetReturnAction(function(wdg); ClosePopup(1); endfunc)
+    dlg.heightEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().widthEntry)
+        endfunc)
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetValign(ALIGN_CENTER)
+    hbox.Add(Label("Width", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.widthEntry)
+    hbox.Add(Label(" Height", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.heightEntry)
+    dlg.Add(hbox)
+
+    ' Divider.
+    dlg.Add(HDivider(1, 0))
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetSpacing(16)
+    okbtn = TextButton("Set", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ClosePopup(1)
+        endfunc)
+    cancelbtn = TextButton("Cancel", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ClosePopup(0)
+        endfunc)
+    m = max(okbtn.MinWidth(), cancelbtn.MinWidth())
+    okbtn.ww = m
+    cancelbtn.ww = m
+    hbox.Add(okbtn)
+    hbox.Add(cancelbtn)
+    dlg.Add(hbox)
+
+    w = dlg.MinWidth()
+    h = dlg.MinHeight()
+    dlg.x = (width(primary) - w)/2
+    dlg.y = (height(primary) - h)/2
+    dlg.Resize(w, h)
+    ShowPopup(dlg, 0, function(wdg, msg)
+            if msg
+                w = int(this.widthEntry.GetText())
+                h = int(this.heightEntry.GetText())
+                if w > 0 and h > 0 and (w <> vTilemapEditor.GetTileWidth() or h <> vTilemapEditor.GetTileHeight())
+                    vTilemapEditor.SetTileSize(w, h)
+                    vCellSelector.SetImage(vTilemapEditor.GetImage())
+                    UpdateMapHeader()
+                endif
+            endif
+        endfunc)
+
+endfunc
+
+function ShowColorKeyDialog()
+    dlg = VBox(SIZE_AUTO, SIZE_AUTO)
+    dlg.SetBackground(GetColor(COLOR_BACKGROUND))
+    dlg.SetHalign(ALIGN_CENTER)
+    dlg.SetPadding(16)
+    dlg.SetSpacing(16)
+    dlg.SetBorder(1)
+    dlg.SetBorderColor(GetColor(COLOR_BORDER))
+    dlg.shadow = 9
+
+    title = Header("Set color key", SIZE_AUTO, SIZE_AUTO)
+    dlg.Add(title)
+    
+    ck = vTilemapEditor.GetColorKey()
+    if ck[0] = unset or ck[1] = unset or ck[2] = unset
+        r = "255"
+        g = "0"
+        b = "255"
+    else
+        r = str(ck[0])
+        g = str(ck[1])
+        b = str(ck[2])
+    endif
+
+    function RGBValueChanged(wdg, value)
+        value = int(value)
+        wdg.SetText(str(max(min(value, 255), 0)))
+    endfunc
+
+    dlg.rEntry = TextEntry(32, true)
+    dlg.rEntry.SetText(r)
+    dlg.rEntry.SetValueChangedAction(RGBValueChanged)
+    dlg.rEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.rEntry.SetReturnAction(function(wdg); SetFocus(unset); endfunc)
+    dlg.rEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().gEntry)
+        endfunc)
+    dlg.gEntry = TextEntry(32, true)
+    dlg.gEntry.SetText(g)
+    dlg.gEntry.SetValueChangedAction(RGBValueChanged)
+    dlg.gEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.gEntry.SetReturnAction(function(wdg); SetFocus(unset); endfunc)
+    dlg.gEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().bEntry)
+        endfunc)
+    dlg.bEntry = TextEntry(32, true)
+    dlg.bEntry.SetText(b)
+    dlg.bEntry.SetValueChangedAction(RGBValueChanged)
+    dlg.bEntry.SetEscapeAction(function(wdg); ClosePopup(0); endfunc)
+    dlg.bEntry.SetReturnAction(function(wdg); SetFocus(unset); endfunc)
+    dlg.bEntry.SetTabAction(function(wdg)
+            SetFocus(wdg.GetParent().GetParent().rEntry)
+        endfunc)
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetValign(ALIGN_CENTER)
+    hbox.Add(Label("R", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.rEntry)
+    hbox.Add(Label(" G", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.gEntry)
+    hbox.Add(Label(" B", SIZE_AUTO, SIZE_AUTO))
+    hbox.Add(dlg.bEntry)
+    dlg.Add(hbox)
+
+    ' Divider.
+    dlg.Add(HDivider(1, 0))
+
+    hbox = HBox(SIZE_AUTO, SIZE_AUTO)
+    hbox.SetSpacing(16)
+    setbtn = TextButton("Set", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ClosePopup(1)
+        endfunc)
+    removebtn = TextButton("Remove", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ClosePopup(2)
+        endfunc)
+    cancelbtn = TextButton("Cancel", SIZE_AUTO, SIZE_AUTO, function(wdg)
+            ClosePopup(0)
+        endfunc)
+    m = max(max(setbtn.MinWidth(), removebtn.MinWidth()), cancelbtn.MinWidth())
+    setbtn.ww = m
+    removebtn.ww = m
+    cancelbtn.ww = m
+    hbox.Add(setbtn)
+    hbox.Add(removebtn)
+    hbox.Add(cancelbtn)
+    dlg.Add(hbox)
+
+    w = dlg.MinWidth()
+    h = dlg.MinHeight()
+    dlg.x = (width(primary) - w)/2
+    dlg.y = (height(primary) - h)/2
+    dlg.Resize(w, h)
+    ShowPopup(dlg, 0, function(wdg, msg)
+            if msg
+                if msg = 1
+                    r = int(this.rEntry.GetText())
+                    g = int(this.gEntry.GetText())
+                    b = int(this.bEntry.GetText())
+                else
+                    r = unset
+                    g = unset
+                    b = unset
+                endif
+                vTilemapEditor.SetColorKey(r, g, b)
+                vCellSelector.SetImage(vTilemapEditor.GetImage())
+                UpdateMapHeader()
+            endif
+        endfunc)
+endfunc
+
+' MapCellSelectedAction
+' ---------------------
+function MapCellSelectedAction(cell, x, y)
+    ' Hm?
+    'vTilemapEditor.SetSelectedGameFlag(vMapCellPropsBox.gameFlagEntry.GetText())
+    'vTilemapEditor.SetSelectedLoaderFlag(vMapCellPropsBox.loaderFlagEntry.GetText())
+    
+    if cell = unset
+        vMapCellPropsBox.SetHidden(true)
+        vCellSelector.SelectCell(unset)
+        'vImageCellPropsBox.SetHidden(true)
+    else
+        vMapCellPropsBox.SetHidden(false)
+        vMapCellPropsBox.headerLabel.SetText("Map cell: (" + x + ", " + y + ")")
+        vMapCellPropsBox.gameFlagEntry.SetText(cell.gf)
+        vMapCellPropsBox.loaderFlagEntry.SetText(cell.lf)
+        vCellSelector.SelectCell(cell.cel)
+        'if cell.cel >= 0  vImageCellPropsBox.SetHidden(false)
+        'else  vImageCellPropsBox.SetHidden(true)
+    endif
+endfunc
+
+' ImageCellSelectedAction
+' -----------------------
+' Called from ImageCellSelector when a cell is selected.
+function ImageCellSelectedAction(cell)
+    vTilemapEditor.SetCell(cell)
+    if cell >= 0
+        'vImageCellPropsBox.SetHidden(false)
+        vImageCellPropsBox.headerLabel.SetText("Image cell: " + cell)
+        SelectRadioButtonIndex("collision", vCellSelector.GetCollisionType(cell))
+    else
+        'vImageCellPropsBox.SetHidden(true)
+        vImageCellPropsBox.headerLabel.SetText("Image cell: none") 
+        SelectRadioButtonIndex("collision", 0)        
+    endif
+endfunc
+
+function CollisionTypeChangedAction(wdg, index)
+    cell = vCellSelector.GetCell()
+    if cell >= 0 
+        if index <= 2
+            vCellSelector.SetCollisionType(cell, index)
+        else
+            SelectRadioButtonIndex("collision", vCellSelector.GetCollisionType(cell))
+        endif
+    else
+        ' Nope.
+        SelectRadioButtonIndex("collision", 0)
+    endif
+endfunc
+
+' TilemapEditor
+' -------------
+' Custom widget based on a Canvas.
+function TilemapEditor(mapW, mapH, tileW, tileH)
+    ' The tilemap editor is some boxes containing a canvas and scrollbars. All data and
+    ' functionality is stored in the canvas. The outer box wraps the functions needed by the
+    ' outside.
+    wdg = VBox(SIZE_EXPAND, SIZE_EXPAND)
+    wdg.SetBorder(1)
+    hbox = HBox(SIZE_EXPAND, SIZE_EXPAND)
+    canvas = Canvas(SIZE_EXPAND, SIZE_EXPAND)
+    wdg.canvas = canvas
+    vsb = VerticalScrollbar(canvas, SIZE_AUTO, SIZE_EXPAND)
+    hsb = HorizontalScrollbar(canvas, SIZE_EXPAND, SIZE_AUTO)
+    hbox.Add(canvas)
+    hbox.Add(vsb)
+    wdg.Add(hbox)
+    btm = HBox(SIZE_EXPAND, SIZE_AUTO)
+    btm.Add(hsb)
+    btm.Add(Filler(vsb.MinWidth(), hsb.MinHeight()))
+    wdg.Add(btm)
+
+    canvas.mode = DRAW_MODE
+    canvas.cellSelectedAction = unset
+
+    ' Tiles.
+    canvas.tiles = unset
+    canvas.mapW = 0
+    canvas.mapH = 0
+    canvas.srcTileW = 0
+    canvas.srcTileH = 0
+    canvas.tileW = 0
+    canvas.tileH = 0
+
+    ' Current display offsets.
+    canvas.scrollX = 0
+    canvas.scrollY = 0
+
+    ' Mouse status.
+    canvas.mouseOver = false
+    canvas.tileX = -1
+    canvas.tileY = -1
+    canvas.selX = -1
+    canvas.selY = -1
+
+    ' img is a copy of srcImg with optional scaling and color key applied.
+    canvas.srcImg = unset
+    canvas.img = unset
+    canvas.ckR = unset
+    canvas.ckG = unset
+    canvas.ckB = unset
+
+    ' Current cell, for drawing.
+    canvas.cell = unset
+
+    ' Use a volatile tooltip that depends on mouse coordinates.
+    canvas.SetVolatileTooltip(function(wdg, x, y)
+            if this.tileX >= 0 and this.tileX < this.mapW and
+                    this.tileY >= 0 and this.tileY < this.mapH
+                ' Display position and flags.
+                txt = "(" + this.tileX + ", " + this.tileY + ")"
+                tile = this.tiles[this.tileX][this.tileY]
+                if tile.gf  txt = txt + " GF: " + tile.gf
+                if tile.lf  txt = txt + " LF: " + tile.lf
+                return txt
+            else
+                return unset
+            endif
+        endfunc)
+
+    canvas.Clear = function(mapW, mapH, tileW, tileH)
+        if typeof(this.srcImg)
+            free image this.srcImg
+            free image this.img
+            this.srcImg = unset
+            this.img = unset
+        endif
+        this.tileX = 0
+        this.tileY = 0
+        this.scrollX = 0
+        this.scrollY = 0
+        this.ClearTiles()
+        this.SetMapSize(mapW, mapH)
+        this.SetTileSize(tileW, tileH)
+        this.ckR = unset
+        this.ckG = unset
+        this.ckB = unset
+        this.MarkDirty()
+    endfunc
+
+    canvas.ClearTiles = function()
+        foreach col in this.tiles  foreach tile in col
+            tile.cel = -1
+            tile.lf = ""
+            tile.gf = ""
+        next
+        this.SelectCell(-1, -1)
+        this.MarkDirty()
+    endfunc
+
+    
+    ' Set image
+    ' ---------
+    canvas.SetImage = function(img)
+        if typeof(this.srcImg)  free image this.srcImg
+        this.srcImg = img
+        this.UpdateImage()
+        this.MarkDirty()
+    endfunc
+
+    ' SetColorKey
+    ' -----------
+    canvas.SetColorKey = function(r, g, b)
+        if r <> this.ckR or g <> this.ckG or b <> this.ckB
+            if r = unset or g = unset or b = unset
+                this.ckR = unset
+                this.ckG = unset
+                this.ckB = unset    
+            else 
+                this.ckR = max(min(r, 255), 0)
+                this.ckG = max(min(g, 255), 0)
+                this.ckB = max(min(b, 255), 0)
+            endif
+            this.UpdateImage()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' GetColorKey
+    ' -----------
+    canvas.GetColorKey = function()
+        return [this.ckR, this.ckG, this.ckB]        
+    endfunc
+
+    ' Update the image with scaling and color key applied.
+    canvas.UpdateImage = function()
+        if typeof(this.img)  free image this.img
+        if typeof(this.srcImg)
+            ' Scale?
+            if this.scale > 1
+                this.img = createimage(width(this.srcImg)*this.scale,
+                        height(this.srcImg)*this.scale)
+                set image this.img
+                for y = 0 to height(this.img) -1  for x = 0 to width(this.img) - 1
+                    set color pixel(this.srcImg, x/this.scale, y/this.scale)
+                    set pixel x, y
+                next
+                set image primary
+            else
+                this.img = createimage(width(this.srcImg), height(this.srcImg))
+                set image this.img
+                for y = 0 to height(this.img) - 1  for x = 0 to width(this.img) - 1
+                    set color pixel(this.srcImg, x, y)
+                    set pixel x, y
+                next
+                set image primary
+            endif
+            if typeof(this.ckR)  set image colorkey this.img, this.ckR, this.ckG, this.ckB
+            set image grid this.img, width(this.img)/this.tileW, height(this.img)/this.tileH
+        endif
+    endfunc
+
+    ' Change map size.
+    canvas.SetMapSize = function(w, h)
+        oldTiles = this.tiles
+        oldW = this.mapW
+        oldH = this.mapH
+        this.tiles = fill([cel: -1, lf: "", gf: ""], w, h)
+        this.mapW = w
+        this.mapH = h
+
+        ' Invalidade selected cel.
+        if this.selX >= w or this.selY >= h  this.SelectCell(-1, -1)
+        
+        if oldTiles  for y = 0 to min(oldH, h) - 1  for x = 0 to min(oldW, w) - 1
+            this.tiles[x][y] = oldTiles[x][y]
+        next
+        this.SetVirtualSize(this.mapW*this.tileW, this.mapH*this.tileH)
+    endfunc
+
+    ' Change tile size.
+    canvas.SetTileSize = function(w, h)
+        this.cell = unset
+        this.srcTileW = w
+        this.srcTileH = h
+        if w < 32 and h < 32
+            this.scale = min(ceil(32/w), ceil(32/h))
+            this.tileW = this.scale*this.srcTileW
+            this.tileH = this.scale*this.srcTileH
+        else
+            this.scale = 1
+            this.tileW = w
+            this.tileH = h
+        endif
+        this.UpdateImage()
+        this.SetVirtualSize(this.mapW*this.tileW, this.mapH*this.tileH)
+    endfunc
+
+    canvas.SetCell = function(cell)
+        this.cell = cell
+        if this.mode = EDIT_MODE and this.selX >= 0 and this.tiles[this.selX][this.selY].cel <> cell
+            this.tiles[this.selX][this.selY].cel = cell
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Set virtual size.    
+    canvas.SetVirtualSize = function(w, h)
+        this.vw = w
+        this.vh = h
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Send scrollbars information about width/height, virtual width/height and current scroll
+    ' values.
+    canvas.UpdateScrollbars = function()
+        this.hsb.SetSourceProperties(this.vw, this.w, this.scrollX)
+        this.vsb.SetSourceProperties(this.vh, this.h, this.scrollY)
+    endfunc
+
+    ' Override default Resize function of a canvas to update the scrollbars.    
+    canvas.CanvasResize = canvas.Resize
+    canvas.Resize = function(w, h)
+        this.CanvasResize(w, h)
+        if this.w > this.vw  this.scrollX = 0
+        if this.h > this.vh  this.scrollY = 0
+        this.UpdateScrollbars()
+    endfunc
+
+    ' Calculate current tile position from mouse coordinates.
+    canvas.UpdateTilePos = function(mouseX, mouseY, markDirty)
+        oldtx = this.tileX
+        oldty = this.tileY
+        this.tileX = int((mouseX + this.scrollX)/this.tileW)
+        this.tileY = int((mouseY + this.scrollY)/this.tileH)
+        if markDirty and this.tileX <> oldtx or this.tileY <> oldty  this.MarkDirty()
+    endfunc
+
+    canvas.SetMapCell = function()
+        if typeof(this.cell) and this.tileX >= 0 and this.tileX < this.mapW and
+                this.tileY >= 0 and this.tileY < this.mapH
+            old = this.tiles[this.tileX][this.tileY].cel
+            if old <> this.cell
+                this.tiles[this.tileX][this.tileY].cel = this.cell
+                this.MarkDirty()
+            endif
+        endif
+    endfunc
+
+    canvas.SelectCell = function(x, y)
+        if x <> this.selX or y <> this.selY
+            if x >= 0 and x < this.mapW and y >= 0 and y < this.mapH
+                this.selX = x
+                this.selY = y
+                if this.cellSelectedAction
+                    this.cellSelectedAction(this.tiles[x][y], x, y)
+                endif
+            else
+                if this.cellSelectedAction
+                    this.cellSelectedAction(unset, -1, -1)
+                endif
+                this.selX = -1
+                this.selY = -1
+            endif
+            this.MarkDirty()
+        endif
+    endfunc
+
+    canvas.SetSelectedGameFlag = function(value)
+        if this.selX >= 0 and this.selX < this.mapW and this.selY >= 0 and this.selY < this.mapH
+            this.tiles[this.selX][this.selY].gf = value
+            this.MarkDirty()
+        endif
+    endfunc
+
+    canvas.SetSelectedLoaderFlag = function(value)
+        if this.selX >= 0 and this.selX < this.mapW and this.selY >= 0 and this.selY < this.mapH
+            this.tiles[this.selX][this.selY].lf = value
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Mouse enter action.
+    canvas.SetMouseEnterAction(function()
+            this.mouseOver = true
+            this.MarkDirty()
+        endfunc)
+
+    ' Mouse leave action.
+    canvas.SetMouseLeaveAction(function()
+            this.mouseOver = false
+            this.MarkDirty()
+        endfunc)
+
+    ' Mouse move action.
+    canvas.SetMouseMoveAction(function(x, y)
+            this.UpdateTilePos(x, y, true)
+        endfunc)
+
+    ' Mouse down action.
+    canvas.SetMouseDownAction(function(x, y)
+            if this.mode = DRAW_MODE
+                this.SetMapCell()
+            else
+                this.SelectCell(this.tileX, this.tileY)
+            endif
+        endfunc)
+
+    ' Mouse drag action.
+    canvas.SetMouseDragAction(function(x, y)
+            if this.mode = DRAW_MODE
+                this.UpdateTilePos(x, y, true)
+                this.SetMapCell()
+            endif
+        endfunc)
+
+    ' Mouse up action.
+    canvas.SetMouseUpAction(function(x, y)
+        endfunc)
+
+    ' Draw action.
+    canvas.SetDrawAction(function(dx, dy, dw, dh)            
+            set color GetColor(COLOR_ED_BACKGROUND)
+            cls
+            tileX = int(this.scrollX/this.tileW)
+            tileY = int(this.scrollY/this.tileH)
+            baseX = dx - this.scrollX%this.tileW
+            baseY = dy - this.scrollY%this.tileH
+            w = ceil(dw/this.tileW)
+            h = ceil(dh/this.tileH)
+            gridColor = GetColor(COLOR_LIGHT_BORDER)
+            set color gridColor
+            for y = 0 to h
+                ty = tileY + y
+                drawY = baseY + y*this.tileH
+                for x = 0 to w
+                    tx = tileX + x
+                    drawX = baseX + x*this.tileW
+                    if tx >= 0 and tx < this.mapW and ty >= 0 and ty < this.mapH
+                        cell = this.tiles[tx][ty].cel
+                        if cell >= 0
+                            set color 255, 255, 255
+                            draw image this.img, drawX, drawY, cell
+                            set color gridColor
+                        else
+                            draw rect drawX, drawY, this.tileW, this.tileH
+                        endif
+                        if this.tiles[tx][ty].gf
+                            set color 255, 255, 255
+                            draw image vFlagMarkersImage, drawX + 1, drawY + 1, 1
+                            set color gridColor
+                        endif
+                        if this.tiles[tx][ty].lf
+                            set color 255, 255, 255
+                            draw image vFlagMarkersImage, drawX + this.tileW - 10, drawY + this.tileW - 10, 0
+                            set color gridColor
+                        endif
+                    endif
+                next
+            next
+            ' Draw current tile.
+            if this.mouseOver and this.tileX >= 0 and this.tileX < this.mapW and
+                    this.tileY >= 0 and this.tileY < this.mapH
+                x = dx - this.scrollX + this.tileX*this.tileW
+                y = dy - this.scrollY + this.tileY*this.tileH
+                if this.mode = DRAW_MODE
+                    if this.cell < 0
+                        set color GetColor(COLOR_BACKGROUND)
+                        draw rect x, y, this.tileW, this.tileH, true
+                    elseif this.cell >= 0
+                        set color 255, 255, 255
+                        draw image this.img, x, y, this.cell
+                    endif
+                endif
+                set color GetColor(COLOR_PRIMARY_BACKGROUND)
+                draw rect x, y, this.tileW, this.tileH
+                draw rect x - 1, y - 1, this.tileW + 2, this.tileH + 2
+            endif
+            if this.mode = EDIT_MODE and this.selX >= 0
+                x = dx - this.scrollX + this.selX*this.tileW
+                y = dy - this.scrollY + this.selY*this.tileH
+                set color GetColor(COLOR_PRIMARY_BACKGROUND)
+                draw rect x - 1, y - 1, this.tileW + 2, this.tileH + 2
+                draw rect x - 2, y - 2, this.tileW + 4, this.tileH + 4
+            endif
+        endfunc)    
+
+    ' Scroll up, called by the vsb.
+    canvas.ScrollUp = function()
+        this.scrollY = max(this.scrollY - max(this.tileH/4, 1), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll down, called by the vsb.
+    canvas.ScrollDown = function()
+        this.scrollY = min(this.scrollY + max(this.tileH/4, 1), this.vh - this.h)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page up, called by the vsb.
+    canvas.ScrollPageUp = function()
+        this.scrollY = max(this.scrollY - this.tileH, 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page down, called by the vsb.
+    canvas.ScrollPageDown = function()
+        this.scrollY = min(this.scrollY + this.tileH, this.vh - this.h)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll to y, called by the vsb.
+    canvas.ScrollToY = function(y)
+        y = y*(this.vh - this.h)
+        'this.scrollY = max(min(int(y/this.tileH)*this.tileH, this.vh - this.h), 0)
+        this.scrollY = max(min(y, this.vh - this.h), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll left, called by the hsb.
+    canvas.ScrollLeft = function()
+        this.scrollX = max(this.scrollX - max(this.tileW/4, 1), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll right, called by the hsb.
+    canvas.ScrollRight = function()
+        this.scrollX = min(this.scrollX + max(this.tileW/4, 1), this.vw - this.w)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page left, called by the hsb.
+    canvas.ScrollPageLeft = function()
+        this.scrollX = max(this.scrollX - this.tileW, 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll page right, called by the hsb.
+    canvas.ScrollPageRight = function()
+        this.scrollX = min(this.scrollX + this.tileW, this.vw - this.w)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    ' Scroll to x, called by the hsb.
+    canvas.ScrollToX = function(x)
+        x = x*(this.vw - this.w)
+        'this.scrollX = max(min(int(x/this.tileW)*this.tileW, this.vw - this.w), 0)
+        this.scrollX = max(min(x, this.vw - this.w), 0)
+        this.UpdateScrollbars()
+        this.MarkDirty()
+    endfunc
+
+    wdg.Clear = function(mapW, mapH, tileW, tileH)
+        this.canvas.Clear(mapW, mapH, tileW, tileH)
+    endfunc
+
+    wdg.ClearTiles = function()
+        this.canvas.ClearTiles()
+    endfunc
+
+    wdg.SetMapSize = function(w, h)
+        this.canvas.SetMapSize(w, h)
+    endfunc
+
+    wdg.GetMapWidth = function()
+        return this.canvas.mapW
+    endfunc
+
+    wdg.GetMapHeight = function()
+        return this.canvas.mapH
+    endfunc
+
+    wdg.GetTileWidth = function()
+        return this.canvas.srcTileW
+    endfunc
+
+    wdg.GetTileHeight = function()
+        return this.canvas.srcTileH
+    endfunc
+
+    wdg.GetTiles = function()
+        return this.canvas.tiles
+    endfunc
+
+    ' Set tile size.
+    wdg.SetTileSize = function(w, h)
+        this.canvas.SetTileSize(w, h)
+    endfunc
+
+    wdg.SetImage = function(img)
+        this.canvas.SetImage(img)        
+    endfunc
+
+    wdg.GetImage = function()
+        return this.canvas.img
+    endfunc
+
+    wdg.GetSourceImage = function()
+        return this.canvas.srcImg
+    endfunc
+
+    wdg.SetColorKey = function(r, g, b)
+        this.canvas.SetColorKey(r, g, b)
+    endfunc
+
+    wdg.GetColorKey = function()
+        return this.canvas.GetColorKey()
+    endfunc
+
+    wdg.SetCell = function(cell)
+        this.canvas.SetCell(cell)
+    endfunc
+
+    wdg.SetCellSelectedAction = function(action)
+        this.canvas.cellSelectedAction = action
+    endfunc
+
+    wdg.SetMode = function(mode)
+        if mode <> this.canvas.mode
+            this.canvas.mode = mode
+            if mode = DRAW_MODE
+                this.canvas.SelectCell(-1, -1)
+            endif
+        endif
+    endfunc
+
+    wdg.SetSelectedGameFlag = function(value)
+        this.canvas.SetSelectedGameFlag(value)
+    endfunc
+
+    wdg.SetSelectedLoaderFlag = function(value)
+        this.canvas.SetSelectedLoaderFlag(value)
+    endfunc
+
+    wdg.SetMapSize(mapW, mapH)
+    wdg.SetTileSize(tileW, tileH)
+
+    return wdg
+endfunc
+
+' ImageCellSelector
+' -----------------
+' Custom widget based on a Canvas.
+function ImageCellSelector(w, h, action)
+    assert w > 0, "ImageCellSelector must have a fixed width"
+    wdg = HBox(SIZE_AUTO, SIZE_EXPAND)
+    wdg.SetBorder(1)
+    canvas = Canvas(w, h)
+    wdg.canvas = canvas
+    vsb = VerticalScrollbar(canvas, SIZE_AUTO, SIZE_EXPAND)
+    wdg.Add(canvas)
+    wdg.Add(vsb)
+
+    canvas.Action = unset
+   
+    canvas.CanvasResize = canvas.Resize
+    canvas.Resize = function(w, h)
+        this.CanvasResize(w, h)
+        this.UpdateScrollbar()
+    endfunc
+
+    canvas.UpdateScrollbar = function()
+        if this.h > this.vh  this.scrollY = 0
+        this.vsb.SetSourceProperties(this.vh, this.h, this.scrollY)
+    endfunc
+
+    canvas.Clear = function()
+        this.img = unset
+        this.collisionTypes = []
+        this.celW = 0
+        this.celH = 0
+        this.numCols = 0
+        this.numRows = 0
+        this.offsetX = 0
+        this.vh = 0
+        this.scrollY = 0
+        this.overCel = unset
+        this.selectedCel = unset
+        this.UpdateScrollbar()
+        this.MarkDirty()
+        if this.Action  this.Action(this.selectedCel)
+    endfunc
+    
+    canvas.SetImage = function(img)
+        if image(img)
+            this.img = img
+            this.celW = width(this.img) + 2
+            this.celH = height(this.img) + 2
+            this.numCols = int(this.ww/this.celW)
+            this.numRows = ceil((cels(this.img) + 1)/this.numCols)
+            this.offsetX = (this.ww - int(this.ww/this.celW)*this.celW)/2
+            this.vh = this.numRows*this.celH
+            this.overCel = unset
+            this.selectedCel = unset
+            this.scrollY = 0
+            ' Not letting the collision types array shrink may seem weird.
+            if cels(img) > sizeof(this.collisionTypes)
+                old = this.collisionTypes
+                this.collisionTypes = fill(0, cels(img))
+                if sizeof(old)  for i = 0 to min(sizeof(old), sizeof(this.collisionTypes)) - 1
+                    this.collisionTypes[i] = old[i]
+                next
+            endif
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        else
+            this.Clear()
+        endif
+    endfunc
+
+    canvas.GetCollisionType = function(cell)
+        if this.img = unset or cell < 0 or cell >= cels(this.img)  return 0
+        else  return this.collisionTypes[cell]
+    endfunc
+
+    canvas.SetCollisionType = function(cell, type)
+        if cell >= 0 and cell < cels(this.img)  this.collisionTypes[cell] = type
+    endfunc
+
+    ' Scroll up, called by the vsb.
+    canvas.ScrollUp = function()
+        if typeof(this.img)
+            this.scrollY = max(this.scrollY - max(this.celH/4, 1), 0)
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Scroll down, called by the vsb.
+    canvas.ScrollDown = function()
+        if typeof(this.img)
+            this.scrollY = min(this.scrollY + max(this.celH/4, 1), this.vh - this.h)
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Scroll page up, called by the vsb.
+    canvas.ScrollPageUp = function()
+        if typeof(this.img)
+            this.scrollY = max(this.scrollY - this.celH, 0)
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Scroll page down, called by the vsb
+    canvas.ScrollPageDown = function()
+        if typeof(this.img)
+            this.scrollY = min(this.scrollY + this.celH, this.vh - this.h)
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Scroll to y, called by the vsb.
+    canvas.ScrollToY = function(y)
+        if typeof(this.img)
+            y = y*(this.vh - this.h)
+            this.scrollY = max(min(y, this.vh - this.h), 0)
+            this.UpdateScrollbar()
+            this.MarkDirty()
+        endif
+    endfunc
+
+    ' Mouse leave action.
+    canvas.SetMouseLeaveAction(function()
+            if typeof(this.overCel)
+                this.overCel = unset
+                this.MarkDirty()
+            endif
+        endfunc)
+
+    ' Mouse move action.
+    canvas.SetMouseMoveAction(function(x, y)
+            if typeof(this.img)
+                old = this.overCel
+                this.overCel = unset
+                x = int((x - this.offsetX)/this.celW)
+                y = int((y + this.scrollY)/this.celH)
+                if x >= 0 and x < this.numCols and y >= 0 and y < this.numRows
+                    cel = y*this.numCols + x
+                    if cel >= 0 and cel <= cels(this.img)  this.overCel = cel - 1
+                endif
+                if old <> this.overCel
+                    this.MarkDirty()
+                endif
+            endif
+        endfunc)
+
+    ' Mouse down action.
+    canvas.SetMouseDownAction(function(x, y)
+            old = this.selectedCel
+            if typeof(this.overCel)
+                this.SetCell(this.overCel)
+            endif
+        endfunc)
+
+    canvas.SetCell = function(cell)
+        if this.selectedCel <> cell
+            this.selectedCel = cell
+            if this.Action  this.Action(this.selectedCel)
+            this.MarkDirty()
+        endif
+    endfunc
+
+    canvas.SetDrawAction(function(dx, dy, w, h)
+            set color GetColor(COLOR_ED_BACKGROUND)
+            cls
+
+            if not typeof(this.img) return
+            set color 255, 255, 255
+            cel = -1
+            for y = 0 to this.numRows - 1
+                for x = 0 to this.numCols - 1
+                    if cel >= cels(this.img)  break
+                    drawX = dx + this.offsetX + x*this.celW + 1
+                    drawY = dy + y*this.celH + 1 - this.scrollY
+                    if cel >= 0
+                        draw image this.img, drawX, drawY, cel
+                    else
+                        w = this.celW - 2
+                        h = this.celH - 2
+                        set color 208, 0, 0
+                        draw rect drawX, drawY, w, h
+                        draw line drawX, drawY, drawX + w, drawY + h
+                        draw line drawX + w, drawY, drawX, drawY + h
+                        set color 255, 255, 255
+                    endif
+                    if this.overCel = cel
+                        set color 255, 255, 255, 128
+                        draw rect drawX, drawY, this.celW - 2, this.celH - 2, true
+                        set color 255, 255, 255
+                    endif
+                    if this.selectedCel = cel
+                        set color GetColor(COLOR_PRIMARY_BACKGROUND)
+                        draw rect drawX - 1, drawY - 1, this.celW, this.celH
+                        draw rect drawX, drawY, this.celW - 2, this.celH - 2
+                        set color 255, 255, 255
+                    endif
+                    cel = cel + 1
+                next
+                if cel >= cels(this.img)  break
+            next
+        endfunc)
+
+    canvas.Clear()
+    canvas.Action = action
+
+    wdg.SetImage = function(img)
+        this.canvas.SetImage(img)
+    endfunc
+
+    wdg.SelectCell = function(cell)
+        this.canvas.SetCell(cell)
+    endfunc
+
+    wdg.GetCell = function()
+        return this.canvas.selectedCel
+    endfunc
+
+    wdg.GetCollisionType = function(cell)
+        return this.canvas.GetCollisionType(cell)
+    endfunc
+
+    wdg.SetCollisionType = function(cell, type)
+        this.canvas.SetCollisionType(cell, type)
+    endfunc
+
+    wdg.Clear = function()
+        this.canvas.Clear()
+    endfunc
+
+    return wdg
+endfunc
+
+function LoadNEDThemeSetting()
+    f = openfile(GetPathCombined(vDataPath, "ned_config.txt"))
+    theme = "Default light"
+    if typeof(f)
+        setting = frln(f)
+        while setting
+            pair = split(setting, "=")
+            if sizeof(pair) = 2
+                select pair[0]
+                    case "dark_mode"
+                        if int(pair[1])  theme = "Default dark"
+                        else  theme = "Default light"
+                    case "theme"
+                        theme = pair[1]
+                endsel
+            endif
+            setting = frln(f)
+        wend
+        free file f
+    endif
+    return theme
+endfunc

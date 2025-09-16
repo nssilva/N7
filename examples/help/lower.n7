@@ -1,0 +1,7 @@
+' lower
+' -----
+
+' 'lower(s)' returns the string s converted to lowercase.
+pln "lower(" + chr(34) + "Hello World!" + chr(34) + ") = " + lower("Hello World!")
+
+system "pause"

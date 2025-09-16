@@ -1,0 +1,51 @@
+' set window
+' ----------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' 'set window title, w, h' creates a window window with the width w, height h and title title. Note
+' that an n7 program can have only one window. Closing the window terminates the program.
+set window "set window", 640, 480
+wln "My window is the greatest!"
+wln "Press spacebar to continue ..."
+
+WaitKey(KEY_SPACE)
+
+' 'set window title, w, h, fullscreen' stretches the window over the entire screen if fullscreen is
+' set to true.
+set window "set window", 640, 480, true
+wln "And now it's all you can see!"
+wln "Press spacebar to continue ..."
+WaitKey(KEY_SPACE)
+
+' 'set window title, w, h, fullscreen, scale_factor' scales the window size by the factor
+' scale_factor if it's an integer value higher than 1 and fullscreen is false.
+set window "set window", 320, 240, false, 2
+wln "Now with jucier pixels!"
+wln "Press spacebar to continue ..."
+WaitKey(KEY_SPACE)
+
+' 'set window title, w, h, fullscreen, 0[, min_width, min_height]', if you set fullscreen
+' to false and scale_factor to 0 the user may resize the window. You can use the parameters
+' min_width and min_height to set a minimum width and height.
+set window "set window", 640, 480, false, 0, 320, 240
+set redraw off
+do
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret width(primary)/2, height(primary)/2 - fheight(0)*2
+    center "The window size is " + width(primary) + "x" + height(primary) + "."
+    center "Feel free to resize it!"
+    center
+    center "Close the window to quit ..."
+
+    redraw
+    fwait 60
+loop
+
+' Waits for key k to be pressed.
+function WaitKey(k)
+    while not keydown(k, true)  fwait 60
+endfunc

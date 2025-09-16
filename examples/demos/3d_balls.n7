@@ -1,0 +1,54 @@
+' balls.n7
+' --------
+
+include "list.n7"
+
+#win32
+
+set window "Balls", 640, 480
+set redraw off
+
+balls = List()
+for z = -2 to 2  for y = -2 to 2  for x = -2 to 2  balls.Add(Ball(x, y, z))
+
+additiveMode = false
+a1 = 0; a2 = 0; az = 0
+while not keydown(KEY_ESCAPE, true)
+    if keydown(KEY_SPACE, true)  additiveMode = not additiveMode
+    a1 = (a1 + 0.02)%(PI*2)
+    a2 = (a2 + 0.013)%(PI*2)
+    az = (az + 0.009)%(PI*2)
+    for i = 0 to balls.size - 1
+        ball = balls[i]
+        ball.px = ball.x; ball.py = ball.y; ball.pz = ball.z
+        x = ball.px*cos(a1) - ball.py*sin(a1); y = ball.py*cos(a1) + ball.px*sin(a1)
+        ball.px = x; ball.py = y
+        z = ball.pz*cos(a2) - ball.py*sin(a2); y = ball.py*cos(a2) + ball.pz*sin(a2)
+        ball.pz = z; ball.py = y
+        ball.pz = ball.pz + 5.5 + sin(az)*0.5
+        ball.px = 320 + 200*ball.px/ball.pz; ball.py = 240 + 200*ball.py/ball.pz
+    next
+    balls.SortByField("pz", balls.DESCENDING)
+    set color 0, 0, 0, 64
+    cls
+    set additive additiveMode
+    for i = 0 to balls.size - 1
+        s = 100/balls[i].pz
+        intens = 255 - (balls[i].pz - 1)*50
+        set color intens/2, intens/2, intens/2
+        draw ellipse balls[i].px, balls[i].py, s, s, true
+        set color intens*0.75, intens*0.75, intens*0.75
+        draw ellipse balls[i].px - s*0.4, balls[i].py - s*0.4, s*0.25, s*0.25, true
+    next
+    set additive false
+    set color 255, 255, 255
+    set caret width(primary)/2, 480 - fheight()*2
+    center "Press spacebar to toggle additive drawing"
+    
+    redraw
+    fwait 60
+wend
+
+function Ball(x, y, z)
+    return [x: x, y: y, z: z, px: 0, py: 0, pz: 0]
+endfunc

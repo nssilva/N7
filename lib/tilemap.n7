@@ -1,0 +1,841 @@
+' Tilemap library
+' ---------------
+'
+' By Marcus.
+
+
+include "file.n7"
+
+' Image tile collision types.
+constant TM_CT_BG = 0
+constant TM_CT_SQ = 1
+constant TM_CT_SQ_OD = 2
+constant TM_CT_BT = 3
+constant TM_CT_BR = 4
+constant TM_CT_TL = 5
+constant TM_CT_TR = 6
+
+' A singleton tilemap when you only need one instance, which is usually the case. Still want to 
+' support multiple tilemaps being used and displayed at the same time.
+visible vTM = Tilemap()
+
+' Tilemap
+' -------
+' Return an new tilemap.
+function Tilemap()
+    ' Why the short field names? Idk.
+    tm = [
+        ' Map width and height, in tiles.
+        mw: 0, mh: 0,
+        ' Tile width and height.
+        tw: 0, th: 0,
+        ' World width and height.
+        ww: 0, wh: 0,
+        ' Image cels, game flags and loader flags.
+        map: unset,
+        gf: unset,
+        lf: unset,
+        ' Collision type for every image cel.
+        ct: unset,
+        ' View position and size.
+        vx: 0, vy: 0, vw: 0, vh: 0,
+        ' Camera position.
+        cx: 0, cy: 0,
+        ' Map edges as walls or not.
+        wleft: true, wright: true, wup: true, wdown: true,
+        ' Image.
+        img: unset,
+        ' Fake sprite, used for Move.
+        fs: [x: unset, y: unset, w: unset, h: unset], 
+        ' Collision info for last test.
+        ci: [l: unset, r: unset, u: unset, d: unset],
+        ' Sprite position and width fields.
+        sprx: "x", spry: "y", sprw: "w", sprh: "h"
+        ]
+
+    ' LoadMap
+    ' -------
+    tm.LoadMap = function(filename)
+        f = openfile(filename)
+        if not typeof(f) return false
+        fn = fread(f)
+        img = loadimage(GetPathCombined(GetPath(filename), fn))
+        if not image(img)
+            free file f
+            return false
+        endif
+        if typeof(this.img) free image this.img
+        this.img = img
+        c = int(fread(f))
+        r = int(fread(f))
+        set image grid this.img, c, r
+        this.tw = width(this.img)
+        this.th = height(this.img)
+        ck = int(fread(f))
+        ckR = int(fread(f))
+        ckG = int(fread(f))
+        ckB = int(fread(f))
+        if ck  set image colorkey this.img, ckR, ckG, ckB
+        this.ct = []  
+        this.ct[-1] = 0   
+        for i = 0 to cels(this.img) - 1  this.ct[i] = int(fread(f))
+        this.mw = int(fread(f))
+        this.mh = int(fread(f))
+        this.ww = this.mw*this.tw
+        this.wh = this.mh*this.th
+        this.map = dim(this.mw, this.mh)
+        for y = 0 to this.mh - 1  for x = 0 to this.mw - 1  this.map[x][y] = int(fread(f)) - 1
+        this.gf = dim(this.mw, this.mh)
+        for y = 0 to this.mh - 1  for x = 0 to this.mw - 1
+            value = fread(f)
+            if len(value) and value <> "0"  this.gf[x][y] = value
+        next
+        this.lf = []
+        for y = 0 to this.mh - 1  for x = 0 to this.mw - 1
+            value = fread(f)
+            if len(value) and value <> "0"  this.lf[sizeof(this.lf)] = [x: x, y: y, flag: value]
+        next
+        free file f
+
+        return true
+    endfunc
+    
+    ' GetLoaderFlags
+    ' --------------
+    tm.GetLoaderFlags = function()
+        return this.lf
+    endfunc
+    
+    ' MapWidth
+    ' --------
+    tm.MapWidth = function()
+        return this.mw
+    endfunc
+    
+    ' MapHeight
+    ' ---------
+    tm.MapHeight = function()
+        return this.mh
+    endfunc
+    
+    ' TileWidth
+    ' ---------
+    tm.TileWidth = function()
+        return this.tw
+    endfunc
+    
+    ' TileHeight
+    ' ----------
+    tm.TileHeight = function()
+        return this.th
+    endfunc
+    
+    ' WorldWidth
+    ' ----------
+    tm.WorldWidth = function()
+        return this.ww
+    endfunc
+    
+    ' WorldHeight
+    ' -----------
+    tm.WorldHeight = function()
+        return this.wh
+    endfunc
+    
+    ' InitMap
+    ' -------
+    tm.InitMap = function(w, h)
+        this.mw = w
+        this.mh = h
+        this.map = fill(-1, w, h)
+        this.gf = dim(w, h)
+        this.lf = unset
+        this.ww = this.mw*this.tw
+        this.wh = this.mh*this.th
+    endfunc
+
+    ' SetImage
+    ' --------
+    tm.SetImage = function(img)
+        'if this.img  free image this.img
+        this.img = img
+        if this.img
+            this.tw = width(img)
+            this.th = height(img)
+            if not (typeof(this.ct) and sizeof(this.ct) = cels(this.img) + 1)
+                this.ct = fill(0, cels(this.img))
+                this.ct[-1] = 0        
+            endif        
+        else
+            this.tw = 0
+            this.th = 0
+            this.ct = []
+        endif
+        this.ww = this.mw*this.tw
+        this.wh = this.mh*this.th
+    endfunc
+
+    ' GetImage
+    ' --------
+    tm.GetImage = function()
+        return this.img
+    endfunc
+
+    ' SetObstacle
+    ' -----------
+    tm.SetObstacle = function(cel, value)
+        if this.ct and cel >= 0 and cel < sizeof(this.ct)
+            if value  this.ct[cel] = TM_CT_SQ
+            else  this.ct[cel] = TM_CT_BG
+        endif 
+    endfunc
+
+    ' SetOnlyDown
+    ' -----------
+    tm.SetOnlyDown = function(cel, value)
+        if this.ct and cel >= 0 and cel < sizeof(this.ct)
+           if value  this.ct[cel] = TM_CT_SQ_OD
+           ' If someone missunderstands and first calls SetObstacle(c, true) and then
+            ' SetOnlyDown(c, false) we shouldn't set to TM_CT_BG. I might be overthinking this.
+           elseif this.ct[cel] <> TM_CT_SQ  this.ct[cel] = TM_CT_BG
+        endif
+    endfunc
+
+    ' SetBorder
+    ' ---------
+    tm.SetBorder = function(l, r, t, b)
+        this.wleft = l
+        this.wright = r
+        this.wup = t
+        this.wdown = b
+    endfunc
+
+    ' SetCel
+    ' ------
+    tm.SetCel = function(x, y, cel)
+        if x < 0 or x >= this.mw or y < 0 or y >= this.mh  return
+        this.map[x][y] = cel
+    endfunc
+    
+    ' SetFlag
+    ' -------
+    tm.SetFlag = function(x, y, flag)
+        if x < 0 or x >= this.mw or y < 0 or y >= this.mh  return
+        this.gf[x][y] = flag
+    endfunc
+    
+    ' GetCel
+    tm.GetCel = function(x, y)
+        if x < 0 or x >= this.mw or y < 0 or y >= this.mh  return -1
+        return this.map[x][y]
+    endfunc
+    
+    ' GetCelAt
+    ' --------
+    tm.GetCelAt = function(x, y)
+        if x < 0 or x >= this.ww or y < 0 or y >= this.wh  return -1
+        return this.map[int(x/this.tw)][int(y/this.th)]
+    endfunc
+    
+    ' GetFlag
+    ' -------
+    tm.GetFlag = function(x, y)
+        if x < 0 or x >= this.mw or y < 0 or y >= this.mh  return 0
+        return this.gf[x][y]
+    endfunc
+    
+    ' GetFlagAt
+    ' ---------
+    tm.GetFlagAt = function(x, y)
+        if x < 0 or x >= this.ww or y < 0 or y >= this.wh  return 0
+        return this.gf[int(x/this.tw)][int(y/this.th)]
+    endfunc
+
+    ' Obstacle
+    ' --------
+    tm.Obstacle = function(cel)
+        return not (cel < 0 or cel >= cels(this.img) or this.ct[cel] = TM_CT_BG)
+    endfunc
+
+    tm.ObstacleAt = function(x, y)
+        if x < 0 and this.wleft or x >= this.ww and this.wright or
+                y < 0 and this.wup or y >= this.wh and this.wdown  return true
+        cel = this.map[int(x/this.tw)][int(y/this.th)]
+        return not (cel < 0 or cel >= cels(this.img) or this.ct[cel] = TM_CT_BG)
+    endfunc
+
+
+    ' SetView
+    ' -------
+    tm.SetView = function(x, y, w, h)
+        this.vx = int(x)
+        this.vy = int(y)
+        this.vw = int(w)
+        this.vh = int(h)
+    endfunc
+    
+    ' SetCamera
+    ' ---------
+    tm.SetCamera = function(x, y)
+        this.cx = min(max(int(x), 0), this.ww - this.vw)
+        this.cy = min(max(int(y), 0), this.wh - this.vh)
+    endfunc
+
+    ' CenterCamera
+    ' ------------
+    tm.CenterCamera = function(x, y)
+        this.cx = min(max(int(x) - int(this.vw/2), 0), this.ww - this.vw)
+        this.cy = min(max(int(y) - int(this.vh/2), 0), this.wh - this.vh)
+    endfunc
+
+    ' CameraX
+    tm.CameraX = function()
+        return this.cx
+    endfunc
+    
+    ' CameraY
+    ' -------
+    tm.CameraY = function()
+        return this.cy
+    endfunc
+    
+    ' ToScreenX
+    ' ---------
+    tm.ToScreenX = function(x)
+        return int(x) - this.cx + this.vx
+    endfunc
+    
+    ' ToScreenY
+    ' ---------
+    tm.ToScreenY = function(y)
+        return int(y) - this.cy + this.vy
+    endfunc
+    
+    ' ToWorldX
+    ' --------
+    tm.ToWorldX = function(x)
+        return x + this.cx - this.vx
+    endfunc
+    
+    ' ToWorldY
+    ' --------
+    tm.ToWorldY = function(y)
+        return y + this.cy - this.vy
+    endfunc
+
+    ' ToMapX
+    ' ------
+    tm.ToMapX = function(x)
+        return int(x/this.tw)
+    endfunc
+
+    ' ToMapY
+    ' ------
+    tm.ToMapY = function(y)
+        return int(y/this.th)
+    endfunc
+
+    ' SpriteVisible
+    ' -------------
+    tm.SpriteVisible = function(s)
+        sx = int(s.x) - this.cx + this.vx
+        sy = int(s.y) - this.cy + this.vy
+        return not (sx > this.vw or sy > this.vh or sx + s.w < 0 or sy + s.h < 0)
+    endfunc
+
+    ' Visible
+    ' -------
+    tm.Visible = function(img, x, y)
+        sx = int(x) - this.cx + this.vx
+        sy = int(y) - this.cy + this.vy
+        return not (sx > this.vw or sy > this.vh or sx + width(img) < 0 or sy + height(img) < 0)
+    endfunc
+
+    ' Render
+    ' ------
+    tm.Render = function()
+        set clip rect this.vx, this.vy, this.vw, this.vh
+    
+        set color 255, 255, 255
+    
+        xs = int(this.cx/this.tw)
+        ys = int(this.cy/this.th)
+        offsx = this.cx%this.tw
+        offsy = this.cy%this.th
+    
+        xe = min(xs + int(this.vw/this.tw) + 1, this.mw - 1)
+        ye = min(ys + int(this.vh/this.th) + 1, this.mh - 1)
+        for y = ys to ye  for x = xs to xe
+            if this.map[x][y] >= 0
+                draw image this.img, this.vx + (x - xs)*this.tw - offsx,
+                    this.vy + (y - ys)*this.th - offsy,
+                    this.map[x][y]
+            endif
+        next
+    
+        set clip rect 0, 0, width(primary), height(primary)
+    endfunc
+
+    ' MoveSprite
+    ' ----------
+    tm.MoveSprite = function(s, dx, dy)
+        this.ci.l = false
+        this.ci.r = false
+        this.ci.u = false
+        this.ci.d = false
+
+        dstx = s.x + dx
+        dsty = s.y + dy
+        if dx
+            ytop = floor(s.y/this.th)
+            ybtm = floor((s.y + s.h - 1)/this.th)
+            if dx < 0
+                x = floor(s.x/this.tw) - 1
+                colx = x*this.tw + this.tw
+                if colx >= s.x + dx
+                    if x < 0
+                        if this.wleft
+                            dstx = 0
+                            this.ci.l = true
+                        endif
+                    elseif x >= this.mw
+                        if this.wright
+                            dstx = this.ww - s.w
+                            this.ci.r = true
+                        endif
+                    else
+                        for y = ytop to ybtm
+                            if y < 0  t = this.wup
+                            elseif y >= this.mh  t = this.wdown
+                            else  t = this.ct[this.map[x][y]]
+                            if t = TM_CT_SQ ' or t = TM_CT_TR or t = TM_CT_BR
+                                dstx = colx
+                                this.ci.l = true
+                                break
+                            endif
+                        next
+                    endif
+                endif
+            elseif dx > 0
+                x = floor((s.x + s.w - 1)/this.tw) + 1
+                colx = x*this.tw
+                if colx < s.x + s.w + dx
+                    if x < 0
+                        if this.wleft
+                            dstx = 0
+                            this.ci.l = true
+                        endif
+                    elseif x >= this.mw
+                        if this.wright
+                            dstx = this.ww - s.w
+                            this.ci.r = true
+                        endif
+                    else
+                        for y = ytop to ybtm
+                            if y < 0  t = this.wup
+                            elseif y >= this.mh  t = this.wdown
+                            else  t = this.ct[this.map[x][y]]
+                            if t = TM_CT_SQ ' or t = TM_CT_TL or t = TM_CT_BL
+                                dstx = colx - s.w
+                                this.ci.r = true
+                                break
+                            endif
+                        next
+                    endif
+                endif
+            endif
+        endif
+        s.x = dstx
+        if dy
+            xleft = floor(s.x/this.tw)
+            xright = floor((s.x + s.w - 1)/this.tw)
+            if dy < 0
+                y = floor(s.y/this.th) - 1
+                coly = y*this.th + this.th
+                if coly >= s.y + dy
+                    if y < 0
+                        if this.wup
+                            dsty = 0
+                            this.ci.u = true
+                        endif
+                    elseif y >= this.mh
+                        if this.wdown
+                            dsty = this.wh - s.h
+                            this.ci.d = true
+                        endif
+                    else
+                        for x = xleft to xright
+                            if x < 0  t = this.wleft
+                            elseif x >= this.mw  t = this.wright
+                            else  t = this.ct[this.map[x][y]]
+                            if t = TM_CT_SQ ' or t = TM_CT_BL or t = TM_CT_BR
+                                dsty = coly
+                                this.ci.u = true
+                                break
+                            endif
+                        next
+                    endif
+                endif
+            elseif dy > 0
+                y = floor((s.y + s.h - 1)/this.th) + 1
+                coly = y*this.th
+                if coly < s.y + s.h + dy
+                    if y < 0
+                        if this.wup
+                            dsty = 0
+                            this.ci.u = true
+                        endif
+                    elseif y >= this.mh
+                        if this.wdown
+                            dsty = this.wh - s.h
+                            this.ci.d = true
+                        endif
+                    else
+                        for x = xleft to xright
+                            if x < 0  t = this.wleft
+                            elseif x >= this.mw  t = this.wright
+                            else  t = this.ct[this.map[x][y]]
+                            if t = TM_CT_SQ or t = TM_CT_SQ_OD ' or t = TM_CT_TL or t = TM_CT_TR
+                                dsty = coly - s.h
+                                this.ci.d = true
+                                break
+                            endif
+                        next
+                    endif
+                endif
+            endif    
+        endif
+        s.y = dsty
+    endfunc
+
+    ' Move
+    ' ----
+    ' Don't ask.
+    tm.Move = function(img, x, y, dx, dy)
+        this.fs.x = x
+        this.fs.y = y
+        this.fs.w = width(img)
+        this.fs.h = height(img)
+        this.MoveSprite(this.fs, dx, dy)
+        return this.fs
+    endfunc
+
+    ' CollisionLeft
+    ' -------------
+    tm.CollisionLeft = function()
+        return this.ci.l
+    endfunc
+
+    ' CollisionRight
+    ' --------------
+    tm.CollisionRight = function()
+        return this.ci.r
+    endfunc
+
+    ' CollisionUp
+    ' -----------
+    tm.CollisionUp = function()
+        return this.ci.u
+    endfunc
+
+    ' CollisionDown
+    ' -------------
+    tm.CollisionDown = function()
+        return this.ci.d
+    endfunc
+ 
+    return tm 
+endfunc
+
+' N6 WRAPPER =======================================================================================
+
+' TM_GetSingleton
+' ---------------
+function TM_GetSingleton()
+    return vTM
+endfunc
+
+' TM_LoadMap
+' ----------
+function TM_LoadMap(filename)
+    return vTM.LoadMap(filename)
+endfunc
+
+' TM_GetLoaderFlags
+' -----------------
+function TM_GetLoaderFlags()
+    return vTM.lf
+endfunc
+
+' TM_MapWidth
+' -----------
+function TM_MapWidth()
+    return vTM.mw
+endfunc
+
+' TM_MapHeight
+' ------------
+function TM_MapHeight()
+    return vTM.mh
+endfunc
+
+' TM_TileWidth
+' ------------
+function TM_TileWidth()
+    return vTM.tw
+endfunc
+
+' TM_TileHeight
+' -------------
+function TM_TileHeight()
+    return vTM.th
+endfunc
+
+' TM_WorldWidth
+' -------------
+function TM_WorldWidth()
+    return vTM.ww
+endfunc
+
+' TM_WorldHeight
+' --------------
+function TM_WorldHeight()
+    return vTM.wh
+endfunc
+
+' TM_InitMap
+' ----------
+function TM_InitMap(w, h)
+    vTM.InitMap(w, h)
+endfunc
+
+' TM_SetImage
+' -----------
+function TM_SetImage(img)
+    vTM.SetImage(img)
+endfunc
+
+' TM_GetImage
+' -----------
+function TM_GetImage()
+    return vTM.img
+endfunc
+
+' TM_SetObstacle
+' --------------
+function TM_SetObstacle(cel, value)
+    vTM.SetObstacle(cel, value)
+endfunc
+
+' TM_SetOnlyDown
+' --------------
+function TM_SetOnlyDown(cel, value)
+    vTM.SetOnlyDown(cel, value)
+endfunc
+
+' TM_SetBorder
+' ------------
+function TM_SetBorder(l, r, t, b)
+    vTM.SetBorder(l, r, t, b)
+endfunc
+
+' TM_SetCel
+' ---------
+function TM_SetCel(x, y, cel)
+    if x < 0 or x >= vTM.mw or y < 0 or y >= vTM.mh  return
+    vTM.map[x][y] = cel
+endfunc
+
+' TM_SetFlag
+' ----------
+function TM_SetFlag(x, y, flag)
+    if x < 0 or x >= vTM.mw or y < 0 or y >= vTM.mh  return
+    vTM.gf[x][y] = flag
+endfunc
+
+' TM_GetCel
+' ---------
+function TM_GetCel(x, y)
+    if x < 0 or x >= vTM.mw or y < 0 or y >= vTM.mh  return -1
+    return vTM.map[x][y]
+endfunc
+
+' TM_GetCelAt
+' -----------
+function TM_GetCelAt(x, y)
+    if x < 0 or x >= vTM.ww or y < 0 or y >= vTM.wh  return -1
+    return vTM.map[int(x/vTM.tw)][int(y/vTM.th)]
+endfunc
+
+' TM_GetFlag
+' ----------
+function TM_GetFlag(x, y)
+    if x < 0 or x >= vTM.mw or y < 0 or y >= vTM.mh  return 0
+    return vTM.gf[x][y]
+endfunc
+
+' TM_GetFlagAt
+' ------------
+function TM_GetFlagAt(x, y)
+    if x < 0 or x >= vTM.ww or y < 0 or y >= vTM.wh  return 0
+    return vTM.gf[int(x/vTM.tw)][int(y/vTM.th)]
+endfunc
+
+' TM_Obstacle
+' -----------
+function TM_Obstacle(cel)
+    return not (cel < 0 or cel >= cels(vTM.img) or vTM.ct[cel] = TM_CT_BG)
+endfunc
+
+' TM_ObstacleAt
+' -------------
+function TM_ObstacleAt(x, y)
+    if x < 0 and vTM.wleft or x >= vTM.ww and vTM.wright or
+            y < 0 and vTM.wup or y >= vTM.wh and vTM.wdown  return true
+    cel = vTM.map[int(x/vTM.tw)][int(y/vTM.th)]
+    return not (cel < 0 or cel >= cels(vTM.img) or vTM.ct[cel] = TM_CT_BG)
+endfunc
+
+' TM_SetView
+' ----------
+function TM_SetView(x, y, w, h)
+    vTM.SetView(x, y, w, h)
+endfunc
+
+' TM_SetCamera
+' ------------
+function TM_SetCamera(x, y)
+    vTM.SetCamera(x, y)
+endfunc
+
+' TM_CenterCamera
+' ---------------
+function TM_CenterCamera(x, y)
+    vTM.CenterCamera(x, y)
+endfunc
+
+' TM_CameraX
+' ----------
+function TM_CameraX()
+    return vTM.cx
+endfunc
+
+' TM_CameraY
+' ----------
+function TM_CameraY()
+    return vTM.cy
+endfunc
+
+' TM_ToScreenX
+' ------------
+function TM_ToScreenX(x)
+    return int(x) - vTM.cx + vTM.vx
+endfunc
+
+' TM_ToScreenY
+' ------------
+function TM_ToScreenY(y)
+    return int(y) - vTM.cy + vTM.vy
+endfunc
+
+' TM_ToWorldX
+' -----------
+function TM_ToWorldX(x)
+    return x + vTM.cx - vTM.vx
+endfunc
+
+' TM_ToWorldY
+' -----------
+function TM_ToWorldY(y)
+    return y + vTM.cy - vTM.vy
+endfunc
+
+' TM_ToMapX
+' ---------
+function TM_ToMapX(x)
+    return int(x/vTM.tw)
+endfunc
+
+' TM_ToMapY
+' ---------
+function TM_ToMapY(y)
+    return int(y/vTM.th)
+endfunc
+
+' TM_SpriteVisible
+' ----------------
+function TM_SpriteVisible(s)
+    sx = int(s.x) - vTM.cx + vTM.vx
+    sy = int(s.y) - vTM.cy + vTM.vy
+    return not (sx > vTM.vw or sy > vTM.vh or sx + s.w < 0 or sy + s.h < 0)
+endfunc
+
+' TM_Visible
+' ----------
+function TM_Visible(img, x, y)
+    sx = int(x) - vTM.cx + vTM.vx
+    sy = int(y) - vTM.cy + vTM.vy
+    return not (sx > vTM.vw or sy > vTM.vh or sx + width(img) < 0 or sy + height(img) < 0)
+endfunc
+
+' TM_Render
+' ---------
+function TM_Render()
+    vTM.Render()
+endfunc
+
+' TM_MoveSprite
+' -------------
+function TM_MoveSprite(s, dx, dy)
+    vTM.MoveSprite(s, dx, dy)
+endfunc
+
+' TM_Move
+' -------
+' Don't ask.
+function TM_Move(img, x, y, dx, dy)
+    vTM.fs.x = x
+    vTM.fs.y = y
+    vTM.fs.w = width(img)
+    vTM.fs.h = height(img)
+    vTM.MoveSprite(vTM.fs, dx, dy)
+    return vTM.fs
+endfunc
+
+' TM_CollisionLeft
+' ----------------
+function TM_CollisionLeft()
+    return vTM.ci.l
+endfunc
+
+' TM_CollisionRight
+' -----------------
+function TM_CollisionRight()
+    return vTM.ci.r
+endfunc
+
+' TM_CollisionUp
+' --------------
+function TM_CollisionUp()
+    return vTM.ci.u
+endfunc
+
+' TM_CollisionDown
+' ----------------
+function TM_CollisionDown()
+    return vTM.ci.d
+endfunc
+
+' TM_SpritesCollide
+' -----------------
+function TM_SpritesCollide(a, b)
+    return a.x + a.w > b.x and a.x < b.x + b.w and
+            a.y + a.h > b.y and a.y < b.y + b.h
+endfunc
+
+' TM_ImagesCollide
+' ----------------
+function TM_ImagesCollide(img1, x1, y1, img2, x2, y2)
+    return x1 + width(img1) > x2 and x1 < x2 + width(img2) and
+            y1 + height(img1) > y2 and y1 < y2 + height(img2)
+endfunc

@@ -1,0 +1,481 @@
+' farmer_man_3d.n7
+' ----------------
+' This is the last example of a series posted on the naalaa forum:
+'   https://naalaa.com/forum/thread-296.html
+
+#win32
+
+include "tilemap.n7"
+include "s3d.n7"
+include "sfx.n7"
+
+' Width and height of a tilemap tile - they're assumed to be the same.
+constant TILE_S = 16
+
+' A temporary tilemap sprite used in MoveSprite. (Wouldn't it be nice if functions could have local
+' static variables? Maybe I should add that ...)
+visible vTmpSprite = []
+
+' Create a window and turn off automatic redraw.
+set window "Example 4", 480*min(screenw()/screenh(), 2), 480, true
+set redraw off
+
+' Create and set font.
+set font createfont("arial", 28, true, false, false, true)
+
+' Init 3d view. You can experiment with the field of view and camera variables until you get what
+' you want. I use a pretty low field of view.
+S3D_SetView(primary, rad(22.5), 0.1, 100)
+S3D_SetPerspectiveCorrection(S3D_NORMAL)
+
+' Load bush and corn images with transparency. We can't use the cels from the tile image, because
+' they contain ground.
+bushImage = loadimage("assets/bush.png")
+cornImage = loadimage("assets/corn.png")
+
+' Player and enemy images.
+playerImage = loadimage("assets/player.png", 4, 1)
+enemyImage = loadimage("assets/blue.png", 4, 2)
+
+' Create some sound effects.
+sfx = SFX()
+sfx.SetEcho(2, 0.2, 0.25, -0.5)
+cornSound = sfx.SquareWave(0.25, [250, 750], [0.25, 1, 1, 1, 0, 0]) 
+enemySound = sfx.SquareWave(0.3, [10, 50, 50, 10], [0.5, 1, 1, 0])
+gameOverSound = sfx.Noise(0.75, [750, 3000, 500, 500], [0.75, 1, 0])
+
+' Load music.
+gameMusic = loadmusic("assets/8bitaction_3874474.mp3")
+
+' Create a mesh used for corn sprites, less code later on and a bit faster.
+hw = 0.5*width(cornImage)/TILE_S;  h = height(cornImage)/TILE_S
+cornMesh = S3D_BeginMesh()
+S3D_Color(255, 255, 255)
+S3D_Texture(cornImage)
+S3D_Begin(S3D_QUADS)
+S3D_Vertex(-hw, 0, -h, 0, 0)
+S3D_Vertex( hw, 0, -h, 1, 0)
+S3D_Vertex( hw, 0,  0, 1, 1)
+S3D_Vertex(-hw, 0,  0, 0, 1)
+S3D_End()
+S3D_EndMesh()
+
+' Load map, display error message on failure.
+assert TM_LoadMap("assets/map_4.txt"), "Couldn't load map"
+
+' Copy size of tile.
+vTileW = TM_TileWidth()
+vTileH = TM_TileHeight()
+
+' Copy the cels from the tiles image into an array of separate images. It makes dealing with texture
+' coordinates easier, and you don't need to worry about "texture bleeding".
+img = TM_GetImage() ' Get the tiles image.
+mapImages = []      ' Image array.
+set color 255, 255, 255
+for i = 0 to cels(img) - 1
+    mapImages[i] = createimage(width(img), height(img))
+    set image mapImages[i]
+    draw image img, 0, 0, i
+next
+set image primary
+
+' Put all "items", things that the player can pick up, in a 2D array. This makes collision testing
+' easier, and we could optimize rendering by drawing only items that we deterine to be visible.
+items = dim(TM_MapWidth(), TM_MapHeight())
+
+' Keep track of how much corn there's left.
+cornCobs = 0
+
+' Build a 3d mesh representation of the tilemap. Each tile is represented by a cube width the side
+' 1.
+mapMesh = S3D_BeginMesh()
+S3D_Begin(S3D_QUADS)
+' List of cels in the tileset that represent solid walls, to simplify some checks when determining
+' if a side of a wall should be displayed or not.
+wallCels = [1, 2]
+for y = 0 to TM_MapHeight() - 1  for x = 0 to TM_MapWidth() - 1
+    ' We want to display ground under bushes and corn sprites, so to save some lines of code we
+    ' change this variable when ground is to be added for a tile.
+    groundImage = unset
+    ' Get cel at map coordinates x, y.
+    cel = TM_GetCel(x, y)
+    select cel
+        case 0 ' Ground, added later.
+            groundImage = mapImages[cel]
+        case 1, 2 ' Solid walls.
+            ' Use corresponding image from the array we created.
+            S3D_Texture(mapImages[cel])
+            ' Always display top of tile.
+            S3D_Color(128, 128, 128)
+            S3D_Vertex(x,     y,     -1, 0, 0)
+            S3D_Vertex(x + 1, y,     -1, 1, 0)
+            S3D_Vertex(x + 1, y + 1, -1, 1, 1)
+            S3D_Vertex(x,     y + 1, -1, 0, 1)
+            ' Only display left side of tile if there's no wall to the left.
+            if not val(wallCels, TM_GetCel(x - 1, y))
+                S3D_Color(192, 192, 192)
+                S3D_Vertex(x, y,     -1, 0, 0)
+                S3D_Vertex(x, y + 1, -1, 1, 0)
+                S3D_Vertex(x, y + 1,  0, 1, 1)
+                S3D_Vertex(x, y,      0, 0, 1)
+            endif
+            ' Display right side?
+            if not val(wallCels, TM_GetCel(x + 1, y))
+                S3D_Color(192, 192, 192)
+                S3D_Vertex(x + 1, y + 1, -1, 0, 0)
+                S3D_Vertex(x + 1, y,     -1, 1, 0)
+                S3D_Vertex(x + 1, y,      0, 1, 1)
+                S3D_Vertex(x + 1, y + 1,  0, 0, 1)
+            endif
+            ' Display front side?
+            if not val(wallCels, TM_GetCel(x, y + 1))
+                S3D_Color(255, 255, 255)
+                S3D_Vertex(x,     y + 1, -1, 0, 0)
+                S3D_Vertex(x + 1, y + 1, -1, 1, 0)
+                S3D_Vertex(x + 1, y + 1,  0, 1, 1)
+                S3D_Vertex(x,     y + 1,  0, 0, 1)
+            endif
+        case 3 ' Bush.
+            ' The bush is displayed as a static sprite.
+            groundImage = mapImages[0] ' There should be ground under the bush sprite.
+            ' Use bush image with transparency.
+            S3D_Texture(bushImage)
+            S3D_Color(255, 255, 255)
+            S3D_Vertex(x,     y + 0.5, -1, 0, 0)
+            S3D_Vertex(x + 1, y + 0.5, -1, 1, 0)
+            S3D_Vertex(x + 1, y + 0.5,  0, 1, 1)
+            S3D_Vertex(x,     y + 0.5,  0, 0, 1)
+        case 4 ' Corn.
+            groundImage = mapImages[0] ' There should be ground under the corn sprite.
+            ' The player should be able to pick up corn. Because of that, the corn sprites can't be
+            ' part of the map mesh. So add data at position x, y in the items array. For now, the
+            ' only data we need is what mesh to draw.
+            items[x][y] = [mesh: cornMesh]
+            ' Increase corn variable.
+            cornCobs = cornCobs + 1
+    endsel
+    ' Add ground.
+    if groundImage
+        S3D_Texture(groundImage)
+        S3D_Color(255, 255, 255)
+        S3D_Vertex(x,     y,     0, 0, 0)
+        S3D_Vertex(x + 1, y,     0, 1, 0)
+        S3D_Vertex(x + 1, y + 1, 0, 1, 1)
+        S3D_Vertex(x,     y + 1, 0, 0, 1)
+    endif
+next
+S3D_End()
+S3D_EndMesh()
+
+' Check loader flags for player and enemies.
+player = unset
+enemies = []
+foreach f in TM_GetLoaderFlags()
+    ' Using select, since more fun stuff will and can be added here.
+    select f.flag
+        case "player" ' Player.
+            ' Put player data in a table.
+            player = []
+            ' Position in the 3d world, where a tile is a cube with the side length 1.
+            player.x = f.x + 0.5
+            player.y = f.y + 0.5
+            ' Image and cel.
+            player.img = playerImage
+            player.cel = 0
+            ' Width and depth ("thickness" of sprite), used for collision handling. These values are
+            ' in 3d space.
+            player.w = 0.75
+            player.d = 0.25
+            ' Just a flag set when player is moving.
+            player.mov = false
+        case "enemy" ' Enemy.
+            ' Same properties as the player.
+            enemy = []
+            enemy.x = f.x + 0.5
+            enemy.y = f.y + 0.5
+            enemy.img = enemyImage
+            enemy.cel = 0
+            enemy.w = 0.75
+            enemy.d = 0.25
+            ' Direction and speed.
+            enemy.dx = 0
+            enemy.dy = 0
+            enemy.spd = 0.02    
+            ' Timer for when to change direction.
+            enemy.tim = 0
+            ' True if chasing player.
+            enemy.run = false
+            ' Animation frame.
+            enemy.frm = 0
+            ' Add to enemies array.
+            enemies[sizeof(enemies)] = enemy
+    endsel
+next
+assert player, "Player not found"
+
+' Camera position, now based on player position.
+camX = player.x
+camY = player.y + 11
+camZ = -12
+camTilt = 45
+' An offset to make the camera do some extra panning in the direction the player is moving.
+camOffsX = 0
+camOffsY = 0
+
+' Game loop.
+gameOver = false
+set music volume gameMusic, 0.75
+play music gameMusic, true
+while not (gameOver or cornCobs = 0)
+    ' Terminate if player presses escape.
+    if keydown(KEY_ESCAPE, true)  end
+
+    ' Move player.
+    dx = 0;  dy = 0
+    if keydown(KEY_LEFT) or joyx() < 0  dx = -1
+    if keydown(KEY_RIGHT) or joyx() > 0 dx = 1
+    if keydown(KEY_UP) or joyy() < 0    dy = -1
+    if keydown(KEY_DOWN) or joyy() > 0  dy = 1
+    if dx or dy
+        ' Move 0.05 units per frame. The tilemap library is used for collision handling and I've
+        ' written a helper function, MoveSprite, to take care of some coordinate conversions between
+        ' the 3d world and the 2d tilemap.
+        k = 0.05/sqr(dx*dx + dy*dy)
+        MoveSprite(player, dx*k, dy*k)
+        if player.mov
+            ' Animate.
+            player.cel = (player.cel + 0.15)%4
+        else
+            player.cel = 1
+            player.mov = true
+        endif
+    else
+        player.cel = 0
+        player.mov = false
+    endif
+    
+    ' Update camera offset depending on the player's direction.
+    camOffsX = camOffsX*0.99 + dx*2*0.01
+    camOffsY = camOffsY*0.99 + dy*2*0.01
+    
+    ' Any corn to pickup?
+    item = items[player.x][player.y]
+    if item and item.mesh = cornMesh
+        ' Nom nom nom.
+        items[player.x][player.y] = unset
+        cornCobs = cornCobs - 1
+        play sound cornSound, 0.5
+    endif
+    
+    ' Update camera..
+    camX = player.x + camOffsX
+    camY = player.y + 11 + camOffsY
+    
+    ' Update enemies.
+    foreach e in enemies
+        ' Time to change direction?
+        e.tim = e.tim - 1
+        if e.tim <= 0
+            ' Can enemy see player?
+            if CanSee(e, player, 5)
+                if not e.run  play sound enemySound
+                ' Run towards player!
+                e.run = true
+                e.spd = 0.045
+                e.tim = 60
+                e.dx = player.x - e.x
+                e.dy = player.y - e.y
+            else
+                ' Walk in a random direction.
+                e.run = false
+                e.spd = 0.02
+                e.tim = 60*(1 + rnd(2))
+                select rnd(4)
+                    case 0
+                        e.dx = -1
+                        e.dy = 0
+                    case 1
+                        e.dx = 1
+                        e.dy = 0
+                    case 2
+                        e.dx = 0
+                        e.dy = -1
+                    case 3
+                        e.dx = 0
+                        e.dy = 1
+                endsel
+            endif
+        endif
+        ' Move.
+        if e.dx or e.dy
+            k = e.spd/sqr(e.dx*e.dx + e.dy*e.dy)
+            MoveSprite(e, e.dx*k, e.dy*k)
+            ' Any wall collision?
+            if TM_CollisionLeft() or TM_CollisionRight() or
+                    TM_CollisionUp() or TM_CollisionDown()
+                ' Chasing player? Just set timer to 0 to get a fresh new direction.
+                if e.run
+                    e.tim = 0
+                else
+                    ' Make a 90 degree turn.
+                    tmp = e.dx
+                    if rnd(2)
+                        e.dx = -e.dy
+                        e.dy = tmp
+                    else
+                        e.dx = e.dy
+                        e.dy = -tmp
+                    endif
+                endif
+            endif
+        endif
+        ' Update animation.
+        if e.run
+            e.frm = (e.frm + 0.25)%4
+            e.cel = 4 + e.frm
+        else
+            e.frm = (e.frm + 0.15)%4
+            e.cel = e.frm
+        endif
+        ' Collision with player?
+        if SpritesCollide(e, player) gameOver = true
+    next
+    
+    ' Clear screen.
+    set color 0, 0, 32
+    cls
+    
+    S3D_Clear()
+    ' Position camera.
+    S3D_RotateX(-rad(camTilt))
+    S3D_Translate(-camX, -camY, -camZ)
+    ' Render map.
+    S3D_Color(255, 255, 255)
+    S3D_Mesh(mapMesh, 0)
+    ' Render items. I've done some optimizations here, but the constants used only work for this
+    ' specific fov and camera settings. It would be possible to use S3D_Project to write a generic
+    ' solution, but let's not complicate things.
+    '    I've left the unoptimized for statements below :)
+    'for y = 0 to sizeof(items[0]) - 1
+    '    for x = 0 to sizeof(items) - 1
+    for y = max(floor(camY) - 18, 0) to min(floor(camY) - 7, sizeof(items[0]) - 1)
+        for x = max(floor(camX) - 9, 0) to min(floor(camX) + 9, sizeof(items) - 1)
+            if items[x][y]
+                S3D_Push()
+                S3D_Translate(x + 0.5, y + 0.5, 0)
+                S3D_Mesh(items[x][y].mesh, 0)
+                S3D_Pop()
+            endif
+        next
+    next
+
+    ' Draw player sprite. I've written a helper function for this, because it requires some
+    ' calculations to render a specific image cel with S3D.    
+    DrawSprite(player)
+    ' Enemies.
+    foreach e in enemies  DrawSprite(e)
+   
+    ' Instructions.
+    set color 255, 255, 255
+    set caret width(primary)/2, height(primary) - fheight() - 4
+    center "Move with the arrow keys or joystick to collect all the corn!"
+    
+    ' Corn left.
+    set caret 4, 4
+    write "Corn-cobs left: " + cornCobs
+   
+    redraw
+    fwait 60
+wend
+
+' Display a message.
+set color 0, 0, 0
+cls
+set caret width(primary)/2, (height(primary) - fheight())/2
+if cornCobs = 0
+    set color 0, 128, 255
+    center "Game completed!"
+else
+    set color 255, 64, 0
+    center "Game over!"
+    play sound gameOverSound
+endif
+redraw
+wait 3000
+
+' MoveSprite
+' ----------
+' Move sprite with collision handling. A sprite is anything with the following fields:
+'   x   - center x coordinate
+'   y   - center y coordinate
+'   w   - width in 3d space
+'   d   - depth, or thickness, in 3d space
+function MoveSprite(s, dx, dy)
+    ' Set up temporary sprite in pixel (tilemap) space and let the tilemap library handle collision.
+    vTmpSprite.x = (s.x - 0.5*s.w)*TILE_S
+    vTmpSprite.y = (s.y - 0.5*s.d)*TILE_S
+    vTmpSprite.w = (s.w)*TILE_S
+    vTmpSprite.h = (s.d)*TILE_S
+    TM_MoveSprite(vTmpSprite, dx*TILE_S, dy*TILE_S)
+    ' Convert the resulting coordinates back to 3d space.
+    s.x = vTmpSprite.x/TILE_S + 0.5*s.w
+    s.y = vTmpSprite.y/TILE_S + 0.5*s.d
+endfunc
+
+' DrawSprite
+' ----------
+' Draw a sprite in 3d space. A sprite is anything with the following fields:
+'    img - image
+'    cel - image cel
+'    x   - center x coordinate
+'    y   - y coordinate
+' The sprite is always drawn as if standing on the ground.
+function DrawSprite(s)
+    ' Calculate the image's full size and convert cel value to column and row.
+    cel = floor(s.cel)
+    numCols = cols(s.img);  numRows = rows(s.img)
+    celW = width(s.img);  celH = height(s.img); imgW = numCols*celW;  imgH = numRows*celH    
+    col = cel%numCols;  row = floor(cel/numCols)
+    ' Calculate texture coordinates for cel. Adding a 0.1 pixel offset from cel border to prevent
+    ' bleeding.
+    u0 = (col*celW + 0.1)/imgW;  v0 = (row*celH + 0.1)/imgH
+    u1 = ((col + 1)*celW - 0.1)/imgW;  v1 = ((row + 1)*celH - 0.1)/imgH
+    ' Calculate half width and full height of sprite in 3D space.
+    hw = 0.5*celW/TILE_S;  h = celH/TILE_S
+    ' Render quad.
+    S3D_Begin(S3D_QUADS)
+    S3D_Color(255, 255, 255)
+    S3D_Texture(s.img)
+    S3D_Vertex(s.x - hw, s.y, -h, u0, v0)
+    S3D_Vertex(s.x + hw, s.y, -h, u1, v0)
+    S3D_Vertex(s.x + hw, s.y,  0, u1, v1)
+    S3D_Vertex(s.x - hw, s.y,  0, u0, v1)
+    S3D_End()
+endfunc
+
+' CanSee
+' ------
+' Return true if sprite a can see sprite b at a maximum distance of maxD. This is a rough but good
+' enough test :)
+function CanSee(a, b, maxD)
+    x = a.x;  y = a.y;
+    dx = b.x - x;  dy = b.y - y;
+    d = dx*dx + dy*dy
+    if d > maxD*maxD  return false
+    d = sqr(d);  dx = dx/d;  dy = dy/d
+    t = 0
+    do
+        t = t + 1;
+        if t >= d  break
+        x = x + dx;  y = y + dy
+        if TM_ObstacleAt(x*TILE_S, y*TILE_S)  return false
+    loop
+    return true
+endfunc
+
+' SpritesCollide
+' --------------
+' Return true if two sprites overlap. We're looking at the width and depth here.
+function SpritesCollide(a, b)
+    return |b.x - a.x| < (a.w + b.w)*0.5 and |b.y - a.y| < (a.d + b.d)*0.5
+endfunc

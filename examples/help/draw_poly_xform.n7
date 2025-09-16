@@ -1,0 +1,54 @@
+' draw poly xform
+' ---------------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "draw image", 640, 480
+set redraw off
+
+' Create points for a square with the side 100 centered around the point 0, 0. The points are stored
+' as [x1, y1, x2, y2 ...] in an array.
+points = [-50, -50, 50, -50, 50, 50, -50, 50]
+
+' Angle for rotation.
+angle = 0
+
+while not keydown(KEY_ESCAPE, true)
+    ' Increase angle.
+    angle = (angle + 1)%360
+    
+    ' Clear screen.
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    
+    ' Draw our points as a polygon using the regular 'draw poly'. We'll only see the bottom right
+    ' quarter of it in the top left corner of the window.
+    draw poly points, false
+
+    ' Draw polygon at the center of the window using 'draw poly xform points, x, y, scale_x,
+    ' scale_y, angle, pivot_x, pivot_y[, filled[, point_count]]. The polygon will be translated to
+    ' the position x, y, scaled by scale_x and scale_y and rotated angle radians. If you want the
+    ' polygon to be transformed around a different point than 0, 0, you can use pivot_x and pivot_y.
+    set color 128, 128, 128
+    draw poly xform points, 320, 240, 1, 1, 0, 0, 0, true
+    
+    ' Draw polygon left of the previous one, but scale it by 2 along the x axis and 0.5 along the
+    ' y axis, and rotate it 'angle' degrees.
+    set color 64, 64, 192
+    draw poly xform points, 160, 240, 2, 0.5, rad(angle), 0, 0, true
+    
+    ' Draw another polygon on the right side, but change the pivot so that the roation and scaling
+    ' occurs around its top left corner.
+    set color 192, 64, 64
+    draw poly xform points, 480, 240, 1, 1, rad(angle), -50, -50, false
+
+    set caret 320, 448
+    set color 255, 255, 255
+    center "Press escape to quit ..."
+    
+    redraw
+    fwait 60
+wend

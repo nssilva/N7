@@ -1,0 +1,16 @@
+' All the n6 functions for strings work the same way in n7: left, right, mid,
+' split, instr, upper, lower, chr, asc et.c. But you can no longer use minus (-)
+' in string expressions (+ works like before). To remove or replace a word in a
+' string, you can use 'replace', which returns a new string:
+'   replace(s, sub, rep[, pos])
+
+pln replace("Hello world", "world", "")
+pln replace("Hello world", "world", "Marcus")
+
+' If you omitt the 'pos' argument, ALL occurences of 'sub' in 's' are replaced
+' with 'rep'. If 'pos' is set, the search for 'sub' starts at the character
+' position 'pos' and only the FIRST occurence found is replaced.
+
+pln replace("foopicklebarpickle", "pickle", "", 5)
+
+wait 5000

@@ -1,0 +1,55 @@
+' Platformer - step 1
+' -------------------
+' Load a map, print some information about it and then render it.
+'
+' Graphics by ansimuz: https://opengameart.org/content/platform-pixel-art-assets
+
+
+#win32
+
+include "tilemap.n7"
+
+' Create a window with NES screen resolution and 2x scaling.
+set window "Platformer", 256, 240, false, 2
+
+' Load an NES:ish font that I created for a game once.
+set font loadfont("assets/font8b")
+
+' Load a map created with the tilemap editor and output some information about it.
+if not TM_LoadMap("assets/map1.txt")  end
+' Tile size, in pixels.
+wln "Tile size:    " + TM_TileWidth() + "x" + TM_TileHeight()
+' Map size, in tiles.
+wln "Map size:     " + TM_MapWidth() + "x" + TM_MapHeight()
+' World size, in pixels.
+wln "World size:   " + TM_WorldWidth() + "x" + TM_WorldHeight()
+' Loader flags, each flag comes with a position in map coordinates. Loader flags can be used in the
+' editor to mark player and enemy positions et.c.
+wln "Loader flags:"
+foreach lf in TM_GetLoaderFlags()  wln "  " + lf.flag + " (" + lf.x + ", " + lf.y + ")"
+
+' Wait for space bar to be pressed.
+wln
+wln "Press space bar ..."
+while not keydown(KEY_SPACE, true)  fwait 60
+
+' Enable double buffering.
+set redraw off
+
+' Set up the rendering view for the library. Usually this is what you want, the top left corner of
+' the window (0, 0) and the same width and height.
+TM_SetView(0, 0, width(primary), height(primary))
+
+' Clear screen with a background color used by the tiles.
+set color 2, 23, 33
+cls
+
+' Render the map and wait for space bar to be pressed again.
+TM_Render()
+
+set caret width(primary)/2, height(primary) - fheight()*2
+center "Press space bar ..."
+
+redraw
+
+while not keydown(KEY_SPACE, true)  fwait 60

@@ -1,0 +1,53 @@
+' set image
+' ---------
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "set image", 640, 480
+
+' Load an image of a smiley.
+smileyImage = loadimage("assets/smiley.png")
+
+' Create an image.
+createdImage = createimage(128, 128)
+
+' 'set image image_id' sets the destination image for all draw commands (including text output) to
+' image_id.
+set image createdImage
+
+' Draw some "stars" on the loaded image.
+for i = 1 to 200
+    v = rnd(8, 255)
+    set color v, v, v
+    draw pixel rnd(128), rnd(128)
+next
+' Draw the loaded image colorized green and add an extra eye.
+set color 64, 255, 128
+draw image smileyImage, 32, 32
+set color 0, 0, 0
+draw ellipse 64, 44, 3, 6, true
+
+' Now let's add some text to the image we loaded.
+set image smileyImage
+set color 255, 0, 0
+set caret 32, 8
+center "SMILE!"
+
+' Use the constant primary as image id to direct drawing back to the window.
+set image primary
+
+' Clear the screen and draw the images.
+set color 64, 64, 96
+cls
+set color 255, 255, 255
+draw image createdImage, 256, 176
+draw image smileyImage, 128, 208
+draw image smileyImage, 448, 208
+
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

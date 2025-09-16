@@ -1,0 +1,36 @@
+' In naalaa 6 subroutines were divided into procedures and functions. Here we
+' only have functions. A function may return something or not, and the program
+' can capture it or not. proc (or _) has been removed, and all function calls
+' now require parentheses around the argument list (even if no arguments are
+' expected).
+
+' Call 'MyFunc'.
+MyFunc("Marcus")
+
+function MyFunc(name)
+    pln "I'm MyFunc, and " + name + " is a nice dude"
+endfunc
+
+' You can call 'MyFunc' in an expression, but since it doesn't return anything
+' the result will be an unset variable.
+if typeof(MyFunc("Nelson")) = TYPE_UNSET pln "Dammet, I got nothing"
+
+function AddTwoExpressions(a, b)
+    return a + b
+endfunc
+' Call it twice.
+pln AddTwoExpressions(10, 5)
+pln AddTwoExpressions("Hello ", "world")
+pln
+
+' Functions can of course be recursive.
+function Faculty(n)
+    if n <= 0 return 1
+    else return n*Faculty(n - 1)
+endfunc
+pln "Faculty 5 = " + Faculty(5)
+
+pln
+pln "Press enter to exit"
+tmp = rln()
+

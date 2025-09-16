@@ -1,0 +1,26 @@
+' foreach, in, next
+' -----------------
+
+' 'foreach v in t' executes the statements between 'foreach' and 'next' once for every element in
+' the table t. In each execution of the statements, v is assigned the value of the current element.
+foo = [13, 7, 23, 104]
+foreach v in foo
+    pln "v = " + v
+next
+pln
+
+' 'foreach k, v in t' executes the statements between 'foreach' and 'next' once for every element in
+' the table t. In each execution of the statements, k is assigned the key of the current element and
+' v is assigned its value. For an array, the key is the index of the element.
+foreach k, v in foo
+    pln "k = " + k + ", v = " + v
+next
+pln
+
+bar = [x: 13, y: 91, z: -5]
+foreach k, v in bar
+    pln "k = " + k + ", v = " + v
+next
+pln
+
+system "pause"

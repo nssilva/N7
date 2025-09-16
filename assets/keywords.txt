@@ -1,0 +1,30 @@
+keywords:
+end gc include and or not if then else elseif endif select case default endsel
+while wend do loop until for to step next foreach in break visible constant str
+float int sizeof len free dim fill copy function endfunc return typeof abs cos
+sin tan acos asin atan atan2 sqr pow floor ceil round rad deg min max pln rln
+datetime time clock wait fwait rnd randomize system split left right mid instr
+replace lower upper chr asc key val clear insert set load save create open draw
+window active redraw mouse mousex mousey mousebutton inkey keydown color clip
+pixel line rect ellipse poly cls image vraster hraster font file openfile
+createfile fread freadc frln width height colorkey grid loadimage createimage
+fwidth fheight write wln justification center caret createfont loadfont
+clipboard sound music loadsound loadmusic volume stop play screenw screenh
+openfiledialog savefiledialog assert asm endasm exists zone createzone zonex
+zoney zonew zoneh additive cols rows cels scroll createsound download console
+xform mouserelx mouserely colori pixeli sgn joyx joyy joybutton LOAD_FUNCTION
+filetell fileseek seek CALL
+
+constants:
+this unset true false on off
+VERSION TYPE_NUMBER TYPE_STRING TYPE_FUNCTION TYPE_TABLE TYPE_UNSET primary
+PI
+KEY_TAB KEY_RETURN KEY_SHIFT KEY_CONTROL KEY_ESCAPE KEY_SPACE KEY_PAGE_UP
+KEY_PAGE_DOWN KEY_END KEY_HOME KEY_LEFT KEY_UP KEY_RIGHT KEY_DOWN KEY_INSERT
+KEY_DELETE KEY_0 KEY_1 KEY_2 KEY_3 KEY_4 KEY_5 KEY_6 KEY_7 KEY_8 KEY_9 KEY_A
+KEY_B KEY_C KEY_D KEY_E KEY_F KEY_G KEY_H KEY_I KEY_J KEY_K KEY_L KEY_M KEY_N
+KEY_O KEY_P KEY_Q KEY_R KEY_S KEY_T KEY_U KEY_V KEY_W KEY_X KEY_Y KEY_Z
+KEY_MULTIPLY KEY_ADD KEY_SEPARATOR KEY_SUBTRACT KEY_DIVIDE KEY_F1 KEY_F2 KEY_F3
+KEY_F4 KEY_F5 KEY_F6 KEY_F7 KEY_F8 KEY_F9 KEY_F10 KEY_F11 KEY_F12 SEEK_SET
+SEEK_CUR SEEK_END
+args

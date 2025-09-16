@@ -1,0 +1,51 @@
+' ohs_simplest_example.n7
+' -----------------------
+' ohs is a library for online high-score lists.
+
+include "ohs.n7"
+
+' Create a "client" for the example that can display 10 score posts.
+'   The game name should be unique and consist of alpanumeric characters only. It can't be longer
+' than 32 characters.
+'   The number of score posts that can be displayed doesn't really limit how many scores can be
+' saved for a game. It just limits how many posts you will receive. It must be in the rage [1..25].
+ohs = OHS("test", 10)
+
+' By default, the high-score list that is downloaded contains the top scores for all time. By
+' calling 'ohs.SetPeriod(period)' with a period value of OHS_PERIOD_ALL, OHS_PERIOD_DAY or
+' OHS_PERIOD_WEEK, you can retrieve a list for all time, the lats 24 hours or the last 7 days.
+
+' Call DownloadList to download the score posts from the server.
+ohs.DownloadList()
+
+' Call GetList() to get an array with the last downloaded score posts. Every element in the array
+' contains the fields 'name' and 'score'. There is also a field called 'extra' that is a string of
+' max 8 characters. Unless you've posted your game's scores with 'SubmitWithExtra(name, score,
+' extra)' instead of 'Submit(name, score)', this field is an empty string.
+list = ohs.GetList()
+
+' Print the list.
+for i = 0 to sizeof(list) - 1  pln list[i].name + ": " + list[i].score
+pln
+
+' Ask for a name and score.
+write "Enter your name: "
+name = rln()
+write "Enter your score: "
+score = int(rln())
+
+' Submit the name and score to the server. This also downloads an updated list. You can also use
+' the 'ohs.SubmitWithExtra(name, score, extra)' to send an extra string of data with a max length
+' of 8 characters.
+ohs.Submit(name, score)
+pln
+
+' Get the new list.
+list = ohs.GetList()
+
+' Print the new list.
+for i = 0 to sizeof(list) - 1  pln list[i].name + ": " + list[i].score
+pln
+
+' Wait for a key press and exit.
+system "pause"

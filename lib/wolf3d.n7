@@ -1,0 +1,1527 @@
+' wolf3d.n7
+' ---------
+' By Marcus.
+
+include "qsort.n7"
+include "file.n7"
+
+constant W3D_X = 0, W3D_Z = 1
+constant W3D_Z_AXIS = 1, W3D_X_AXIS = 2
+constant W3D_NORTH = 1, W3D_SOUTH = 2, W3D_WEST = 3, W3D_EAST = 4
+
+' Wolf3D
+' ------
+function Wolf3D()
+    w = []
+
+    ' UseCRendering
+    ' -------------
+    w.UseCRendering = function(value)
+        this.useCR = value
+    endfunc
+
+    ' SetView
+    ' -------
+    w.SetView = function(x, y, w, h, fov)
+        ' View position and size.
+        this.vx = int(x)
+        this.vy = int(y)
+        this.vw = int(w/2)*2
+        this.vh = int(h)
+        this.hvh = this.vh/2
+        this.fov = min(max(fov, rad(30)), rad(120))
+        ' Setup some lookups.
+        hw = this.vw/2
+        hh = this.vh/2
+        this.u = hw/tan(this.fov*0.5)
+        this.ao = dim(w)
+        this.aoc = dim(w)
+        this.ch = dim(w)
+        for x = 0 to hw - 1
+            this.ao[hw + x] = atan(x/this.u)
+            this.ao[hw - 1 - x] = -this.ao[hw + x]
+            this.aoc[hw + x] = cos(this.ao[hw + x])
+            this.aoc[hw - 1 - x] = cos(this.ao[hw - 1 - x])
+            this.ch[hw + x] = float(h)/cos(this.ao[hw + x])
+            this.ch[hw - 1 - x] = this.ch[hw + x]
+        next
+        this.d = dim(hh)
+        for y = 0 to hh - 1  this.d[y] = (-0.5*this.u/(y - this.hvh))/cos(this.ao[0])
+        
+        ' Zbuffer.
+        this.zb = dim(w)
+    endfunc
+    
+    ' SetFog
+    ' ------
+    w.SetFog = function(zMin, zMax, r, g, b)
+        assert zMax > 0, "Wolf3D.SetFog: Invalid distance"
+        if zMin >= zMax
+            this.fmin = zMax
+            this.fmax = zMax
+            this.fs = 0
+        else
+            this.fmin = zMin
+            this.fmax = zMax
+            this.fs = 255/(zMax - zMin)
+        endif
+        this.fr = min(max(r, 0), 255)
+        this.fg = min(max(g, 0), 255)
+        this.fb = min(max(b, 0), 255)
+        this.sqzmax = zMax*zMax
+    endfunc
+    
+    ' SetSkyTexture
+    ' -----------
+    w.SetSkyTexture = function(img)
+        this.si = img
+    endfunc
+    
+    ' InitMap
+    ' -------
+    w.InitMap = function(w, h)
+        assert w > 0 and h > 0, "Wolf3D.InitMap: Invalid size"
+        this.mw = w
+        this.mh = h
+        this.m = fill(unset, w, h)  ' wall map.
+        this.fm = fill(unset, w, h) ' floor map.
+        this.cm = fill(unset, w, h)  ' ceiling map.
+        this.doors = []
+        this.sprites = []
+        if this.n6  foreach id in this.n6.imgDefs  if typeof(id)  free image id.img
+        this.n6 = unset
+    endfunc
+    
+    w.MapWidth = function()
+        return this.mw
+    endfunc
+    
+    w.MapHeight = function()
+        return this.mh
+    endfunc
+    
+    ' ClearWall
+    ' ---------
+    w.ClearWall = function(x, z)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.ClearWall: Invalid position"
+        if this.m[x][z]
+            if this.m[x][z].f = 1 or this.m[x][z].f = 2  free val this.doors, this.m[x][z]
+            this.m[x][z] = unset
+        endif
+    endfunc
+    
+    ' SetWall
+    ' -------
+    w.SetWall = function(x, z, t)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetWall: Invalid position"
+        this.ClearWall(x, z)
+        if this.n6  t = this.n6.imgDefs[t].img
+        this.m[x][z] = [f: 0, t: typeof(t) <> TYPE_UNSET, n: t, s: t, w: t, e: t]
+    endfunc
+    
+    ' SetWall
+    ' -------
+    w.SetWall_ = function(x, z, t, k)
+        if this.n6  t = this.n6.imgDefs[t].img
+        if not this.m[x][z]
+            this.m[x][z] = [f: 0, n: unset, s: unset, w: unset, e: unset]
+        else
+            if this.m[x][z].f = 1 or this.m[x][z].f = 2
+                free val this.doors, this.m[x][z]        
+            endif
+        endif
+        this.m[x][z][k] = t
+        this.m[x][z].f = 0
+        w = this.m[x][z]
+        this.m[x][z].t = typeof(w.n) or typeof(w.s) or typeof(w.w) or typeof(w.e)
+    endfunc
+    
+    ' SetNorthWall
+    ' ------------
+    w.SetNorthWall = function(x, z, t)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetNorthWall: Invalid position"
+        this.SetWall_(x, z, t, "n")
+    endfunc
+
+    ' SetSouthWall
+    ' ------------
+    w.SetSouthWall = function(x, z, t)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetSouthWall: Invalid position"
+        this.SetWall_(x, z, t, "s")
+    endfunc
+
+    ' SetWestWall
+    ' -----------
+    w.SetWestWall = function(x, z, t)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetWestWall: Invalid position"
+        this.SetWall_(x, z, t, "w")
+    endfunc
+
+    ' SetEastWall
+    ' -----------
+    w.SetEastWall = function(x, z, t)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetEastWall: Invalid position"
+        this.SetWall_(x, z, t, "e")
+    endfunc
+    
+    ' Wall
+    ' ----
+    w.Wall = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z >= this.mh return unset
+        t = this.m[x][z]
+        if t and t.f = 0
+            if this.n6
+                return this.n6.imgMap[int(t.n)] ' t.n might be unset, causing a runtime error.
+            else
+                return t.n
+            endif
+        endif
+        return unset
+    endfunc
+
+    ' NorthWall
+    ' ---------
+    w.NorthWall = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z >= this.mh return unset
+        t = this.m[x][z]
+        if t and t.f = 0
+            if this.n6
+                return this.n6.imgMap[int(t.n)]
+            else
+                return t.n
+            endif
+        endif
+        return unset
+    endfunc
+
+    ' SouthWall
+    ' ---------
+    w.SouthWall = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z >= this.mh return unset
+        t = this.m[x][z]
+        if t and t.f = 0
+            if this.n6
+                return this.n6.imgMap[int(t.s)]
+            else
+                return t.s
+            endif
+        endif
+        return unset
+    endfunc
+
+    ' WestWall
+    ' --------
+    w.WestWall = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z >= this.mh return unset
+        t = this.m[x][z]
+        if t and t.f = 0
+            if this.n6
+                return this.n6.imgMap[int(t.w)]
+            else
+                return t.w
+            endif
+        endif
+        return unset
+    endfunc
+
+    ' EastWall
+    ' --------
+    w.EastWall = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z >= this.mh return unset
+        t = this.m[x][z]
+        if t and t.f = 0
+            if this.n6
+                return this.n6.imgMap[int(t.e)]
+            else
+                return t.e
+            endif
+        endif
+        return unset
+    endfunc
+
+    ' Floor
+    ' -----    
+    w.Floor = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh or this.fm[x][z] = this.fct return unset
+        if this.n6  return this.n6.imgMap[int(this.fm[x][z])]
+        else  return this.fm[x][z]
+    endfunc
+    
+    ' Ceiling
+    ' -------
+    w.Ceiling = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh or this.fm[x][z] = this.cct return unset
+        if this.n6  return this.n6.imgMap[int(this.cm[x][z])]
+        else  return this.cm[x][z]
+    endfunc
+
+    ' Facing
+    ' ------
+    w.Facing = function(viewX, viewZ, viewA)
+        if this.m = 0  return unset
+        distx = 100000
+        distz = 100000
+        tx = unset
+        tz = unset
+        cosa = cos(viewA)
+        sina = sin(viewA)
+        m = this.m
+        mw = this.mw
+        mh = this.mh
+
+        ' Cast x ray.
+        if cosa < 0
+            dzperdx = sina/cosa
+            for ix = int(viewX - 1) to 0
+                dx = ix + 1 - viewX
+                dz = dx*dzperdx
+                z = viewZ + dz
+                iz = int(z)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.e
+                        ' Wall?
+                        if t.f = 0
+                            distx = dx*dx + dz*dz
+                            ux = 1 - z%1
+                            tx = t.e
+                            doorx = false
+                            mapxx = ix
+                            mapxz = iz
+                            break
+                        ' Door?
+                        elseif t.f = 1 and t.p < 1
+                            dx = ix + 0.5 - viewX
+                            dz = dx*dzperdx
+                            z = viewZ + dz
+                            if int(z) = iz and z%1 > t.p
+                                distx = dx*dx + dz*dz
+                                ux = 1 - z%1 + t.p
+                                tx = t.e
+                                doorx = true
+                                mapxx = ix
+                                mapxz = iz
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        elseif cosa > 0
+            dzperdx = sina/cosa            
+            for ix = int(viewX + 1) to mw - 1
+                dx = ix - viewX
+                dz = dx*dzperdx
+                z = viewZ + dz
+                iz = int(z)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.w
+                        ' Wall?
+                        if t.f = 0
+                            distx = dx*dx + dz*dz
+                            ux = z%1
+                            tx = t.w
+                            doorx = false
+                            mapxx = ix
+                            mapxz = iz
+                            break
+                        ' Door?
+                        elseif t.f = 1 and t.p < 1
+                            dx = ix + 0.5 - viewX
+                            dz = dx*dzperdx
+                            z = viewZ + dz
+                            if int(z) = iz and z%1 > t.p
+                                distx = dx*dx + dz*dz
+                                ux = z%1 - t.p
+                                tx = t.w
+                                doorx = true
+                                mapxx = ix
+                                mapxz = iz
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        endif
+
+        ' Cast z ray.
+        if sina < 0
+            dxperdz = cosa/sina
+            for iz = int(viewZ - 1) to 0
+                dz = iz + 1 - viewZ
+                dx = dz*dxperdz
+                x = viewX + dx
+                ix = int(x)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.s
+                        ' Wall?
+                        if t.f = 0
+                            distz = dx*dx + dz*dz
+                            uz = x%1
+                            tz = t.s
+                            doorz = false
+                            mapzx = ix
+                            mapzz = iz
+                            break
+                        ' Door?
+                        elseif t.f = 2 and t.p < 1
+                            dz = iz + 0.5 - viewZ
+                            dx = dz*dxperdz
+                            x = viewX + dx
+                            if int(x) = ix and x%1 > t.p
+                                distz = dx*dx + dz*dz
+                                uz = x%1 - t.p
+                                tz = t.s
+                                doorz = true
+                                mapzx = ix
+                                mapzz = iz
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        elseif sina > 0
+            dxperdz = cosa/sina            
+            for iz = int(viewZ + 1) to mh - 1
+                dz = iz - viewZ
+                dx = dz*dxperdz
+                x = viewX + dx
+                ix = int(x)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.n
+                        ' Wall?
+                        if t.f = 0
+                            distz = dx*dx + dz*dz
+                            uz = 1 - x%1
+                            tz = t.n
+                            doorz = false
+                            mapzx = ix
+                            mapzz = iz
+                            break
+                        ' Door?
+                        elseif t.f = 2 and t.p < 1
+                            dz = iz + 0.5 - viewZ
+                            dx = dz*dxperdz
+                            x = viewX + dx
+                            if int(x) = ix and x%1 > t.p
+                                distz = dx*dx + dz*dz
+                                uz = 1 - x%1 + t.p
+                                tz = t.n
+                                doorz = true
+                                mapzx = ix
+                                mapzz = iz
+                                break                                
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        endif
+        
+        if typeof(tx) and (typeof(tz) = TYPE_UNSET or distx < distz)
+            h = this.hit
+            if this.n6  h.texture = this.n6.imgMap[int(tx)]
+            else  h.texture = tx
+            h.distance = sqr(distx)
+            h.x = viewX + h.distance*cosa
+            h.z = viewZ + h.distance*sina
+            h.u = ux
+            h.door = doorx
+            h.mapx = mapxx
+            h.mapz = mapxz
+            if cosa < 0  h.dir = W3D_EAST
+            else  h.dir = W3D_WEST
+            return h
+        elseif typeof(tz)
+            h = this.hit
+            if this.n6  h.texture = this.n6.imgMap[int(tz)]
+            else  h.texture = tz
+            h.distance = sqr(distz)
+            h.x = viewX + h.distance*cosa
+            h.z = viewZ + h.distance*sina
+            h.u = uz
+            h.door = doorz
+            h.mapx = mapzx
+            h.mapz = mapzz
+            if sina < 0  h.dir = W3D_SOUTH
+            else  h.dir = W3D_NORTH
+            return h
+        endif
+        return false
+    endfunc
+            
+    ' SetDoor
+    ' -------
+    w.SetDoor = function(x, z, t, axis)
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetDoor: Invalid position"
+        assert axis = W3D_X_AXIS or axis = W3D_Z_AXIS, "Wolf3D.SetDoor: Invalid axis"
+        if this.n6  t = this.n6.imgDefs[t].img
+        assert t, "Wolf3D.SetDoor: Invalid texture"
+        this.ClearWall(x, z)
+        this.m[x][z] = [f: axis, p: 0, o: false, n: t, s: t, w: t, e: t]
+        this.m[x][z].t = false
+        this.doors[sizeof(this.doors)] = this.m[x][z]
+    endfunc
+    
+    ' SetFloorColor
+    ' -------------
+    w.SetFloorColor = function(r, g, b)
+        assert this.m, "Wolf3D.SetFloorColor: Map not initialized"
+        set image this.fct
+        set color r, g, b
+        cls
+        set image primary
+        for z = 0 to this.mh - 1  for x = 0 to this.mw - 1  this.fm[x][z] = this.fct
+    endfunc
+
+    ' SetFloorTexture
+    ' ---------------
+    w.SetFloorTexture = function(img)
+        assert this.m, "Wolf3D.SetFloorTexture: Map not initialized"
+        if this.n6  img = this.n6.imgDefs[img].img
+        for z = 0 to this.mh - 1  for x = 0 to this.mw - 1  this.fm[x][z] = img
+    endfunc
+    
+    ' SetFloorTextureAt
+    ' -----------------
+    w.SetFloorTextureAt = function(x, z, img)
+        assert this.m, "Wolf3D.SetFloorTextureAt: Map not initialized"
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetFloorTextureAt: Invalid position"
+        if this.n6  img = this.n6.imgDefs[img].img
+        this.fm[x][z] = img
+    endfunc
+            
+    ' SetCeilingColor
+    ' ---------------
+    w.SetCeilingColor = function(r, g, b)
+        assert this.m, "Wolf3D.SetCeilingColor: Map not initialized"
+        set image this.cct
+        set color r, g, b
+        cls
+        set image primary
+        for z = 0 to this.mh - 1  for x = 0 to this.mw - 1  this.cm[x][z] = this.cct
+    endfunc
+    
+    ' SetCeilingTexture
+    ' -----------------
+    w.SetCeilingTexture = function(img)
+        assert this.m, "Wolf3D.SetCeilingTexture: Map not initialized"
+        if this.n6  img = this.n6.imgDefs[img].img
+        for z = 0 to this.mh - 1  for x = 0 to this.mw - 1  this.cm[x][z] = img
+    endfunc
+
+    ' SetCeilingTextureAt
+    ' -------------------
+    w.SetCeilingTextureAt = function(x, z, img)
+        assert this.m, "Wolf3D.SetCeilingTextureAt: Map not initialized"
+        assert x >= 0 and x < this.mw and z >= 0 and z < this.mh, "Wolf3D.SetCeilingTextureAt: Invalid position"
+        if this.n6  img = this.n6.imgDefs[img].img
+        this.cm[x][z] = img
+    endfunc
+
+    ' Update
+    ' ------
+    w.Update = function()
+        t = clock()
+        dt = min(t - this.lt, 64)/1000
+        this.lt = t
+        
+        if sizeof(this.doors)
+            foreach d in this.doors
+                if d.o
+                    if d.p < 1  
+                        d.p = min(d.p + 2*dt, 1)
+                    endif
+                else
+                    if d.p > 0
+                        d.p = max(d.p - 2*dt, 0)
+                    endif
+                endif
+            next
+        endif
+    endfunc
+    
+    ' MoveSprite
+    ' ----------
+    w.MoveSprite = function(obj, dx, dz, mind)
+        x = floor(obj.x)
+        z = floor(obj.z)
+        d = mind
+        ud = 1 - mind
+        xnocol = obj.x + dx
+        znocol = obj.z + dz
+        xnew = xnocol
+        znew = znocol
+        this.anyCol = false
+        
+        r  = this.Obstacle(x + 1, z)
+        br = this.Obstacle(x + 1, z - 1)
+        b  = this.Obstacle(x, z-1)
+        bl = this.Obstacle(x - 1, z - 1)
+        l  = this.Obstacle(x - 1, z)
+        tl = this.Obstacle(x - 1, z + 1)
+        t  = this.Obstacle(x, z + 1)
+        tr = this.Obstacle(x + 1, z + 1)
+        
+        if obj.x + dx > x + ud
+            if r or t = 0 and tr and obj.z > z + ud or b = 0 and br and obj.z < z + d
+                xnew = x + ud
+                this.anyCol = true
+            endif
+        endif
+    
+        if obj.x + dx < x + d
+            if l or t = 0 and tl and obj.z > z + ud or b = 0 and bl and obj.z < z + d
+                xnew = x + d
+                this.anyCol = true
+            endif
+        endif
+    
+        if obj.z + dz > z + ud
+            if t or r = 0 and tr and obj.x > x + ud or l = 0 and tl and obj.x < x + d
+                znew = z + ud
+                this.anyCol = true
+            endif
+        endif
+    
+        if obj.z + dz < z + d
+            if b or r = 0 and br and obj.x > x + ud or l = 0 and bl and obj.x < x + d
+                znew = z + d
+                this.anyCol = true
+            endif
+        endif
+
+        obj.x = xnew
+        obj.z = znew
+        
+        return this.anyCol
+    endfunc
+    
+    ' Move
+    ' ----
+    w.Move = function(x, z, dx, dz, mind)
+        this.move.x = x
+        this.move.z = z
+        this.MoveSprite(this.move, dx, dz, mind)
+        return this.move
+    endfunc
+    
+    ' AnyCollision
+    ' ------------
+    w.AnyCollision = function()
+        return this.anyCol
+    endfunc
+        
+    ' Obstacle
+    ' --------
+    w.Obstacle = function(ix, iz)
+        ix = floor(ix)
+        iz = floor(iz)
+        if ix <= 0 or ix >= this.mw - 1 or iz <= 0 or iz >= this.mh - 1  return true
+        t = this.m[ix][iz]
+        if t
+            if t.f = 0  return true
+            if (t.f = 1 or t.f = 2) and t.p < 1 return true
+        endif
+        return false
+    endfunc
+    
+    ' Door
+    ' ----
+    w.Door = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh return unset
+        t = this.m[x][z]
+        if t and (t.f = 1 or t.f = 2)  return t.n
+        return unset
+    endfunc
+    
+    ' OpenDoor
+    ' --------
+    w.OpenDoor = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh return false
+        t = this.m[x][z]
+        if t and (t.f = 1 or t.f = 2) and not t.o
+            t.o = true
+            return true
+        endif
+        return false
+    endfunc
+    
+    ' CloseDoor
+    ' ---------
+    w.CloseDoor = function(x, z)
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh return unset
+        t = this.m[x][z]
+        if t and (t.f = 1 or t.f = 2) and t.o
+            t.o = false
+            return true
+        endif
+        return false
+    endfunc
+
+    ' AddSprite
+    ' ---------
+    w.AddSprite = function(x, y, z, img, w, h)
+        assert typeof(this.sprites), "Wolf3D.AddSprite: Map not initialized"
+        s = [x: x, z: z, t: img, c: 0, y: y, h: h, w: w, d_: 0]
+        this.sprites[sizeof(this.sprites)] = s
+        return s
+    endfunc
+    
+    ' AddFloorSprite
+    ' --------------
+    w.AddFloorSprite = function(x, z, img, h)
+        return this.AddSprite(x, 0.5 - h/2, z, img, h*width(img)/height(img), h)
+    endfunc
+    
+    ' AddCeilingSprite
+    ' ----------------
+    w.AddCeilingSprite = function(x, z, img, h)
+        return this.AddSprite(x, -0.5 + h/2, z, img, h*width(img)/height(img), h)
+    endfunc
+    
+    ' RemoveSprite
+    ' ------------
+    w.RemoveSprite = function(sprite)
+        assert typeof(this.sprites), "Wolf3D.RemoveSprite: Map not initialized"
+        free val this.sprites, sprite
+    endfunc
+    
+    ' RenderSprites
+    ' -------------
+    w.RenderSprites = function(viewX, viewZ, viewA)
+        ' Render.
+        ux = cos(viewA)
+        uz = sin(viewA)
+        for i = 0 to sizeof(this.sprites) - 1
+            s = this.sprites[i]
+            if s.d_ < this.sqzmax
+                vx = s.x - viewX
+                vz = s.z - viewZ
+                hyp = sqr(s.d_)
+                if hyp > 0
+                    k = 1/hyp
+                    vx = vx*k
+                    vz = vz*k
+                    dotp = vx*ux + vz*uz
+                    if dotp >= 0.1
+                        if dotp > 1  a = 0
+                        else a = acos(dotp)
+                        if ux*vz - uz*vx < 0  tx = this.vw*0.5 - this.u*tan(a)
+                        else  tx = this.vw*0.5 + this.u*tan(a)
+                        d = hyp*cos(a)
+                        if d > 0.1 and d < this.fmax
+                            size = this.u/d
+                            x = tx - size*s.w*0.5
+                            y = this.hvh + size*(s.y - s.h*0.5)
+                            w = size*s.w
+                            h = size*s.h
+                            if x + w > 0 and x < this.vw
+                                this.DrawSprite(s.t, s.c, x, y, w, h, d)
+                            endif
+                        endif
+                    endif
+                endif
+            endif
+        next
+    endfunc
+    
+    ' DrawSprite
+    ' ----------
+    w.DrawSprite = function(t, c, x, y, w, h, d)
+        xstart = round(x)
+        xend = round(x + w)
+        ystart = round(y)
+        yend = round(y + h)
+
+        du = 1/(xend - xstart)
+        dv = 1/(yend - ystart)
+        u = 0
+        v = 0
+        vend = 1
+                        
+        if xstart >= this.vw or xend < 0  return
+        if xstart < 0
+            u = u + du*-xstart
+            xstart = 0
+        endif
+        if xend >= this.vw  xend = this.vw - 1        
+
+        set color this.fr, this.fg, this.fb, (d - this.fmin)*this.fs
+        for x = xstart to xend
+            if d < this.zb[x]  draw vraster t, this.vx + x, this.vy + ystart, this.vy + yend, u, v, u, vend
+            u = u + du
+        next                        
+    endfunc
+    
+    ' RenderFloorAndCeiling
+    ' ---------------------
+    w.RenderFloorAndCeiling = function(viewX, viewZ, viewA)
+        h = this.vh
+        hh = this.hvh - 4
+        w = this.vw - 1
+        mw = this.mw
+        mh = this.mh
+        wm = this.m
+        fm = this.fm
+        cm = this.cm
+        vx = this.vx
+        vy = this.vy
+        for y = 0 to hh
+            d = this.d[y]
+            if d >= this.fmax break
+            alpha = (d - this.fmin)*this.fs
+            set color this.fr, this.fg, this.fb, alpha
+
+            xs = viewX + d*cos(viewA + this.ao[0])
+            zs = viewZ + d*sin(viewA + this.ao[0])
+            
+            xe = viewX + d*cos(viewA + this.ao[w])
+            ze = viewZ + d*sin(viewA + this.ao[w])
+            
+            dx = xe - xs
+            dz = ze - zs
+            d = sqr(dx*dx + dz*dz)
+            dx = dx/d
+            dz = dz/d
+            
+            ss = vx '0
+            sdx = w/d
+            
+            xi = floor(xs)
+            zi = floor(zs)
+            
+            us = xs%1
+            vs = zs%1
+            
+            ' fog calculation removed for now
+            
+            ' row_loop
+            do
+                oxi = xi
+                ozi = zi
+                
+                ' x ray
+                if dx < 0
+                    if oxi < 0  break
+                    xf = xi
+                    xi = xi - 1
+                    xk = (xf - xs)/dx
+                elseif dx > 0
+                    if oxi >= mw  break
+                    xi = xi + 1
+                    xf = xi
+                    xk = (xf - xs)/dx
+                else
+                    xk = 100000
+                endif
+                
+                ' z ray
+                if dz < 0
+                    if ozi < 0  break
+                    zf = zi
+                    zi = zi - 1
+                    zk = (zf - zs)/dz
+                elseif dz > 0
+                    if ozi >= mh  break
+                    zi = zi + 1
+                    zf = zi
+                    zk = (zf - zs)/dz
+                else
+                    zk = 100000
+                endif
+                
+                if xk < zk
+                    if dz < 0  zi = zi + 1
+                    elseif dz > 0  zi = zi - 1
+                    if dx <= 0  ue = 0
+                    else  ue = 1
+                    xe = xf
+                    ze = xk*dz + zs
+                    ve = ze%1
+                    se = xk*sdx + ss
+                else
+                    if dx < 0  xi = xi + 1
+                    elseif dx > 0  xi = xi - 1
+                    if dz <= 0  ve = 0
+                    else  ve = 1
+                    ze = zf
+                    xe = zk*dx + xs
+                    ue = xe%1
+                    se = zk*sdx + ss
+                endif
+                
+                if oxi >= 0 and oxi < mw and ozi >= 0 and ozi < mh
+                    ' Don't draw if there's a wall.
+                    if not (wm[oxi][ozi] and wm[oxi][ozi].f = 0 and wm[oxi][ozi].t)
+                        ft = fm[oxi][ozi]
+                        ct = cm[oxi][ozi]
+                        if ft  draw hraster ft, vy + h - 1 - y, ss, se, us, vs, ue, ve
+                        if ct  draw hraster ct, vy + y, ss, se, us, vs, ue, ve
+                    endif
+                endif
+                xs = xe
+                zs = ze
+                ss = se
+                if ue = 0  us = 1
+                elseif ue = 1  us = 0
+                else  us = ue
+                if ve = 0  vs = 1
+                elseif ve = 1  vs = 0
+                else  vs = ve
+                
+                if se >= vx + w  break
+            loop
+        next
+    endfunc
+            
+    ' Render
+    ' ------
+    w.Render = function(viewX, viewZ, viewA)
+        assert typeof(this.vx), "Wolf3D.Render: View has not been set"
+        
+        if not typeof(this.m) return
+        
+        this.Update()
+
+        if sizeof(this.sprites)
+            ' Sort sprites descending by distance to view. Using quick sort here, but bubble sort would
+            ' most likely be faster.
+            foreach s in this.sprites  s.d_ = (s.x - viewX)^2 + (s.z - viewZ)^2
+            qsort(this.sprites, function(a, b);  return b.d_ - a.d_; endfunc)
+        endif
+
+        set clip rect this.vx, this.vy, this.vw, this.vh
+
+        if this.useCR
+            asm
+                opt_loadsinglevar @0 "this"
+                push @0
+                opt_loadsinglevar @0 "viewX"
+                push @0
+                opt_loadsinglevar @0 "viewZ"
+                push @0
+                opt_loadsinglevar @0 "viewA"
+                push @0
+                sys 124 4
+            endasm
+            return
+        endif
+
+
+        set color this.fr, this.fg, this.fb
+        cls
+        this.RenderFloorAndCeiling(viewX, viewZ, viewA)
+                
+        m = this.m
+        mw = this.mw
+        mh = this.mh
+        cy = this.vy + this.hvh
+        
+        for col = 0 to this.vw - 1
+            distx = 100000
+            distz = 100000
+            tx = unset
+            tz = unset
+            a = viewA + this.ao[col]
+            cosa = cos(a)
+            sina = sin(a)
+
+            ' Cast x ray.
+            if cosa < 0
+                dzperdx = sina/cosa
+                for ix = int(viewX - 1) to 0
+                    dx = ix + 1 - viewX
+                    dz = dx*dzperdx
+                    z = viewZ + dz
+                    iz = int(z)
+                    if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                        t = m[ix][iz]
+                        if t and t.e
+                            ' Wall?
+                            if t.f = 0
+                                distx = dx*dx + dz*dz
+                                ux = 1 - z%1
+                                tx = t.e
+                                break
+                            ' Door?
+                            elseif t.f = 1 and t.p < 1
+                                dx = ix + 0.5 - viewX
+                                dz = dx*dzperdx
+                                z = viewZ + dz
+                                if int(z) = iz and z%1 > t.p
+                                    distx = dx*dx + dz*dz
+                                    ux = 1 - z%1 + t.p
+                                    'ux = z%1 - t.p
+                                    tx = t.e
+                                    break
+                                endif
+                            endif
+                        endif
+                    endif
+                next
+            elseif cosa > 0
+                dzperdx = sina/cosa            
+                for ix = int(viewX + 1) to mw - 1
+                    dx = ix - viewX
+                    dz = dx*dzperdx
+                    z = viewZ + dz
+                    iz = int(z)
+                    if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                        t = m[ix][iz]
+                        if t and t.w
+                            ' Wall?
+                            if t.f = 0
+                                distx = dx*dx + dz*dz
+                                ux = z%1
+                                tx = t.w
+                                break
+                            ' Door?
+                            elseif t.f = 1 and t.p < 1
+                                dx = ix + 0.5 - viewX
+                                dz = dx*dzperdx
+                                z = viewZ + dz
+                                if int(z) = iz and z%1 > t.p
+                                    distx = dx*dx + dz*dz
+                                    ux = z%1 - t.p
+                                    tx = t.w
+                                    break
+                                endif
+                            endif
+                        endif
+                    endif
+                next
+            endif
+
+            ' Cast z ray.
+            if sina < 0
+                dxperdz = cosa/sina
+                for iz = int(viewZ - 1) to 0
+                    dz = iz + 1 - viewZ
+                    dx = dz*dxperdz
+                    x = viewX + dx
+                    ix = int(x)
+                    if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                        t = m[ix][iz]
+                        if t and t.s
+                            ' Wall?
+                            if t.f = 0
+                                distz = dx*dx + dz*dz
+                                uz = x%1
+                                tz = t.s
+                                break
+                            ' Door?
+                            elseif t.f = 2 and t.p < 1
+                                dz = iz + 0.5 - viewZ
+                                dx = dz*dxperdz
+                                x = viewX + dx
+                                if int(x) = ix and x%1 > t.p
+                                    distz = dx*dx + dz*dz
+                                    uz = x%1 - t.p
+                                    tz = t.s
+                                    break
+                                endif
+                            endif
+                        endif
+                    endif
+                next
+            elseif sina > 0
+                dxperdz = cosa/sina            
+                for iz = int(viewZ + 1) to mh - 1
+                    dz = iz - viewZ
+                    dx = dz*dxperdz
+                    x = viewX + dx
+                    ix = int(x)
+                    if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                        t = m[ix][iz]
+                        if t and t.n
+                            ' Wall?
+                            if t.f = 0
+                                distz = dx*dx + dz*dz
+                                uz = 1 - x%1
+                                tz = t.n
+                                break
+                            ' Door?
+                            elseif t.f = 2 and t.p < 1
+                                dz = iz + 0.5 - viewZ
+                                dx = dz*dxperdz
+                                x = viewX + dx
+                                if int(x) = ix and x%1 > t.p
+                                    distz = dx*dx + dz*dz
+                                    'uz = x%1 - t.p
+                                    uz = 1 - x%1 + t.p
+                                    tz = t.n
+                                    break                                
+                                endif
+                            endif
+                        endif
+                    endif
+                next
+            endif
+            
+            t = unset
+            if typeof(tx) and typeof(tz)
+                if distx < distz
+                    t = tx
+                    d = distx
+                    u = ux
+                else
+                    t = tz
+                    d = distz
+                    u = uz
+                endif
+            elseif typeof(tx)
+                t = tx
+                d = distx
+                u = ux
+            elseif typeof(tz)
+                t = tz
+                d = distz
+                u = uz
+            else
+                d = 100000
+            endif
+            
+            if t
+                d = sqr(d)*this.aoc[col]
+                if d < this.fmax
+                    set color this.fr, this.fg, this.fb, (d - this.fmin)*this.fs
+                    ys = ceil(0.5*this.u/d)
+                    draw vraster t, this.vx + col, cy - ys, cy + ys, u, 0, u, 1
+                endif
+            endif
+            this.zb[col] = d
+        next
+        this.RenderSprites(viewX, viewZ, viewA)
+        clear clip rect  
+    endfunc
+
+    ' SpritesInLOS
+    ' ------------
+    w.SpritesInLOS = function(a, b)
+        return this.InLOS(a.x, a.z, b.x, b.z)
+    endfunc
+
+    ' InLOS
+    ' -----
+    ' DUPLICATE CODE! REPLACE WITH FACING!
+    w.InLOS = function(srcX, srcZ, dstX, dstZ)
+        dx = dstX - srcX
+        dz = dstZ - srcZ
+        d = sqr(dx*dx + dz*dz)
+        if d <= 0  return true
+        res = this.Facing(srcX, srcZ, atan2(dz, dx))
+        if res and res.distance < d  return false
+        return true
+        
+        ' Cut 'n' paste from renderer ...
+        distx = 100000
+        distz = 100000
+        tx = unset
+        tz = unset
+        dx = dstX - srcX
+        dz = dstZ - srcZ
+        sdd = dx*dx + dz*dz
+        if sdd = 0  return true
+        k = 1/sqr(sdd)
+        cosa = k*dx
+        sina = k*dz
+
+        m = this.m
+        mw = this.mw
+        mh = this.mh
+
+        ' Cast x ray.
+        if cosa < 0
+            dzperdx = sina/cosa
+            for ix = int(srcX - 1) to 0
+                dx = ix + 1 - srcX
+                dz = dx*dzperdx
+                z = srcZ + dz
+                iz = int(z)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.t
+                        ' Wall?
+                        if t.f = 0
+                            distx = dx*dx + dz*dz
+                            tx = t.t
+                            break
+                        ' Door?
+                        elseif t.f = 1 and t.p < 1
+                            dx = ix + 0.5 - srcX
+                            dz = dx*dzperdx
+                            z = srcZ + dz
+                            if int(z) = iz and z%1 > t.p
+                                distx = dx*dx + dz*dz
+                                tx = t.t
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        elseif cosa > 0
+            dzperdx = sina/cosa            
+            for ix = int(srcX + 1) to mw - 1
+                dx = ix - srcX
+                dz = dx*dzperdx
+                z = srcZ + dz
+                iz = int(z)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.t
+                        ' Wall?
+                        if t.f = 0
+                            distx = dx*dx + dz*dz
+                            tx = t.t
+                            break
+                        ' Door?
+                        elseif t.f = 1 and t.p < 1
+                            dx = ix + 0.5 - srcX
+                            dz = dx*dzperdx
+                            z = srcZ + dz
+                            if int(z) = iz and z%1 > t.p
+                                distx = dx*dx + dz*dz
+                                tx = t.t
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        endif
+
+        ' Cast z ray.
+        if sina < 0
+            dxperdz = cosa/sina
+            for iz = int(srcZ - 1) to 0
+                dz = iz + 1 - srcZ
+                dx = dz*dxperdz
+                x = srcX + dx
+                ix = int(x)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.t
+                        ' Wall?
+                        if t.f = 0
+                            distz = dx*dx + dz*dz
+                            tz = t.t
+                            break
+                        ' Door?
+                        elseif t.f = 2 and t.p < 1
+                            dz = iz + 0.5 - srcZ
+                            dx = dz*dxperdz
+                            x = srcX + dx
+                            if int(x) = ix and x%1 > t.p
+                                distz = dx*dx + dz*dz
+                                tz = t.t
+                                break
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        elseif sina > 0
+            dxperdz = cosa/sina            
+            for iz = int(srcZ + 1) to mh - 1
+                dz = iz - srcZ
+                dx = dz*dxperdz
+                x = srcX + dx
+                ix = int(x)
+                if ix >= 0 and ix < mw and iz >= 0 and iz < mh
+                    t = m[ix][iz]
+                    if t and t.t
+                        ' Wall?
+                        if t.f = 0
+                            distz = dx*dx + dz*dz
+                            tz = t.t
+                            break
+                        ' Door?
+                        elseif t.f = 2 and t.p < 1
+                            dz = iz + 0.5 - srcZ
+                            dx = dz*dxperdz
+                            x = srcX + dx
+                            if int(x) = ix and x%1 > t.p
+                                distz = dx*dx + dz*dz
+                                tz = t.t
+                                break                                
+                            endif
+                        endif
+                    endif
+                endif
+            next
+        endif
+
+        d = unset       
+        if typeof(tx) and typeof(tz)
+            if distx < distz
+                return distx > sdd
+                d = distx
+            else
+                return distz > sdd
+                d = distz
+            endif
+        elseif typeof(tx)
+            return distx > sdd
+        elseif typeof(tz)
+            return distz > sdd
+        else
+            return true
+        endif
+    endfunc
+
+    ' LoadN6Map
+    ' ---------
+    ' Load map created with the n6 program RC Editor.
+    w.LoadN6Map = function(filename)
+        f = openfile(filename)
+        if typeof(f)
+            path = GetPath(filename)
+           
+            imageDefs = [unset]
+            imageMap = [unset]
+            spriteDefs = [unset]
+            
+            ' Images.
+            imageCount = fread(f)
+            if imageCount > 0
+                for i = 0 to imageCount - 1
+                    id = int(fread(f))
+                    fn = fread(f)
+                    ' Colorkey, rgb values not used - n6 switched to always using 255, 0, 255
+                    ck = int(fread(f))
+                    ckr = int(fread(f))
+                    ckg = int(fread(f))
+                    ckb = int(fread(f))
+                    img = [
+                        fn: fn,
+                        img: loadimage(GetPathCombined(path, fn))]
+                    assert typeof(img.img), "Wolf3D.LoadN6Map: Could not load image " +
+                            GetPathCombined(path, fn)
+                    if ck  set image colorkey img.img, 255, 0, 255
+                    imageDefs[id] = img
+                    imageMap[img.img] = id
+                next
+            endif
+            
+            ' Sprite types.
+            spriteTypeCount = fread(f)
+            if spriteTypeCount > 0
+                for i = 0 to spriteTypeCount - 1
+                    id = int(fread(f))
+                    spriteDefs[id] = [
+                        img: int(fread(f)),
+                        pos: int(fread(f)),
+                        obs: int(fread(f)),
+                        size: int(fread(f))/1000]
+                next
+            endif
+            
+            ' Fog and view.
+            fog = int(fread(f))
+            fogR = int(fread(f))
+            fogG = int(fread(f))
+            fogB = int(fread(f))
+            zMin = float(fread(f))
+            zMax = float(fread(f))
+            
+            ' Map size.
+            mapW = int(fread(f))
+            mapH = int(fread(f))
+            
+            ' Walls.
+            wallMap = dim(mapW, mapH)
+            ' -1 = z door, -2 = x door
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1  wallMap[x][y] = int(fread(f))
+            
+            ' Floor.
+            floorMap = dim(mapW, mapH)
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1  floorMap[x][y] = int(fread(f))
+            
+            ' Ceiling.
+            ceilingMap = dim(mapW, mapH)
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1  ceilingMap[x][y] = int(fread(f))
+            
+            ' Sprites (and, weirdly, negative door textures ...)
+            spriteMap = dim(mapW, mapH)
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1  spriteMap[x][y] = int(fread(f))
+            
+            ' Game flags.
+            gameFlags = dim(mapW, mapH)
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1  gameFlags[x][y] = int(fread(f))
+            
+            ' Loader flags.
+            loaderFlags = []
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1
+                flag = int(fread(f))
+                if flag  loaderFlags[sizeof(loaderFlags)] = [
+                    x: x,
+                    z: y,
+                    flag: flag]
+            next
+            
+            ' Player.
+            insert loaderFlags, 0, [x: int(fread(f)), z: int(fread(f)), angle: float(fread(f))] 
+            
+            free file f
+            
+            ' Create map.
+            this.InitMap(mapW, mapH)
+            if fog  this.SetFog(zMin, zMax, fogR, fogG, fogB)
+            else this.SetFog(zMax, zMax, fogR, fogG, fogB)
+
+            for y = 0 to mapH - 1  for x = 0 to mapW - 1
+                if floorMap[x][y]  this.SetFloorTextureAt(x, y, imageDefs[floorMap[x][y]].img)
+                if ceilingMap[x][y]  this.SetCeilingTextureAt(x, y, imageDefs[ceilingMap[x][y]].img)
+                ' Door along z axis.
+                if wallMap[x][y] = -1
+                    this.SetDoor(x, y, imageDefs[-spriteMap[x][y]].img, W3D_Z_AXIS)
+                ' Door along x axis.
+                elseif wallMap[x][y] = -2
+                    this.SetDoor(x, y, imageDefs[-spriteMap[x][y]].img, W3D_X_AXIS)
+                ' Normal wall.
+                elseif wallMap[x][y] > 0
+                    this.SetWall(x, y, imageDefs[wallMap[x][y]].img)
+                endif
+
+                if spriteMap[x][y] > 0
+                    spr = spriteDefs[spriteMap[x][y]]
+                    img = imageDefs[spr.img].img
+                    if width(img) > height(img)
+                        h = spr.size*height(img)/width(img)
+                        w = spr.size
+                    else
+                        w = spr.size*width(img)/height(img)
+                        h = spr.size
+                    endif
+                    if spr.pos = 0
+                        sprite = this.AddFloorSprite(x + 0.5, y + 0.5, img, h)
+                    elseif spr.pos = 1
+                        sprite = this.AddSprite(x + 0.5, 0, y + 0.5, img, w, h)
+                    else
+                        sprite = this.AddCeilingSprite(x + 0.5, y + 0.5, img, h)
+                    endif
+                    if spr.obs  this.SetWall(x, y, unset)
+                    spriteMap[x][y] = [id: spriteMap[x][y], spr: sprite]
+                else
+                    spriteMap[x][y] = unset
+                endif
+            next
+            
+            
+            this.n6 = [
+                imgDefs: imageDefs,
+                imgMap: imageMap,
+                sprDefs: spriteDefs,
+                sprMap: spriteMap,
+                flags: gameFlags,
+                wMap: wallMap,
+                fMap: floorMap,
+                cMap: ceilingMap]
+            
+            return loaderFlags
+        else
+            return unset
+        endif
+    endfunc
+    
+    ' GetImage
+    ' --------
+    ' Return image from id for maps created with the n6 rc editor.
+    w.GetImage = function(id)
+        if this.n6 and key(this.n6.imgDefs, id)  return this.n6.imgDefs[id].img
+        else  return unset
+    endfunc
+    
+    ' Item
+    ' ----
+    ' Return item id at map position (x, z), for maps created with the n6 rc editor.
+    w.Item = function(x, z)
+        if not this.n6  return unset    
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh  return 0
+        if this.n6.sprMap[x][z]
+            return this.n6.sprMap[x][z].id
+        else
+            return 0
+        endif
+    endfunc
+    
+    ' RemoveItem
+    ' ----------
+    ' Remove item at map position (x, z) and return its id, for maps created with the n6 rc editor.
+    w.RemoveItem = function(x, z)
+        if not this.n6  return unset
+        if x < 0 or x >= this.mw or z < 0 or z > this.mh  return 0
+        if this.n6.sprMap[x][z]
+            id = this.n6.sprMap[x][z].id
+            this.RemoveSprite(this.n6.sprMap[x][z].spr)
+            if this.n6.sprDefs[id].obs  this.ClearWall(x, z)
+            this.n6.sprMap[x][z] = unset
+            return id
+        else
+            return 0
+        endif
+    endfunc
+    
+    ' Use rendering routines written in C.
+    w.useCR = true
+
+    ' Doors and sprites.
+    w.doors = unset
+    w.sprites = unset
+    ' Wall, floor and ceiling maps.
+    w.m = unset
+    w.fm = unset
+    w.cm = unset
+    ' Map width and height.
+    w.mw = 0
+    w.mh = 0
+    ' View position and size.
+    w.vx = unset
+    w.vy = unset
+    w.vw = unset
+    w.vh = unset
+    w.hvh = unset
+    ' Floor and ceiling color textures
+    w.fct = createimage(32, 32)
+    w.cct = createimage(32, 32)
+    ' Sky image.
+    w.si = unset
+    w.ch = unset
+    ' Clipping and for
+    w.fmin = 10000
+    w.fmax = 10000
+    w.fr = 0
+    w.fg = 0
+    w.fb = 0
+    w.fs = 0
+    w.sqzmax = w.fmax*w.fmax
+    w.ao = unset
+    w.aoc = unset
+    
+    ' Fake sprite for Move
+    w.move = [x: unset, z: unset]
+    ' Collision result from MoveSprite
+    w.anyCol = false
+
+    ' Result of Facing.
+    w.hit = [
+        distance: unset,
+        texture: unset,
+        dir: unset,
+        door: unset,
+        x: unset, z: unset,
+        mapx: unset, mapz: unset]
+    w.lt = clock()
+    
+    ' N6 map data.
+    w.n6 = unset
+    
+    return w
+endfunc

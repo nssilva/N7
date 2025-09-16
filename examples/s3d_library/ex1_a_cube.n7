@@ -1,0 +1,128 @@
+' ex1_a_cube.n7
+' -------------
+' Displaying a spinning cube with faces of different colors.
+
+include "s3d.n7"
+
+#win32
+
+' Display settings.
+constant RES = 480          ' Vertical resolution.
+constant SCALE = 1          ' Window scale.
+constant FULLSCREEN = 0     ' Fullscreen if 1
+constant DISPLAY_FPS = 1    ' Display fps if 1.
+constant FOV = 45           ' Vertical field of view in degrees.
+
+' For delta time.
+visible vLastTick = 0
+
+' Create window.
+set window "A cube", RES*screenw()/screenh(), RES, FULLSCREEN, SCALE
+set redraw off
+
+' Init s3d with the window as render target, a field of view of FOV degrees, near clip plane at
+' distance 0.1 and far clip plane at 10.
+S3D_SetView(primary, rad(FOV), 0.1, 10)
+
+' Rotation angles for the cube.
+cubeRotY = 0
+cubeRotX = 0
+
+' Loop until user presses esc.
+while not keydown(KEY_ESCAPE, true)
+    ' Get time passed since last frame.
+    dt = DeltaTime()
+
+    ' Update cube angles.    
+    cubeRotY = (cubeRotY + 45*dt)%360
+    cubeRotX = (cubeRotY + 63*dt)%360
+
+    ' Dark blueish background.
+    set color 32, 32, 64
+    cls
+    
+    ' Clear transformation and depth buffer.
+    S3D_Clear()
+    
+    ' Move to the position of the cube, 5 units into the screen.
+    S3D_Translate(0, 0, 5)
+    ' Rotate around y and x axes.
+    S3D_RotateY(rad(cubeRotY))
+    S3D_RotateX(rad(cubeRotX))
+    
+    ' Draw a cube using quads with different face colors.
+    S3D_Begin(S3D_QUADS)
+        ' Bottom face.
+        S3D_Color3(255, 0, 255)
+        S3D_Vertex3(1, 1, -1)
+        S3D_Vertex3(1, 1, 1)
+        S3D_Vertex3(-1, 1, 1)
+        S3D_Vertex3(-1, 1, -1)
+        ' Top face.
+        S3D_Color3(255, 255, 0)
+        S3D_Vertex3(1, -1, 1)
+        S3D_Vertex3(1, -1, -1)
+        S3D_Vertex3(-1, -1, -1)
+        S3D_Vertex3(-1, -1, 1)
+        ' Back face.
+        S3D_Color3(0, 255, 255)
+        S3D_Vertex3(1, 1, 1)
+        S3D_Vertex3(1, -1, 1)
+        S3D_Vertex3(-1, -1, 1)
+        S3D_Vertex3(-1, 1, 1)
+        ' Front face.
+        S3D_Color3(255, 0, 0)
+        S3D_Vertex3(1, -1, -1)
+        S3D_Vertex3(1, 1, -1)
+        S3D_Vertex3(-1, 1, -1)
+        S3D_Vertex3(-1, -1, -1)
+        ' Left face.
+        S3D_Color3(0, 255, 0)
+        S3D_Vertex3(-1, 1, 1)
+        S3D_Vertex3(-1, -1, 1)
+        S3D_Vertex3(-1, -1, -1)
+        S3D_Vertex3(-1, 1, -1)
+        ' Right face.
+        S3D_Color3(0, 0, 255)
+        S3D_Vertex3(1, 1, -1)
+        S3D_Vertex3(1, -1, -1)
+        S3D_Vertex3(1, -1, 1)
+        S3D_Vertex3(1, 1, 1)
+    ' Done drawing quads.
+    S3D_End()            
+
+    ' Write information and instructions.
+    set color 255, 255, 255
+    set caret 0, 0
+    wln "Press Esc to quit"
+
+    ' Display.
+    DisplayFps(dt)
+    
+    ' Update window.
+    redraw
+    wait 1
+wend
+
+' DeltaTime
+' ---------
+' Return delta time in seconds since last call.
+function DeltaTime()
+    t = clock()
+    dt = (min(t - vLastTick, 100))/1000
+    vLastTick = t
+    return dt
+endfunc
+
+' DisplayFps
+' ----------
+' Display number of frames per second in bottom right corner based on delta time in seconds.
+function DisplayFps(dt)
+    if DISPLAY_FPS
+        set caret width(primary) - fwidth(" "), height(primary) - fheight()
+        set justification right
+        set color 0, 255, 0
+        write "FPS: " + str(round(1/dt), 3)
+        set justification left
+    endif
+endfunc

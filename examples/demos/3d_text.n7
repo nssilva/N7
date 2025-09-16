@@ -1,0 +1,115 @@
+' 3dtext.n7
+' ---------
+
+#win32
+
+include "s3d.n7"
+
+res = 480
+
+set window "3D Text", res*min(screenw()/screenh(), 2), res, true
+set redraw off
+
+S3D_SetView(primary, rad(90), 0.1, 50)
+
+mesh = Create3DText("NaaLaa VII", 4, 255, 255, 255, 64, 64, 96)
+a = 0
+do
+    ay = (ay + 1)%360
+    ax = (ax + 0.55)%360
+   
+    set color 0, 0, 0, 64
+    cls
+    S3D_Clear()
+    S3D_Translate(0, 0, 4.5)
+    S3D_Scale(0.1, 0.1, 0.1)
+    S3D_RotateY(sin(rad(ay))*rad(65))
+    S3D_RotateX(sin(rad(ax))*rad(22.5))
+    S3D_RotateZ(sin(rad(ax*2))*rad(22.5))
+    S3D_Mesh(mesh, 0)
+
+    fwait 60    
+    redraw
+until keydown(KEY_ESCAPE)
+
+' Create3DText
+' ------------
+function Create3DText(txt, thickness, rtop, gtop, btop, rbtm, gbtm, bbtm)
+    ' Create a gradient texture.
+    tex = createimage(64, 1)
+    set image tex
+    for x = 0 to width(tex) - 1
+        p = x/width(tex)
+        set color rtop*(1 - p) + rbtm*p, gtop*(1 - p) + gbtm*p, btop*(1 - p) + bbtm*p
+        set pixel x, 0
+    next
+    ' Create temporary image with the text.
+    set image primary
+    w = fwidth(txt)
+    h = fheight(txt)
+    tmpImage = createimage(w, h)
+    set image tmpImage
+    set color 255, 255, 255
+    set caret 0, 0
+    write txt
+    set image primary
+    maxy = 0
+    for y = 0 to height(tmpImage) - 1  for x = 0 to width(tmpImage) - 1
+        if Red(pixeli(tmpImage, x, y)) maxy = max(maxy, y)
+    next
+    ' Build voxel mesh from the pixel data.
+    mesh = S3D_BeginMesh()
+    S3D_Begin(S3D_QUADS)
+    S3D_Texture(tex)
+    ht = thickness/2
+    for y = 0 to height(tmpImage) - 1  for x = 0 to width(tmpImage) - 1
+        if Red(pixeli(tmpImage, x, y))
+            vx = x - w/2; vy = y - h/2
+            tt = y/maxy; tb = (y + 1)/maxy
+            S3D_Color(160, 160, 160)
+            S3D_Vertex(vx, vy, -ht, tt, 0)
+            S3D_Vertex(vx + 1, vy, -ht, tt, 0)
+            S3D_Vertex(vx + 1, vy + 1, -ht, tb, 0)
+            S3D_Vertex(vx, vy + 1, -ht, tb, 0)
+            if not Red(pixeli(tmpImage, x, y - 1))
+                S3D_Color(255, 255, 255)
+                S3D_Vertex(vx, vy, ht, tt, 0)
+                S3D_Vertex(vx + 1, vy, ht, tt, 0)
+                S3D_Vertex(vx + 1, vy, -ht, tt, 0)
+                S3D_Vertex(vx, vy, -ht, tt, 0)
+            endif
+            if not Red(pixeli(tmpImage, x, y + 1))
+                S3D_Color(64, 64, 64)
+                S3D_Vertex(vx, vy + 1, ht, tb, 0)
+                S3D_Vertex(vx, vy + 1, -ht, tb, 0)
+                S3D_Vertex(vx + 1, vy + 1, -ht, tb, 0)
+                S3D_Vertex(vx + 1, vy + 1, ht, tb, 0)
+            endif
+            if not Red(pixeli(tmpImage, x - 1, y))
+                S3D_Color(255, 255, 255)
+                S3D_Vertex(vx, vy, ht, tt, 0)
+                S3D_Vertex(vx, vy, -ht, tt, 0)
+                S3D_Vertex(vx, vy + 1, -ht, tb, 0)
+                S3D_Vertex(vx, vy + 1, ht, tb, 0)
+            endif
+            if not Red(pixeli(tmpImage, x + 1, y))
+                S3D_Color(64, 64, 64)
+                S3D_Vertex(vx + 1, vy, ht, tt, 0)
+                S3D_Vertex(vx + 1, vy + 1, ht, tb, 0)
+                S3D_Vertex(vx + 1, vy + 1, -ht, tb, 0)
+                S3D_Vertex(vx + 1, vy, -ht, tt, 0)
+            endif
+        endif
+    next
+    S3D_End()
+    S3D_EndMesh()
+    free image tmpImage
+
+    return mesh
+endfunc
+
+' Pixeli helpers.
+function Alpha(c); return int(c/16777216); endfunc
+function Red(c); return int((c/65536))%256; endfunc
+function Green(c); return int((c/256))%256; endfunc
+function Blue(c); return c%256; endfunc

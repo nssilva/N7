@@ -1,0 +1,98 @@
+' A particle effect example using additive drawing.
+' By Marcus.
+
+#win32
+
+set window "Additive drawing", 640, 480
+set redraw off
+
+' Create five fuzz images of different sizes and put them in an array.
+images = [CreateFuzzImage(8), CreateFuzzImage(12), CreateFuzzImage(16),
+        CreateFuzzImage(24), CreateFuzzImage(32)]
+
+particles = []          ' A list for particles.
+particlesPerTick = 4    ' Number of particles to spawn per tick.
+useAdditive = true      ' Use additive draw mode.
+remove = []             ' Re-used array in the loop to give the gc one less thing to deal with.
+do
+    ' Enable/disable additive drawing.
+    if keydown(KEY_SPACE, true) useAdditive = not useAdditive
+
+    ' Spawn particlesPerTick new particles.
+    for i = 1 to particlesPerTick
+        ' Add particle at the end of the list.
+        dx = (rnd() - 0.5)*2.5
+        particles[sizeof(particles)] = [
+                ' Image.
+                img:    images[rnd(sizeof(images))],
+                ' Starting position.
+                x:      rnd(304, 336),
+                y:      rnd(392, 408),
+                ' Current, start and end x speed/tick.
+                dx:     dx,
+                sdx:    dx,
+                edx:    -dx,
+                ' Y speed/tick.
+                dy:    (rnd() - 0.5)*2,
+                ' Parameter (0 = born, 1 = dead) and parameter speed/tick.
+                param:  0,
+                spd:    0.005 + rnd()*0.01,
+                ' Update.
+                Update: function()
+                    this.x = this.x + this.dx
+                    this.y = this.y + this.dy
+                    this.dx = (1 - this.param)*this.sdx + this.param*this.edx
+                    this.dy = 0.98*this.dy + 0.02*-3
+                    this.param = this.param + this.spd
+                    return this.param < 1
+                endfunc,
+                ' Draw.
+                Draw: function()
+                    set color this.param*255, (1 - this.param)*255, 255, (1 - this.param)*255
+                    draw image this.img, this.x, this.y
+                endfunc]
+    next
+
+    ' Clear the remove list.
+    clear remove
+    ' If a particle returns false in Update, put it in the remove list.
+    foreach p in particles  if not p.Update() remove[sizeof(remove)] = p
+    ' Remove dead particles.
+    foreach p in remove  free val particles, p
+
+    ' 60 fps shouldn't be a problem, but let's still use the fwait function instead of the command
+    ' version.
+    if fwait(60)
+        set color 24, 0, 24
+        cls
+   
+        ' Draw the particles.
+        set additive useAdditive
+        if sizeof(particles)  for i = 0 to sizeof(particles) - 1  particles[i].Draw()
+        set additive false
+
+        ' Write instructions.
+        set color 255, 255, 255
+        set caret 320, 8
+        center "Press space bar to enable/disable additive drawing"
+        center "Particle count: " + sizeof(particles)
+
+        redraw
+    endif
+until keydown(KEY_ESCAPE)
+
+' CreateFuzzImage
+' ---------------
+' Create and return an image with a circular gradient.
+function CreateFuzzImage(size)
+    img = createimage(size, size)
+    set image img
+    c = size/2
+    for y = 0 to size - 1  for x = 0 to size - 1
+        set color 255, 255, 255, 255 - 255*sqr((x - c)^2 + (y - c)^2)/(c - 1)
+        set pixel x, y
+    next
+    set image primary
+
+    return img
+endfunc

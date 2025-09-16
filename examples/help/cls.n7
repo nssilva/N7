@@ -1,0 +1,21 @@
+' cls
+' ---
+
+' Use the compiler flag 'win32' to hide the console window.
+#win32
+
+' Create a window of the size 640x480.
+set window "cls", 640, 480
+
+' Set draw color to gray.
+set color 128, 128, 128
+
+' 'cls' clears the current image (usually the window) with a solid color.
+cls
+
+set color 0, 0, 0
+set caret 320, 448
+center "Press Esc to quit ..."
+
+' Loop until Esc key is pressed.
+while not keydown(KEY_ESCAPE)  fwait 60

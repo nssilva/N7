@@ -1,0 +1,24 @@
+' include
+' -------
+
+' Use 'include x' to include the n7 source code file x. This gives you access to the functions and
+' constants defined in that file.
+
+' Include the qsort library for sorting arrays.
+include "qsort.n7"
+
+' Put 10 random numbers in an array.
+a = []
+for i = 0 to 9
+    a[i] = rnd(100)
+next
+
+' Use the 'qsort' function, defined in qsort.n7, to sort the numbers in ascending order.
+qsort(a, 1)
+
+' Print the numbers.
+for i = 0 to 9
+    pln "a[" + i + "] = " + a[i]
+next
+
+system "pause"

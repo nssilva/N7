@@ -1,0 +1,30 @@
+' copy
+' ----
+
+' Create an array.
+a = [13, 14, 15, 16]
+
+' 'copy(t)' returns a deep copy of table t.
+b = copy(a)
+
+' Print the sizes and elements of a and b.
+pln "Size of a = " + sizeof(a)
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+pln "Size of b = " + sizeof(b)
+for i = 0 to sizeof(b) - 1  pln "  b[" + i + "] = " + b[i]
+
+' If you change an element in a or b the other array doesn't change, since b is a copy of a.
+a[0] = "hello"
+' If you, on the other hand assign b to a variable c, b and c refer to the exact same array, which
+' means that if you change c you also change b.
+c = b
+c[3] = "sunflower"
+' Print a, b and c.
+pln "Size of a = " + sizeof(a)
+for i = 0 to sizeof(a) - 1  pln "  a[" + i + "] = " + a[i]
+pln "Size of b = " + sizeof(b)
+for i = 0 to sizeof(b) - 1  pln "  b[" + i + "] = " + b[i]
+pln "Size of c = " + sizeof(c)
+for i = 0 to sizeof(c) - 1  pln "  c[" + i + "] = " + c[i]
+
+system "pause"

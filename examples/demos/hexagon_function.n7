@@ -1,0 +1,45 @@
+' hexagon_function
+' ----------------
+' Posted by Rick3137 on the naalaa forum.
+
+set window " Hexagon function ",700,700
+
+wln "This is a hexagon function test.  Hit Escape key to exit"
+set redraw 0
+set color 0,0,255
+
+'DrawHexagon(x,y,size)
+DrawHexagon(300,300,100)
+
+   
+do
+a = keydown(27)
+if a > 0 then break
+redraw
+fwait 60
+loop
+end
+
+function DrawHexagon(x,y,size)
+
+angle1 = 0.0
+angle2 =    rad(60.0)
+set color 0,0,255
+b=0
+while size > 0.0
+for a = 1 to 6
+  dy1 = sin(angle1) * size
+  dx1 = cos(angle1) * size
+  dy2 = sin(angle2) * size
+  dx2 = cos(angle2) * size
+  x1 = x + dx1 ; x2 = x + dx2
+  y1 = y + dy1 ; y2 = y + dy2
+  draw line int(x1),int(y1),int(x2),int(y2)
+  angle1 = angle1 + rad(60.0)
+  angle2 = angle2 + rad(60.0)
+next
+size = size - 0.01
+b=b+1
+  if b > 500 then break
+wend
+endfunc

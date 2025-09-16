@@ -1,0 +1,25 @@
+' constant
+' --------
+
+' A constant is a variable whose value can't change during program execution. Constants are global
+' variables, meaning that they're visible inside functions. Constants defined in an included file (a
+' library) are visible in the files that include it. I personally use uppercase letters when naming
+' constants, but that's not a must.
+'   You define a constant using 'constant' followed by a name and an assigment.
+constant A_NUMBER = 42
+constant A_STRING = "foo"
+' You can define multiple constant assignments on the same line by separating them with commas.
+constant ANOTHER_NUMBER = 2, ANOTHER_STRING = "bar"
+
+pln "A_NUMBER = " + A_NUMBER
+Foobar()
+
+' If you uncomment this line the compiler will return an error, since you're not allowed to change
+' a constant variable after its definition.
+'ANOTHER_NUMBER = 3
+
+system "pause"
+
+function Foobar()
+    pln "A_STRING + ANOTHER_STRING = " + A_STRING + ANOTHER_STRING
+endfunc

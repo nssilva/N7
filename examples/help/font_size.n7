@@ -1,0 +1,19 @@
+' fwidth, fheight
+' ---------------
+
+' 'fwidth(s)' returns the width of string s if printed with the currently used font.
+pln "fwidth(" + chr(34) + "Hello World!" + chr(34) + ") = " + fwidth("Hello World!")
+
+' 'fheight()' returns the height of the currently used font.
+pln "fheight() = " + fheight()
+
+' Create another font.
+f = createfont("Arial", 24)
+
+' 'fwidth(font_id, s)' returns the width of string s if printed with font font_id.
+pln "fwidth(f, " + chr(34) + "Hello World!" + chr(34) + ") = " + fwidth(f, "Hello World!")
+
+' 'fheight(font_id)' returns the height of font font_id.
+pln "fheight(f) = " + fheight(f)
+
+system "pause"

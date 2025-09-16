@@ -1,0 +1,16 @@
+' Unlike in n6, variables can change type at any time. So there's no need to mark
+' variable types with $ or #.
+
+' Set some variables.
+foo = "Hello there!"
+bar = 42
+pi = 3.14
+
+' Print them.
+pln "foo = " + foo
+pln "bar = " + bar
+pln "pi  = " + pi
+
+wait 3000
+
+ 

@@ -1,0 +1,10 @@
+' acos
+' ----
+
+' 'acos(x)' returns the arc cosine of x in radians. It's the inverse of 'cos'. We use 'rad' to
+' convert from degrees to radians and 'deg' to convert from radians to degrees.
+c = cos(rad(45))
+pln "cos(rad(45)) = " + c
+pln "deg(acos(" + c + ")) = " + deg(acos(c))
+
+system "pause"

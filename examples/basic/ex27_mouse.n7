@@ -1,0 +1,27 @@
+#win32
+
+set window 0, 640, 480
+set redraw off
+
+do
+    ' Hide and show mouse.
+    if keydown(KEY_H, true) set mouse false
+    if keydown(KEY_S, true) set mouse true
+    ' Position mouse.
+    if keydown(KEY_C, true) set mouse width(primary)/2, height(primary)/2
+
+    set color 0, 0, 0
+    cls
+    set color 255, 255, 255
+    set caret width(primary)/2, 4
+    center "H   - Hide mouse cursor"
+    center "S   - Show mouse cursor"
+    center "C   - Center mouse cursor"
+    center "Esc - Quit"
+    center
+    center
+    center "Mouse position: " + mousex() + ", " + mousey()
+
+        redraw
+    fwait 60
+until keydown(KEY_ESCAPE, true)
